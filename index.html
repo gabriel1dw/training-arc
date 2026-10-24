@@ -1,0 +1,105 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<title>Training Arc</title>
+<meta name="theme-color" content="#0d0a15">
+<meta name="application-name" content="Training Arc">
+<meta name="apple-mobile-web-app-title" content="Training Arc">
+<!-- App icon (the C-Rank hero with the TRAINING ARC title): home screen and browser tab -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-64.png">
+<link href="fonts/ui.css" rel="stylesheet">
+<link id="wkFont" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>window.TA_APP = true; if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
+<script>window.TA_LOCAL_FONTS = true;</script>
+</head>
+<body>
+<!-- Launch splash: on screen while the app and its art load, then fades into the app -->
+<section class="shopov" id="shopOv" hidden role="dialog" aria-modal="true" aria-label="Item shop"><div class="shopov-in" id="shopIn"></div></section>
+<section class="gate" id="gate" hidden role="dialog" aria-modal="true" aria-labelledby="gateTag"><div class="gate-bar"><button type="button" class="gate-back" id="gateBack" aria-label="Leave the gate">‹ Back</button><span class="gate-tag" id="gateTag"></span></div><div class="gate-arena" id="gateArena"></div></section>
+<section class="pf" id="profiles" hidden role="dialog" aria-modal="true" aria-labelledby="pfTitle"><div class="pf-in" id="pfIn"></div></section>
+<section class="ts" id="title" hidden role="dialog" aria-modal="true" aria-label="Training Arc main menu" tabindex="-1"><div class="ts-stage"><canvas class="ts-bg" id="tsBg" aria-hidden="true"></canvas><div class="ts-ui" id="tsUi"></div></div></section>
+<div class="splash" id="splash" aria-hidden="true"><p class="splash-k">An anime gym RPG</p><p class="splash-t">Training<br>Arc</p><div class="splash-bar"><i></i></div></div>
+
+<div class="app">
+  <header class="hud">
+    <button class="hero-btn" data-act="openHero" aria-label="Customize your character">
+      <canvas id="heroImg" class="hero-img" width="128" height="208" role="img"></canvas>
+      <span class="hero-edit">Edit</span>
+    </button>
+    <div class="hud-info">
+      <div class="p1"><span class="p1-tag">P1</span><span class="eyebrow">Training Arc</span><button type="button" class="coin-badge" id="coinBadge" data-act="shop" hidden></button></div>
+      <div class="hero-name" id="heroName">Hero</div>
+      <div class="lifebar" aria-hidden="true"><i id="xpBar"></i></div>
+      <div class="xpline num"><span>Lv <b id="lvText">1</b> · <span id="xpText">0</span> XP</span><span id="xpNext"></span></div>
+      <div class="brand"><div class="emblem xs" id="emblem">E</div><div class="brand-sub" id="rankTitle">E-Rank · Rookie</div></div>
+    </div>
+  </header>
+  <main id="view" class="app" style="padding:0"></main>
+</div>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="tabs-in">
+    <button class="tab" data-act="tab" data-tab="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Today</button>
+    <button class="tab" data-act="tab" data-tab="calendar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
+    <button class="tab" data-act="tab" data-tab="maxes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12h20M5 8v8M8 6v12M16 6v12M19 8v8"/></svg>Maxes</button>
+    <button class="tab" data-act="tab" data-tab="arcs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 13 10 5 10-5"/></svg>Arcs</button>
+    <button class="tab" data-act="shop" data-tab="shop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M10 20v-5h4v5"/></svg>Shop</button>
+    <button class="tab" data-act="tab" data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="m4 16 5-6 4 3 7-8"/></svg>Progress</button>
+  </div>
+</nav>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Workout screen: opened from Start workout, logs today's sets one by one -->
+<section class="wk" id="workout" hidden role="dialog" aria-modal="true" aria-labelledby="wkTitle"><div class="wk-page" id="wkPage"></div></section>
+<!-- Workout complete pop-up: opens after Finish workout or Clear stage; only Continue closes it -->
+<dialog class="wk-done" id="wkDone" aria-labelledby="wkDoneTitle"></dialog>
+
+<div class="overlay" id="rankup" hidden role="dialog" aria-modal="true" aria-labelledby="ruTitle">
+  <div class="burst"></div>
+  <div class="ru-in">
+    <div class="ru-stage"><canvas id="ruImg" class="ru-hero" width="128" height="208" role="img"></canvas><canvas id="ruAnim" width="192" height="224" hidden aria-hidden="true"></canvas></div>
+    <div class="eyebrow">Rank up</div>
+    <div class="ru-letter" id="ruLetter">D</div>
+    <div class="ru-title" id="ruTitle">Contender</div>
+    <p id="ruGear">Your training arc continues.</p>
+    <div class="ru-btns"><button class="btn btn-power" data-act="closeRank">Keep going</button><button class="btn btn-ghost" data-act="shareCard" data-v="rank">Share</button></div>
+  </div>
+</div>
+
+<div class="overlay sheet" id="heroEditor" hidden role="dialog" aria-modal="true" aria-labelledby="heTitle">
+  <div class="sheet-in">
+    <div class="row-between sheet-head"><h2 class="sec" id="heTitle">Your character</h2><button class="btn btn-power btn-sm" data-act="closeHero">Done</button></div>
+    <label class="f"><span>Name</span><input id="heName" type="text" maxlength="14" autocomplete="off" spellcheck="false"></label>
+    <div class="seg seg-wide" role="tablist" aria-label="Character" id="heTabs"></div>
+    <div id="hePage" class="he-page" role="tabpanel">
+      <div class="he-stage"><canvas id="heImg" width="128" height="208" role="img"></canvas></div>
+      <div class="he-group"><h4>Preview a rank</h4><div class="opt-chips" id="heRanks"></div><p class="fine" id="heGear"></p></div>
+      <div id="heOpts" class="he-opts"></div>
+    </div>
+    <div id="heEmpty" class="he-empty" role="tabpanel" hidden>
+      <div class="eyebrow">Female character</div>
+      <p class="he-empty-title">Her art is on the way</p>
+      <p class="fine">Once her sprites are added, she gets her own page here with her own hair styles, colors and stage. Your male character and his look stay exactly as they are.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Welcome: the first-launch setup, a full-screen cover shown once to brand-new players -->
+<section class="ob" id="welcome" hidden role="dialog" aria-modal="true" aria-labelledby="obTitle"><div class="ob-wipe" aria-hidden="true"></div><div class="ob-page" id="obPage"></div><input type="file" id="obRestore" accept=".json,application/json,text/plain" hidden></section>
+
+<!-- Settings: preferences, your data, and starting over -->
+<div class="overlay sheet" id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="stTitle"><div class="sheet-in" id="stIn"></div></div>
+
+<!-- Arc builder: create, edit, or remix a custom arc -->
+<div class="overlay sheet" id="arcBuilder" hidden role="dialog" aria-modal="true" aria-labelledby="abTitle"><div class="sheet-in" id="abIn"></div></div>
+
+<script src="js/bosses.js"></script>
+<script src="js/shop.js"></script>
+<script src="js/app.js"></script>
+
+</body></html>

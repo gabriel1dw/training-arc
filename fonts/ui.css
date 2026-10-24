@@ -1,0 +1,104 @@
+@font-face {
+  font-family: 'Anton';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(files/WqjPj1bbsQ_GETlNA8gPuK7gindOpCDkbvBDOHPDCZNv51H9foAbgydpEJ32qeR_IZR1aUWPxdPPijUQ6va5ZhdBvw_3_skey_3e16a04254d4c9b3_v_v27) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(files/alLkCm6RYxSAqTiEFuGdwSf5HxcDa_8PoqW6oulyK3Y6P9um6FG1ZZR7Oka2SFW7XBDednoDlw9EtkGkj34Gh8vsWACg_skey_32d7acf8757dbad0_v_v13) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(files/Cl1BYsVQqTjEFuF9wSe5HwTjax0_ovaaoukSK3UKXbpm6BLFd3R7OaamSWZrb0LOd5nDl_30tSKEjj1Wlth8u9OFi0SQ_skey_4c8d0d0b13516148_v_v13) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(files/Cl1BYsVQqTjEFuF9wSe5HwTjax0_ovaaoukSK3UKXbpm6BLFd3R7OaamSWZrb0LOd5nDl_30tSKEjj1Wlth8u9OFi0SQ_skey_a9a2225c15335812_v_v13) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Barlow';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(files/Cl1BYsVQqTjEFuF9wSe5HwTjax0_ovaaoukSK3UKXbpm6BLFd3R7OaamSWZrb0LOd5nDl_30tSKEjj1Wlth8u9OFi0SQ_skey_f60e73b1bbf362f3_v_v13) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(files/UrFS4UXNq_JXeMK2S_YSYNQheijUFJdubvpqt86W5Wu_UYPS6lp2_ekZByjp0KV_U2CLDbTzMkPOIyMaHbULqwsjCq_o_skey_54c77835287a87aa_v_v13) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(files/yUrFS4UXNq_JXeMK2S_YSYNQheijUFJdubvpqt86W5Wu_UYPS6lp2_ekZByjp0KV_U2CLDbTzMkPOIyMaHbULqwsjCq_o_skey_4be49ee59cd714e_v_v13) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(files/UrFS4UXNq_JXeMK2S_YSYNQheijUFJdubvpqt86W5Wu_UYPS6lp2_ekZByjp0KV_U2CLDbTzMkPOIyMaHbULqwsjCq_o_skey_f7328bd78d9d4b7c_v_v13) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Dela Gothic One';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(files/1WA2AzGrUwTthdh4F2OzCLnsyYgaWoOuq_RL00k_4i0iT2FTAeg51ye_QXVhVIYKHn_U8JY6r8iVmNh0A8U_iHKIR8CQ_skey_ca3882216dbc2d90_v_v19) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Jersey 10';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(files/9Q0mGKM2n8I_xRGgTP7bx3t265PdnKewJkBDy0ri_C18_cB9LFe0wqFys1dB9ZZVU0m_wUWx9dI2Hdl0vgCIyTSy1xu_A_skey_7263aaef656350ce_v_v4) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Zen Kaku Gothic New';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(files/gOpLqI4aGxnnv1rYsaQCsD6D4bF_wpmL08TZfQDKripnN26s1JFx6_jTgaRG02ySBguRy1qJXXkQ_1eU32Bx9NxxOAFM_skey_7b7f935ef05e996a_v_v19) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Zen Kaku Gothic New';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(files/qILuG22Tv1rIsaQ6sD6T4bWGwqEH09ARfQDSriqrL_bc1IGt70DTgVxC0yBmCt8VyyJ5XUG8_49c3zCl8JiVAPWHCAM8_skey_6e7fe20f45eed400_v_v19) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}
+@font-face {
+  font-family: 'Zen Kaku Gothic New';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(files/qILuG22Tv1rIsaQ6sD6T4bWGwqEH09ARfQDSriqrL_bc1IGt70DTgVxC0yBmCt8VyyJ5XUG8_49c3zCl8JiVAPWHCAM8_skey_82994e245a1cc281_v_v19) format('woff2');
+  unicode-range: U+20-ff, U+14d, U+2013-2014, U+201c-201d, U+2026, U+2039-203a, U+2191-2192, U+2212, U+22ef, U+25b2, U+25b6, U+25b8, U+25bc, U+25c2, U+2661, U+2713, U+2715, U+2726, U+4eba, U+4f8d, U+540d, U+5b8c, U+5f71, U+6210, U+65ac, U+6607, U+6bb5, U+6e80, U+7af9, U+958b;
+}

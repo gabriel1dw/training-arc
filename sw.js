@@ -1,5 +1,5 @@
-// Training Arc service worker (built by build-app.ps1, version 20261024-000443)
-const VERSION = 'ta-20261024-000443';
+// Training Arc service worker (built by build-app.ps1, version 20261024-231005)
+const VERSION = 'ta-20261024-231005';
 const CORE = [
   'index.html',
   'css/app.css',
@@ -26,6 +26,8 @@ const CORE = [
   'fonts/files/qILuG22Tv1rIsaQ6sD6T4bWGwqEH09ARfQDSriqrL_bc1IGt70DTgVxC0yBmCt8VyyJ5XUG8_49c3zCl8JiVAPWHCAM8_skey_82994e245a1cc281_v_v19'
 ];
 const LATER = [
+  '.gitignore',
+  '.nojekyll',
   'sw-probe.js',
   'art/hero-f-01.png',
   'art/hero-f-02.png',

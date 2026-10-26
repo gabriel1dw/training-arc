@@ -204,7 +204,7 @@ summary.fine{cursor:pointer;padding-block:11px}
 .restore-paste[open]{gap:8px}
 .max-next b{color:var(--power);font-weight:700}
 .ex-last{margin-top:4px;font-size:13px;color:var(--muted)}
-.ex-video{display:inline-flex;align-items:center;min-height:32px;margin-top:4px;font-size:13px;font-weight:700;color:var(--power);text-decoration:none}
+.ex-video{display:inline-flex;align-items:center;min-height:40px;margin-top:4px;font-size:13px;font-weight:700;color:var(--power);text-decoration:none}
 .ta-vid{display:inline-block;margin-top:3px;font-size:11px;font-weight:800;color:var(--accent,#f3c94a);text-decoration:none}
 /* Strength achievements: medals per lift */
 .ach-row{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line)}
@@ -339,7 +339,7 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .q-text{font-size:15px}
 .q-bar{height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden}
 /* Daily check-in */
-.checkin{display:flex;align-items:center;gap:12px;padding:12px 14px}
+.checkin{display:flex;flex-direction:row;align-items:center;gap:12px;padding:12px 14px}
 .ci-ico{width:40px;height:40px;flex:none;display:grid;place-items:center;border-radius:12px;background:color-mix(in srgb,var(--power) 18%,var(--surface-2))}
 .ci-ico img{width:28px;height:28px;image-rendering:pixelated}
 .ci-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -428,7 +428,7 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .rl-relseg{margin-top:2px}
 .rl-taunt.rl-cheer{border-left-color:#3ddc84}
 .rl-taunt.rl-cheer .rl-quote{color:#c8ffe0}
-.rv-head h1.sec{font-size:clamp(24px,7.5vw,34px);white-space:nowrap}
+.rv-head h1.sec{flex:1;min-width:0;text-align:center;font-size:clamp(24px,7.5vw,34px);white-space:nowrap}
 .rl-cheers .opt{min-height:52px}
 .rivals>.rl-actions{margin-top:2px}
 #view>.rl-actions{margin:0 0 14px}
@@ -444,7 +444,7 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .rv-head{margin-bottom:6px}
 .rv-head-pad{width:44px;flex:none}
 .rv-sub{display:block;margin:6px 0 8px}
-#hudRv{margin-left:6px;display:inline-flex}
+#hudRv{margin-left:auto;display:inline-flex}
 #hudRv .icon-btn{width:36px;height:36px}
 .net-box{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:color-mix(in srgb,var(--power) 7%,transparent);border:1px solid color-mix(in srgb,var(--power) 25%,transparent)}
 .net-box .wk-link b{color:var(--power);letter-spacing:.08em}
@@ -576,6 +576,7 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .st-group .st-link:first-child{border-top:0}
 .st-link>span{font-size:22px;color:var(--muted)}
 .st-switch{position:relative;flex:none;width:52px;height:32px;border-radius:16px;border:0;background:var(--line);cursor:pointer;transition:background .2s}
+.st-switch::after{content:"";position:absolute;inset:-8px -4px}   /* a 48px tall tap area around the switch */
 .st-switch i{position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:var(--fg);transition:transform .2s}
 .st-switch[aria-checked="true"]{background:var(--good)}
 .st-switch[aria-checked="true"] i{transform:translateX(20px)}
@@ -796,6 +797,7 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .cal-nav h2{margin:0;min-width:0;text-align:center;font-family:var(--display);font-weight:400;font-size:clamp(18px,7vw,24px);text-transform:uppercase;letter-spacing:.03em}
 .icon-btn{width:40px;height:40px;flex:none;border-radius:10px;border:1px solid var(--line);background:transparent;font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
 .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+@media (max-width:360px){.cal-grid{gap:2px}.cal-cell{border-radius:8px}}   /* small phones: a little more room per day */
 .cal-dow{margin-bottom:6px}
 .cal-dow span{text-align:center;font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.1em;color:var(--dim)}
 .cal-cell{aspect-ratio:1/1.08;max-width:100%;min-width:0;border-radius:10px;border:1px solid transparent;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:2px;cursor:pointer;color:var(--fg)}
@@ -2412,7 +2414,7 @@ body:has(.wk:not([hidden])){overflow:hidden}
 .shopov-in{position:absolute;left:0;right:0;top:env(safe-area-inset-top);bottom:env(safe-area-inset-bottom)}
 .shopov .tsh-hero{height:208px;top:-18px}
 .shopov button{min-height:0;letter-spacing:normal;text-transform:none}
-.coin-badge{display:inline-flex;align-items:center;gap:4px;margin-left:auto;min-height:32px;padding:3px 8px 3px 6px;border-radius:999px;border:1px solid color-mix(in srgb, #ffd23f 55%, transparent);background:color-mix(in srgb, #ffd23f 14%, rgba(10,8,16,.75));color:#fff;font:700 14px/1 var(--label, inherit);cursor:pointer;align-self:center}
+.coin-badge{display:inline-flex;align-items:center;gap:4px;margin-left:auto;min-height:36px;padding:3px 8px 3px 6px;border-radius:999px;border:1px solid color-mix(in srgb, #ffd23f 55%, transparent);background:color-mix(in srgb, #ffd23f 14%, rgba(10,8,16,.75));color:#fff;font:700 14px/1 var(--label, inherit);cursor:pointer;align-self:center}
 .coin-badge .cb-glory{margin-left:4px}
 /* the Grind and Glory tokens are 32px art; the shop shows them at its own small sizes */
 .shopov .tsh-money img{width:11px;height:11px;image-rendering:pixelated}
@@ -2566,7 +2568,7 @@ html.ts-lock,html.ts-lock body{overflow:hidden}
 .ts-panel span{color:#9ea6c8}
 .ts-panel i{display:block;height:2cqw;background:#2a2d4a;border:.3cqw solid #3d4466}
 .ts-panel em{display:block;height:100%;background:#5aa0ff}
-.ts-go{left:26%;right:26%;height:9cqw;border:0;border-radius:3cqw;background:#5aa0ff;color:#0f1d3c;font-size:9cqw;letter-spacing:.06em}
+.ts-go{left:26%;right:26%;height:max(9cqw,44px);border:0;border-radius:3cqw;background:#5aa0ff;color:#0f1d3c;font-size:9cqw;letter-spacing:.06em}
 .ts[data-s=track] .ts-o{color:#fff;--oc:#9b3a24}
 .ts-ui .ts-start.ts-pill{background:#fff6ee;color:#b4482f;border-radius:7cqw;padding:2.6cqw 7cqw;--o:0px;font-size:8cqw;box-shadow:0 1cqw 0 #8e3a26}
 .ts[data-s=neon] .a{color:#ff7fdb;--oc:#5c1a4e;filter:drop-shadow(0 0 2cqw rgba(255,80,200,.6))}
@@ -2626,6 +2628,8 @@ html.ts-lock,html.ts-lock body{overflow:hidden}
 .nw{white-space:nowrap}
 .p1{flex-wrap:nowrap;min-width:0}
 .p1 .eyebrow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.p1-tag{white-space:nowrap;flex:none}
+@media (max-width:440px){.p1 .eyebrow{display:none}}   /* on phones the coins need the room; a half-shown "Training Arc" just reads as "T" */
 @media (max-width:360px){.p1 .eyebrow{display:none}.hud .xpline{flex-direction:column;gap:1px}.hud .xpline span{white-space:nowrap}}
 /* workout: a lone field (minutes, seconds) spans the row; two fields stack on narrow phones so the numbers fit */
 .wk-fields > .wk-field:only-child{grid-column:1 / -1}

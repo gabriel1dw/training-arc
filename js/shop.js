@@ -239,8 +239,8 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
 .tsh-sw{border:0;cursor:pointer;height:16px}.tsh-glowc{background:rgba(70,40,130,.9);box-shadow:0 0 8px #a58cff;animation:tsh-pulse 1.6s infinite}
 @keyframes tsh-pulse{50%{box-shadow:0 0 2px #a58cff}}
 .tsh-chip i.moon{background:#f2eed8;box-shadow:inset -3px 0 0 #b9b39a}
-.tsh-tabs{position:absolute;left:0;top:168px;width:270px;height:26px;padding:4px 6px 0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}.tsh-tabs::-webkit-scrollbar{display:none}.tsh-tab{flex:none}
-.tsh-tab{position:relative;height:18px;padding:0 7px;border-radius:4px;border:1px solid var(--edge2);background:var(--panel);color:var(--muted);font:800 7px/1 var(--ff)}
+.tsh-tabs{position:absolute;left:0;top:166px;width:270px;height:30px;padding:3px 6px 0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}.tsh-tabs::-webkit-scrollbar{display:none}.tsh-tab{flex:none}
+.tsh-tab{position:relative;height:22px;padding:0 8px;border-radius:4px;border:1px solid var(--edge2);background:var(--panel);color:var(--muted);font:800 7px/1 var(--ff)}
 .tsh-tab.on{background:var(--accent);color:var(--tagtxt);border-color:var(--accent)}
 .tsh-tab b{position:absolute;right:-4px;top:-5px;min-width:10px;height:10px;border-radius:5px;background:#e63c3c;color:#fff;border:1px solid #fff;font:800 6px/8px var(--ff);padding:0 2px}
 .tsh-try{position:absolute;left:6px;top:196px;width:116px;height:202px;border-radius:var(--rr);border:2px solid var(--edge);background:var(--panel);overflow:hidden}
@@ -278,6 +278,10 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
 .tsh-empty{grid-column:1/-1;height:120px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font:700 8px/12px var(--ff)}
 .tsh-buy{position:absolute;left:6px;top:404px;width:258px;height:34px;border-radius:var(--rr);border:2px solid var(--edge);background:var(--panel)}
 .tsh-buy>img{position:absolute;left:3px;top:1px;width:28px;height:28px}.tsh-btn img{width:9px;height:10px}
+/* bigger invisible tap areas: the shop is drawn small and scaled up, so its buttons are tiny on a phone */
+.tsh-back,.tsh-getgems,.tsh-getcoins{position:relative}
+.tsh-back::after,.tsh-getgems::after,.tsh-getcoins::after,.tsh-btn::after{content:"";position:absolute;inset:-8px}
+.tsh-tab::after{content:"";position:absolute;inset:-3px -2px}
 .tsh-buy .bn{position:absolute;left:36px;top:3px;font:900 9px/11px var(--ff);color:var(--bartxt);white-space:nowrap;max-width:140px;overflow:hidden}
 .tsh-buy .br{position:absolute;left:36px;top:14px;font:800 7px/9px var(--ff);white-space:nowrap;max-width:146px;overflow:hidden;text-overflow:ellipsis}
 .tsh-buy .bd{position:absolute;left:36px;top:22px;font:600 6px/8px var(--ff);color:var(--muted);white-space:nowrap;max-width:142px;overflow:hidden}

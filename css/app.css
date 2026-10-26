@@ -210,10 +210,12 @@ summary.fine{cursor:pointer;padding-block:11px}
 .ach-row{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line)}
 .ach-lift{font-family:var(--label);font-size:15px;letter-spacing:.04em;text-transform:uppercase}
 .ach-medals{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;max-width:420px}   /* nine slots: every lift lines up in one row */
-.medal{--tc:#9a98a8;width:100%;aspect-ratio:42/46;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;clip-path:polygon(50% 0,100% 22%,100% 78%,50% 100%,0 78%,0 22%);background:var(--surface-2);color:var(--dim)}
-.medal b{font-family:var(--display);font-weight:400;font-size:clamp(11px,3.4vw,14px);line-height:1}
+.medal{--tc:#9a98a8;width:100%;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim)}
+.medal .pl{position:relative;display:block;width:100%;aspect-ratio:1;border-radius:50%;overflow:hidden}
+.medal .pl img{display:block;width:100%;height:100%;filter:saturate(.6) brightness(.85)}
+.medal b{font-family:var(--display);font-weight:400;font-size:clamp(11px,3.4vw,14px);line-height:1;text-shadow:0 1px 0 rgba(0,0,0,.5)}
 .medal small{font-family:var(--label);font-weight:700;font-size:9px;letter-spacing:.06em;text-transform:uppercase}
-.medal.on{background:var(--tc);color:var(--power-ink)}
+.medal.on{color:var(--tc)}
 /* Trophy room: a count, the Big 3 total and clubs, each lift as a loaded barbell with its medals */
 .trophy{background:radial-gradient(ellipse at 50% -20%,rgba(255,210,63,.10),transparent 60%),var(--surface)}
 .tr-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
@@ -249,13 +251,13 @@ summary.fine{cursor:pointer;padding-block:11px}
 .tr-lv{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0;font-size:14px}
 .lv-chip{padding:2px 9px;border-radius:999px;background:color-mix(in srgb,var(--lc) 22%,transparent);border:1px solid var(--lc);color:var(--lc);font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
 .tr-foot{display:flex;justify-content:space-between;gap:8px;margin:-2px 0 0}
-.medal.sel{outline:2px solid var(--fg);outline-offset:2px}
+.medal.sel .pl{outline:2px solid var(--fg);outline-offset:2px}
 @media (max-width:420px){.ach-medals{grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;max-width:none}.medal b{font-size:15px}}   /* two rows on phones, so every medal is a real tap target */
 .md-card{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--tc);border-radius:12px;background:color-mix(in srgb,var(--tc) 9%,var(--surface-2));animation:mdIn .25s ease-out}
 @keyframes mdIn{from{opacity:0;transform:translateY(-6px)}}
 .md-top{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center}
 .md-big{width:56px}
-.md-big b{font-size:18px}
+.md-big b{font-size:13px;white-space:nowrap}
 .md-who{min-width:0}
 .md-tier{margin:0;font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--tc)}
 .md-name{display:block;font-family:var(--display);font-weight:400;font-size:22px;line-height:1.05;text-transform:uppercase;overflow-wrap:anywhere}
@@ -271,10 +273,10 @@ summary.fine{cursor:pointer;padding-block:11px}
 .fl-tile.full{opacity:.7}
 @media (prefers-reduced-motion:reduce){.md-card{animation:none}}
 button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;position:relative;overflow:hidden}
-.medal.on{box-shadow:inset 0 -3px 0 rgba(0,0,0,.25)}
-.medal.on::after{content:"";position:absolute;inset:-20% -60%;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.55) 50%,transparent 60%);transform:translateX(-120%);animation:medalShine 5s ease-in-out infinite}
-.medal.on:nth-child(3n+2)::after{animation-delay:1.6s}.medal.on:nth-child(3n)::after{animation-delay:3.2s}
-@keyframes medalShine{0%,70%{transform:translateX(-120%)}85%,100%{transform:translateX(120%)}}
+button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;position:relative;background:none}
+.medal.on .pl img{filter:none}
+.medal.on .pl::after{content:"";position:absolute;inset:-20% -60%;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.5) 50%,transparent 60%);transform:translateX(-120%);animation:medalShine 5s ease-in-out infinite;pointer-events:none}
+.medal.on:nth-child(3n+2) .pl::after{animation-delay:1.6s}.medal.on:nth-child(3n) .pl::after{animation-delay:3.2s}
 .medal.pop{animation:medalPop .45s cubic-bezier(.2,1.4,.4,1)}
 @keyframes medalPop{40%{transform:scale(1.18) rotate(-4deg)}}
 /* Today backdrops: a scene layer behind the hero, on top of the stage */

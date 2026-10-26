@@ -3109,7 +3109,7 @@ const MILESTONES = {
 };
 const MS_KG = {95:42.5, 135:60, 155:70, 185:85, 225:100, 275:125, 315:140, 365:165, 405:180, 455:205, 495:220, 585:260, 675:300, 765:340, 855:380};
 const PLATES_NAME = {135:'One Plate', 225:'Two Plates', 315:'Three Plates', 405:'Four Plates', 495:'Five Plates', 585:'Six Plates', 675:'Seven Plates', 765:'Eight Plates', 855:'Nine Plates'};
-const TIER_COLOR = ['#cd8a4a', '#c9ccd6', '#ffd23f', '#4cc3ff', '#b98cff', '#ff4d7d', '#3ddc97', '#ff8a3d', '#f4f2ff'];
+const TIER_COLOR = ['#cd8a4a', '#c9ccd6', '#ffd23f', '#8fd6ff', '#d4f2ff', '#ff4d6a', '#3ddc84', '#b07aff', '#ffd23f'];
 const msVal = lb => S.unit === 'kg' ? MS_KG[lb] : lb;
 const msName = lb => PLATES_NAME[lb] || `${msVal(lb)} Club`;
 // Your current max for a lift, in the current unit; 0 until you've set that lift yourself
@@ -4969,6 +4969,71 @@ const clubOf = tot => [...CLUBS].reverse().find(c => tot >= c - .5) || 0;
 const clubLabel = c => S.unit === 'kg' ? `${fmt(Math.round(c / 2.20462 / 5) * 5)} kg` : `${fmt(c)} lb`;
 const arcsCleared = () => [...new Set(S.log.filter(l => l.boss).map(l => l.rank))].sort((a, b) => 'EDCBAS'.indexOf(a) - 'EDCBAS'.indexOf(b));
 
+// Medals are weight plates made of their tier's material: brushed bronze, silver, gold and platinum, cut
+// diamond, ruby and emerald, glowing amethyst for Mythic, obsidian with a gold rim for Legend. Locked ones are
+// plain black rubber. Drawn once per tier at 2x and cached.
+const PLATE_MAT = [
+  {k:'metal', c:['#3e2310', '#7a4a22', '#b9773c', '#ffd2a0']},   // Bronze
+  {k:'metal', c:['#3c424c', '#7f8794', '#c9d0da', '#ffffff']},   // Silver
+  {k:'metal', c:['#5a3c06', '#a8780c', '#f0c440', '#fff6c8']},   // Gold
+  {k:'metal', c:['#3e5268', '#94b4cc', '#e6f2fc', '#ffffff'], tint:'#9fdcff'},   // Platinum
+  {k:'gem', c:['#2f5f8f', '#8fd0ff', '#e4f6ff', '#ffffff']},     // Diamond
+  {k:'gem', c:['#3e0410', '#a40e28', '#ff4a62', '#ffd6dc']},     // Ruby
+  {k:'gem', c:['#05301a', '#0c7a40', '#3ed884', '#d4ffe6']},     // Emerald
+  {k:'metal', c:['#240a42', '#5e24a8', '#a874ff', '#f2e4ff'], glow:'#a874ff'},   // Mythic
+  {k:'legend', c:['#08070c', '#1a1724', '#3a3448', '#ffffff'], glow:'#ffd23f'}   // Legend
+];
+const PLATE_LOCK = {k:'rubber', c:['#0e0d12', '#1e1c24', '#34313e', '#5a5866']};
+const plateCache = {};
+function plateArt(tier, on){
+  const key = on ? tier : 'lock'; if (plateCache[key]) return plateCache[key];
+  const S2 = 160, C = S2 / 2, cv = document.createElement('canvas'); cv.width = cv.height = S2; const x = cv.getContext('2d');
+  const m = on ? PLATE_MAT[tier] : PLATE_LOCK, [d, md, lt, hi] = m.c, R = 72, F = 50, HUB = 21, HOLE = 9;
+  const circ = (r, fill) => { x.beginPath(); x.arc(C, C, r, 0, Math.PI * 2); if (fill){ x.fillStyle = fill; x.fill(); } };
+  // brushed metal: a conic sweep of tones gives the streaky reflections of a turned plate
+  const conic = (r, stops, rot = -2.2) => { let g; try { g = x.createConicGradient(rot, C, C); } catch(e){ g = null; }
+    if (!g){ g = x.createRadialGradient(C - r * .4, C - r * .4, r * .1, C, C, r); g.addColorStop(0, stops[1]); g.addColorStop(1, stops[0]); return g; }
+    const seq = [stops[0], stops[2], stops[1], stops[3], stops[1], stops[0], stops[2], stops[1], stops[0], stops[3], stops[2], stops[0]];
+    seq.forEach((c, i) => g.addColorStop(i / seq.length, c)); g.addColorStop(1, seq[0]); return g; };
+  const light = (r, a = .35) => { const g = x.createLinearGradient(C - r, C - r, C + r, C + r); g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(.5, 'rgba(255,255,255,0)'); g.addColorStop(1, `rgba(0,0,0,${a * 1.2})`); return g; };
+  // cut gem: wedges and triangles, each lit by its own angle to the light
+  const facets = (r0, r1, n, seed) => { for (let i = 0; i < n; i++){ const a0 = i / n * Math.PI * 2, a1 = (i + 1) / n * Math.PI * 2, am = (a0 + a1) / 2, rm = (r0 + r1) / 2;
+      const P = (a, r) => [C + Math.cos(a) * r, C + Math.sin(a) * r], tri = (p, c) => { x.beginPath(); x.moveTo(...p[0]); x.lineTo(...p[1]); x.lineTo(...p[2]); x.closePath(); x.fillStyle = c; x.fill(); };
+      const tone = (ang, k) => { const v = Math.cos(ang + 2.36) * .5 + .5 + (Math.sin((i + k) * 12.9898 + seed) * 43758.5453 % 1) * .25; return v > .95 ? hi : v > .62 ? lt : v > .32 ? md : d; };
+      tri([P(a0, r1), P(a1, r1), P(am, rm)], tone(am, 0)); tri([P(a0, r0), P(a1, r0), P(am, rm)], tone(am + .9, 1));
+      tri([P(a0, r1), P(a0, r0), P(am, rm)], tone(am - .5, 2)); tri([P(a1, r1), P(a1, r0), P(am, rm)], tone(am + .5, 3)); } };
+  // shadow under the plate, and a glow for Mythic and Legend
+  x.save(); x.shadowColor = m.glow || 'rgba(0,0,0,.55)'; x.shadowBlur = m.glow ? 14 : 8; x.shadowOffsetY = m.glow ? 0 : 3; circ(R, d); x.restore();
+  // outer ring
+  if (m.k === 'gem') facets(F, R, 20, tier); else { circ(R, conic(R, m.k === 'legend' ? ['#5a3c06', '#a8780c', '#f0c440', '#fff6c8'] : m.c)); }
+  if (m.k === 'rubber'){ circ(R, md); for (let i = 0; i < 200; i++){ const a = Math.random() * 6.283, r = F + Math.random() * (R - F); x.fillStyle = `rgba(255,255,255,${Math.random() * .05})`; x.fillRect(C + Math.cos(a) * r, C + Math.sin(a) * r, 1.5, 1.5); } }
+  circ(R, light(R, m.k === 'gem' ? .18 : .3));
+  if (m.k === 'legend'){ circ(R - 6, d); try { const g = x.createConicGradient(0, C, C); ['#ff4a7a', '#ffd23f', '#3ddc97', '#4cc3ff', '#b98cff', '#ff4a7a'].forEach((c, i) => g.addColorStop(i / 5, c)); x.globalAlpha = .28; circ(R - 6, g); x.globalAlpha = 1; } catch(e){} circ(R - 6, light(R, .25)); }
+  // rim: a dark edge, a bright lip on the lit side
+  x.lineWidth = 2; x.strokeStyle = d; circ(R - 1); x.stroke();
+  x.lineWidth = 1.5; x.strokeStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.arc(C, C, R - 3, Math.PI * .95, Math.PI * 1.65); x.stroke();
+  // three grip holes, cut through the ring
+  for (const a of [-Math.PI / 2, Math.PI / 6, Math.PI * 5 / 6]){ x.lineCap = 'round';
+    x.beginPath(); x.arc(C, C, (R + F) / 2 + 1, a - .32, a + .32); x.lineWidth = 15; x.strokeStyle = d; x.stroke();
+    x.save(); x.globalCompositeOperation = 'destination-out'; x.beginPath(); x.arc(C, C, (R + F) / 2 + 1, a - .3, a + .3); x.lineWidth = 11; x.stroke(); x.restore(); }
+  // recessed field with machined grooves: shadow falls on the upper-left inside edge
+  if (m.k === 'gem') facets(HUB, F, 12, tier + 5); else circ(F, conic(F, m.k === 'legend' ? m.c : [m.c[0], m.c[1], m.c[2], m.c[2]], .6));
+  const rg = x.createRadialGradient(C - 8, C - 8, F * .2, C, C, F); rg.addColorStop(0, 'rgba(0,0,0,0)'); rg.addColorStop(1, 'rgba(0,0,0,.35)'); circ(F, rg);
+  x.lineWidth = 3; x.strokeStyle = 'rgba(0,0,0,.45)'; x.beginPath(); x.arc(C, C, F - 1, Math.PI * .9, Math.PI * 1.75); x.stroke();
+  x.lineWidth = 1.5; x.strokeStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(C, C, F - 1, -Math.PI * .2, Math.PI * .7); x.stroke();
+  if (m.k !== 'gem') for (const r of [F - 9, F - 16]){ x.lineWidth = 1; x.strokeStyle = 'rgba(0,0,0,.3)'; circ(r); x.stroke(); x.strokeStyle = 'rgba(255,255,255,.14)'; circ(r + 1); x.stroke(); }
+  // raised hub and the sleeve hole
+  if (m.k === 'gem') facets(HOLE, HUB, 10, tier + 9); else circ(HUB, conic(HUB, m.k === 'legend' ? ['#5a3c06', '#a8780c', '#f0c440', '#fff6c8'] : m.c, 1.2));
+  circ(HUB, light(HUB, .4)); x.lineWidth = 1.5; x.strokeStyle = d; circ(HUB); x.stroke();
+  const hg = x.createRadialGradient(C + 2, C + 2, 1, C, C, HOLE); hg.addColorStop(0, '#000'); hg.addColorStop(.75, '#0b0a10'); hg.addColorStop(1, '#2a2834'); circ(HOLE, hg);
+  x.lineWidth = 1; x.strokeStyle = 'rgba(255,255,255,.4)'; x.beginPath(); x.arc(C, C, HOLE, -Math.PI * .1, Math.PI * .6); x.stroke();
+  // gloss and sparkles
+  if (m.k !== 'rubber'){ const gl = x.createRadialGradient(C - 30, C - 34, 2, C - 30, C - 34, 46); gl.addColorStop(0, 'rgba(255,255,255,.35)'); gl.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gl; x.fillRect(0, 0, S2, S2); }
+  if (m.tint){ x.globalCompositeOperation = 'source-atop'; x.fillStyle = m.tint; x.globalAlpha = .22; x.fillRect(0, 0, S2, S2); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; }
+  if (m.k === 'gem' || m.k === 'legend' || tier === 7) [[C - 40, C - 38, 7], [C + 44, C + 20, 5], [C - 14, C + 52, 4]].forEach(([sx, sy, r]) => { x.fillStyle = '#fff'; x.beginPath();
+    x.moveTo(sx, sy - r); x.quadraticCurveTo(sx, sy, sx + r, sy); x.quadraticCurveTo(sx, sy, sx, sy + r); x.quadraticCurveTo(sx, sy, sx - r, sy); x.quadraticCurveTo(sx, sy, sx, sy - r); x.fill(); });
+  return plateCache[key] = cv.toDataURL();
+}
 // Your max as plates on a bar: standard colors, heaviest plates closest to the collar
 function platesFor(total){
   const kg = S.unit === 'kg', bar = kg ? 20 : 45;
@@ -5136,7 +5201,7 @@ function achHTML(){
   const detail = (l, list) => { if (!medalSel || medalSel.lift !== l) return ''; const lb = medalSel.lb, i = list.indexOf(lb); if (i < 0) return '';
     const on = hasMs(l, lb), best = bestMax(l), val = msVal(lb), fl = MS_FLAIR[`${l}-${lb}`], pct = best ? Math.min(100, best / val * 100) : 0;
     return `<div class="md-card" style="--tc:${TIER_COLOR[i]}" role="region" aria-label="${TIER_NAME[i]} medal details">
-      <div class="md-top"><span class="medal md-big${on ? ' on' : ''}" aria-hidden="true"><b class="num">${fmt(val)}</b><small>${u}</small></span>
+      <div class="md-top"><span class="medal md-big${on ? ' on' : ''}" style="--tc:${TIER_COLOR[i]}" aria-hidden="true"><span class="pl"><img src="${plateArt(i, on)}" alt=""></span><b class="num">${fmt(val)} ${u}</b></span>
         <div class="md-who"><p class="md-tier">${TIER_NAME[i]} medal · ${i + 1} of ${list.length}</p><b class="md-name">${msName(lb)}</b><p class="fine">${LIFTS[l]}</p></div>
         <button type="button" class="icon-btn md-x" data-act="medal" data-lift="${l}" data-lb="${lb}" aria-label="Close details">×</button></div>
       <ul class="md-facts">
@@ -5152,7 +5217,7 @@ function achHTML(){
       ${best ? `<div class="tr-bar">${barbellSVG(best)}</div><p class="tr-plates fine">${plateText(best)}</p>` : ''}
       ${lv ? `<p class="tr-lv"><span class="lv-chip" style="--lc:${lv.color}">${lv.name}</span><span class="num">${lv.ratio.toFixed(2)}× bodyweight</span>${lv.next ? `<span class="fine">${lv.next.name} at ${fmt(Math.ceil(lv.next.at))} ${u}</span>` : '<span class="fine">Top level</span>'}</p>` : ''}
       <div class="ach-medals">${list.map((lb, i) => { const on = hasMs(l, lb), sel = medalSel && medalSel.lift === l && medalSel.lb === lb;
-        return `<button type="button" class="medal${on ? ' on' : ''}${sel ? ' sel' : ''}" style="--tc:${TIER_COLOR[i]}" data-act="medal" data-lift="${l}" data-lb="${lb}" aria-expanded="${!!sel}" aria-label="${TIER_NAME[i]} medal: ${msName(lb)}, ${fmt(msVal(lb))} ${u}, ${on ? 'earned' : 'locked'}"><b class="num">${fmt(msVal(lb))}</b><small>${PLATES_NAME[lb] ? (lb - 45) / 90 + 'P' : 'Club'}</small></button>`; }).join('')}</div>
+        return `<button type="button" class="medal${on ? ' on' : ''}${sel ? ' sel' : ''}" style="--tc:${TIER_COLOR[i]}" data-act="medal" data-lift="${l}" data-lb="${lb}" aria-expanded="${!!sel}" aria-label="${TIER_NAME[i]} medal: ${msName(lb)}, ${fmt(msVal(lb))} ${u}, ${on ? 'earned' : 'locked'}"><span class="pl"><img src="${plateArt(i, on)}" alt=""></span><b class="num">${fmt(msVal(lb))}</b></button>`; }).join('')}</div>
       ${detail(l, list)}
       ${nx ? `<div class="tr-next"><div class="bar"><i style="width:${best ? Math.min(100, best / nx.val * 100) : 0}%;background:${TIER_COLOR[ni]}"></i></div>
         <p class="fine">Next: <b style="color:${TIER_COLOR[ni]}">${TIER_NAME[ni]}</b> · ${nx.name} (${fmt(nx.val)} ${u})${best ? ` · ${fmt(Math.ceil(nx.toGo))} ${u} to go` : ' · set your max to start'}${fl ? ` · unlocks the <b>${flairOf(fl).name}</b> backdrop` : ''}</p></div>`

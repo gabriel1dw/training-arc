@@ -696,6 +696,7 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .le-row{display:flex;gap:8px;align-items:center}
 .le-row input{flex:1;min-width:0;font:inherit;font-size:16px;color:var(--fg);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:44px}
 .le-swap{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.le-fixed{margin:0;padding:8px 10px;border:1px dashed var(--line);border-radius:10px;font-size:13px;color:var(--muted)}
 .le-swap select{font:inherit;font-size:16px;color:var(--fg);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:44px}
 .dd-acts{display:flex;gap:8px;flex-wrap:wrap}
 .dd-tag{padding:2px 8px;border-radius:999px;font-family:var(--label);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase}

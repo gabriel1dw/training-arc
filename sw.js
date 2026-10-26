@@ -1,5 +1,5 @@
-// Training Arc service worker (built by build-app.ps1, version 20261025-221535)
-const VERSION = 'ta-20261025-221535';
+// Training Arc service worker (built by build-app.ps1, version 20261025-222053)
+const VERSION = 'ta-20261025-222053';
 const CORE = [
   'index.html',
   'css/app.css',

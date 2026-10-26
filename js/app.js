@@ -3238,7 +3238,7 @@ function dayDetail(iso, tIso, done, plan, miss){
     const p = prog(), day = p.weeks[pl.w].days[pl.d], boss = isBoss(p, pl.w, pl.d), ex = day.ex.filter(x => !/warm-up/i.test(x.name));
     body += `<div class="dd-block"><span class="eyebrow">${iso === tIso ? "Today's workout" : 'Planned'}${boss ? ' · boss day' : ''}</span>
       <div class="dd-name">${pl.name}</div><div class="fine">${pl.prog} · Week ${pl.w + 1}, Day ${pl.d + 1}${boss ? ` · ${bossName(p)}` : ''}</div>
-      <ul class="dd-ex">${ex.slice(0, 6).map(x => `<li><span>${x.name}</span><b class="num">${x.sets.length} × ${x.sets[0].reps}${unitShort(x.sets[0].unit)}</b></li>`).join('')}${ex.length > 6 ? `<li class="fine">+${ex.length - 6} more</li>` : ''}</ul>
+      <ul class="dd-ex">${ex.slice(0, 6).map(x => `<li><span>${x.lift ? x.name : swapOf(x.name)}</span><b class="num">${x.sets.length} × ${x.sets[0].reps}${unitShort(x.sets[0].unit)}</b></li>`).join('')}${ex.length > 6 ? `<li class="fine">+${ex.length - 6} more</li>` : ''}</ul>
       <div class="dd-acts">${iso === tIso ? `<button class="btn btn-power btn-sm" data-act="startWk">${boss && window.TA_BOSSES ? 'Fight the boss' : 'Start workout'}</button>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-act="planEdit" data-iso="${iso}">Edit</button></div></div>`;
   } else if (!done[iso]){
     body = miss[iso] === 'shield' ? `<p class="empty">${CAL_ICON.shield}Missed, but your streak shield covered it. One miss a week won't break your streak.</p>`
@@ -3422,7 +3422,13 @@ function deleteLog(){
 let planEd = null;
 function openPlanEdit(iso){
   const pl = projectPlan(iso)[iso]; if (!pl) return;
-  const p = prog(), day = p.weeks[pl.w].days[pl.d], swappable = day.ex.filter(x => !x.lift && SWAPS[x.name]);
+  const p = prog(), day = p.weeks[pl.w].days[pl.d], exs = day.ex.filter(x => !/warm-up/i.test(x.name));
+  // What each exercise can become: its listed swaps first, then every exercise in the same group that's measured
+  // the same way (weighted, or the same reps / seconds), so the workout's sets still make sense
+  const lib = exLibrary(), kindOf = x => x.sets[0].pick ? {kind:'pick', unit:null} : {kind:'body', unit:x.sets[0].unit || null};
+  const optionsFor = x => { const k = kindOf(x), me = lib.find(e => e.name === x.name), cat = me ? me.cat : null;
+    const same = lib.filter(e => e.name !== x.name && e.kind === k.kind && (e.unit || null) === k.unit && (!cat || e.cat === cat)).map(e => e.name);
+    return [...new Set([x.name, ...(SWAPS[x.name] || []), ...same])]; };
   planEd = {iso};
   const max = ymd(new Date(fromYmd(todayIso()).getTime() + 60 * 864e5)), dlg = document.getElementById('logEdit');
   dlg.innerHTML = `<form method="dialog" class="le-card">
@@ -3432,11 +3438,15 @@ function openPlanEdit(iso){
       <div class="le-row"><input type="date" id="peDate" value="${iso}" min="${todayIso()}" max="${max}" aria-label="New day"><button type="button" class="btn btn-ghost btn-sm" data-act="planMove">Move</button></div>
       <p class="fine">Onto a day with another workout, the two swap.</p></div>
     <button type="button" class="btn btn-ghost" data-act="planRest">Rest this day instead</button>
-    ${swappable.length ? `<div class="le-ex"><span class="le-h">Swap exercises</span>
-      ${swappable.map((x, i) => `<label class="le-swap"><span>${esc(x.name)}</span><select data-swap="${i}" data-base="${esc(x.name)}">
-        ${[x.name, ...SWAPS[x.name]].map(n => `<option value="${esc(n)}"${swapOf(x.name) === n ? ' selected' : ''}>${esc(n === x.name ? n + ' (original)' : n)}</option>`).join('')}</select></label>`).join('')}
-      <button type="button" class="btn btn-power btn-sm" data-act="planSwaps">Save swaps</button>
-      <p class="fine">A swap applies everywhere that exercise shows up in your arc.</p></div>` : ''}
+    ${exs.length ? `<div class="le-ex"><span class="le-h">Exercises</span>
+      ${exs.map((x, i) => x.lift ? `<div class="le-swap"><span>${esc(x.name)}</span><p class="le-fixed">Main lift · its weights come from your ${esc(LIFTS[x.lift] || 'max')} max, so it stays.</p></div>`
+        : `<label class="le-swap"><span>${esc(x.name)}${SWAPS[x.name] || optionsFor(x).length > 1 ? '' : ' · nothing similar to swap in'}</span><select data-swap="${i}" data-base="${esc(x.name)}">
+        ${(opts => { const sw = new Set(SWAPS[x.name] || []);
+          return `<option value="${esc(x.name)}"${swapOf(x.name) === x.name ? ' selected' : ''}>${esc(x.name)} (original)</option>`
+            + (sw.size ? `<optgroup label="Best swaps">${opts.filter(n => sw.has(n)).map(n => `<option value="${esc(n)}"${swapOf(x.name) === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>` : '')
+            + `<optgroup label="More like it">${opts.filter(n => n !== x.name && !sw.has(n)).map(n => `<option value="${esc(n)}"${swapOf(x.name) === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>`; })(optionsFor(x))}</select></label>`).join('')}
+      <button type="button" class="btn btn-power btn-sm" data-act="planSwaps">Save exercises</button>
+      <p class="fine">A swap applies everywhere that exercise shows up in your arc. Pick "(original)" to switch back.</p></div>` : ''}
   </form>`;
   dlg.showModal();
 }

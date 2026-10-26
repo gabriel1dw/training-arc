@@ -2340,7 +2340,7 @@ function normalize(s){
   for (const h of s.history) if (!h.iso){ const d = new Date(`${h.date} ${yr}`); if (!isNaN(d)) h.iso = ymd(d > new Date() ? new Date(`${h.date} ${yr - 1}`) : d); }
   return s;
 }
-function save(){ if (!KEY) return; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} touchProfile(); }   // saves the profile in use
+function save(){ if (!KEY) return; cloudMark(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} touchProfile(); }   // saves the profile in use
 
 /* ---------- Math ---------- */
 const inc = () => S.unit === 'lb' ? 5 : 2.5;
@@ -2381,6 +2381,7 @@ function renderHeader(){
   const em = document.getElementById('emblem');
   em.textContent = r.k; em.style.setProperty('--rc', `var(--rank-${r.k.toLowerCase()})`); em.style.fontSize = emFont(r.k, 'xs');
   document.getElementById('heroName').textContent = S.hero.name || 'Hero';
+  { const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = rivalsBtn(); }   // Rivals, with a count of new challenges
   paintCoins();
   paintHeroes();
   document.getElementById('rankTitle').textContent = `${r.k}-Rank · ${heroTitle()}`;
@@ -3009,7 +3010,7 @@ function viewToday(){
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
   const pips = Array.from({length:total}, (_, i) => `<span class="pip${i < idx ? ' on' : i === idx ? ' cur' : ''}"></span>`).join('');
   const n = sessionSets();
-  let h = gateCardHTML() + bannerHTML() + checkinHTML() + rivalChalsHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  let h = gateCardHTML() + bannerHTML() + rivalsBar() + checkinHTML() + cheersHTML() + rivalChalsHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -3909,21 +3910,31 @@ function fromCode(text){
   const base = {id, n:str(o.n, 20) || 'Rival', u:o.u === 'kg' ? 'kg' : 'lb'};
   const own = (obj, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(obj, k);   // so "constructor" and friends never pass
   const tn = o.tn == null ? null : int(o.tn, 0, TAUNTS.length - 1);
-  if (o.t === 'c' || o.t === 't'){
+  if (o.t === 'c' || o.t === 't' || o.t === 'h'){
     const cid = /^[a-z0-9]{6,16}$/.test(o.cid) ? o.cid : null; if (!cid) return null;
     if (o.t === 't') return tn == null ? null : {...base, t:'t', cid, tn};
+    if (o.t === 'h') return o.ch == null ? null : {...base, t:'h', cid, ch:int(o.ch, 0, CHEERS.length - 1)};   // a cheer
     if (o.k === 'lift' && own(LIFTS, o.lift)) return {...base, t:'c', cid, k:'lift', lift:o.lift, val:int(o.val, 1, 2000), tn};
     if (o.k !== 'lift' && own(RL_KINDS, o.k)){ const K = RL_KINDS[o.k]; return {...base, t:'c', cid, k:o.k, need:int(o.need, K.min, K.max), tn}; }
     return null;
   }
   if (o.t !== 'f') return null;
+  return cleanCard(o, base);
+}
+// A player card from anyone else (a pasted code or a friend's card from the server): keep only what checks out
+function cleanCard(o, base){
+  const str = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, '').trim().slice(0, n);
+  const int = (v, a, b) => { const n = Math.round(+v); return Number.isFinite(n) ? Math.min(b, Math.max(a, n)) : a; };
+  const own = (obj, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(obj, k);
   const g = own(GENDERS, o.g) ? o.g : 'male', look = {};
   for (const p of PART_IDS) if (/^#[0-9a-f]{6}$/i.test((o.look || {})[p] || '')) look[p] = o.look[p];
   const acc = {}; for (const s of SLOT_ORDER){ const a = (o.acc || {})[s]; if (ACCESSORIES.some(x => x.id === a && x.slot === s)) acc[s] = a; }
   const pet = o.pet && typeof o.pet.id === 'string' && own(TA_SHOP_DATA.items, o.pet.id) && shopItem(o.pet.id).type === 'pet' ? {id:o.pet.id, f:int(o.pet.f, 0, 3)} : null;
+  const iso = v => /^\d{4}-\d\d-\d\d$/.test(v) ? v : null;
   return {...base, t:'f', g, ri:int(o.ri, 0, RANKS.length - 1), lv:int(o.lv, 1, MAX_LEVEL), title:str(o.title, 28),
     m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, int((o.m || {})[l], 0, 2000)])), md:int(o.md, 0, 999), st:int(o.st, 0, 999), wk:int(o.wk, 0, 99999),
-    look, style:styleById(o.style) ? o.style : (g === 'male' ? 'spiky' : (FEMALE_HAIR_STYLES[0] || {}).id), acc, pet, d:/^\d{4}-\d\d-\d\d$/.test(o.d) ? o.d : todayIso()};
+    look, style:styleById(o.style) ? o.style : (g === 'male' ? 'spiky' : (FEMALE_HAIR_STYLES[0] || {}).id), acc, pet, d:iso(o.d) || todayIso(),
+    ws:iso(o.ws), wx:int(o.wx, 0, 1e6), wsets:int(o.wsets, 0, 5000), wwk:int(o.wwk, 0, 50)};   // this week, for the leaderboard
 }
 function myCard(){ const g = S.hero.gender, h = S.hero[g], pid = shopEq().pet;
   return {t:'f', id:socialId(), n:S.hero.name || 'Hero', g, ri:rankIdx(), lv:levelInfo(S.xp).L, title:heroTitle(), u:S.unit,
@@ -3935,10 +3946,11 @@ function takeCode(text, quiet){
   const o = fromCode(text); if (!o){ if (!quiet) toast('That code didn\'t work. Copy the whole link or code and try again.'); return false; }
   if (o.id === S.socialId){ toast('That\'s your own code. Send it to a friend.'); return false; }
   if (o.t === 'f'){ const had = (S.rivals || {})[o.id]; S.rivals = {...(S.rivals || {}), [o.id]:{...o, got:todayIso()}}; save(); render();
-    toast(had ? `${o.n}'s card is updated.` : `${o.n} is now your rival. Compare on the Progress tab.`); return true; }
-  if (o.t === 't'){ const tl = S.tauntIn || [];
+    if (had) toast(`${o.n}'s card is updated.`); else relAsk(o.id, o.n); return true; }
+  if (o.t === 't' || o.t === 'h'){ const k = o.t === 't' ? 'tauntIn' : 'cheerIn', tl = S[k] || [];
     if (tl.some(x => x.cid === o.cid)){ toast('You already got that one.'); return false; }
-    S.tauntIn = [{cid:o.cid, from:o.id, n:o.n, tn:o.tn, d:todayIso()}, ...tl].slice(0, 3); save(); render(); toast(`${o.n}: “${TAUNTS[o.tn]}”`); return true; }
+    S[k] = [{cid:o.cid, from:o.id, n:o.n, tn:o.tn, ch:o.ch, d:todayIso()}, ...tl].slice(0, 3); save(); render();
+    toast(`${o.n}: “${o.t === 't' ? TAUNTS[o.tn] : CHEERS[o.ch]}”`); return true; }
   const list = S.chals || [];
   if (list.some(c => c.cid === o.cid)){ toast('You already have that challenge.'); return false; }
   if (list.filter(c => !c.claimed && !c.gone).length >= 5){ toast('You have 5 open challenges. Finish or drop one first.'); return false; }
@@ -3953,6 +3965,23 @@ function takeCode(text, quiet){
 const TAUNTS = ['Is that all you\'ve got?', 'My warm-up is your max.', 'The bar misses you.', 'I didn\'t skip today. Did you?', 'Come take your crown back.', 'I trained while you slept.',
   'Your rival has surpassed you.', 'This is my final form. Probably.', 'Plates don\'t lift themselves.', 'You call that a rep?', 'Catch me if you can.', 'My pet could lift that.',
   'No excuses. Only reps.', 'The dojo remembers who showed up.', 'Friendly reminder: I\'m ahead.', 'Proud of you. Now beat me.', 'See you at the top.', 'Rematch. Anytime.'];
+// Preset cheers for friends: the encouraging side, sent the same way as taunts
+const CHEERS = ['Proud of you. Keep going.', 'One more rep. You\'ve got this.', 'Consistency is your superpower.', 'Bad day? Showing up still counts.', 'That PR was earned.', 'Look how far you\'ve come.',
+  'Small steps, big arc.', 'Your hard work shows.', 'Let\'s both hit our goal this week.', 'You inspire me to train.', 'Rest up, then go again.', 'Deload weeks are part of the plan.',
+  'Your future self says thanks.', 'Strong body, strong mind.', 'I believe in you.', 'Training partners for life.', 'Hydrate. Stretch. Conquer.', 'Saw your streak. Huge.'];
+// Friend or rival: your call, per person, changeable anytime. Live friends default to friend, swapped cards to rival.
+const relOf = (id, live) => (S.rel || {})[id] || (live ? 'friend' : 'rival');
+function setRel(id, r){ S.rel = {...(S.rel || {}), [id]:r}; save(); }
+function relAsk(id, name){ rvTab = rvTab || 'friends';
+  rvDlg(`<b class="rl-h">Add ${esc(name)} as…</b><p class="fine">Friends get cheers. Rivals get challenges and taunts. You can change it anytime from their card.</p>
+    <div class="rl-rel"><button type="button" class="btn ${rvTab === 'rivals' ? 'btn-ghost' : 'btn-power'}" data-act="rvRel" data-id="${id}" data-v="friend">🤝 Friend</button><button type="button" class="btn ${rvTab === 'rivals' ? 'btn-power' : 'btn-ghost'}" data-act="rvRel" data-id="${id}" data-v="rival">⚔️ Rival</button></div>`); }
+function rvCheer(){ rvDlg(`<b class="rl-h">Cheer on a friend</b><p class="fine">Pick one and send it. It shows up on their Today screen.</p>
+    <div class="rl-pick rl-cheers">${CHEERS.map((c, i) => `<button type="button" class="opt" data-act="rvCheerMake" data-v="${i}">${esc(c)}</button>`).join('')}</div>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button></div>`); }
+function rvCheerMake(i){ const o = {t:'h', id:socialId(), n:S.hero.name || 'Hero', u:S.unit, cid:rlCid(), ch:i};
+  rvShareBox('Cheer ready', `“${CHEERS[i]}” Send it to a friend.`, `${o.n} in Training Arc: “${CHEERS[i]}”`, toCode(o)); }
+function cheersHTML(){ return (S.cheerIn || []).map(x => `<section class="panel rl-taunt rl-cheer"><div class="row-between"><span class="eyebrow">${esc(x.n)} cheered you on</span><button type="button" class="icon-btn rl-x" data-act="rvCheerX" data-id="${x.cid}" aria-label="Dismiss">×</button></div>
+    <b class="rl-quote">“${esc(CHEERS[x.ch] || '')}”</b><div><button type="button" class="btn btn-power btn-sm" data-act="rvCheer">Cheer back</button></div></section>`).join(''); }
 // Challenges besides lifts: what counts, the honest range a code may ask for, how many days they get, the choices offered
 const volShow = lb => S.unit === 'kg' ? Math.round(lb / 2.20462 / 500) * 500 : lb;
 const RL_KINDS = {
@@ -3965,11 +3994,23 @@ const RL_KINDS = {
 };
 // A link opened in the app (Training Arc's own #ta= link)
 // It waits until you're past the title screen and in your profile, then lands there.
-var pendingCode;   // var with no value: takeLinkCode runs at startup, before this line, and must not be reset by it
-function takeLinkCode(){ const m = location.hash.match(/#ta=(TA1\.[A-Za-z0-9_-]+)/); if (!m) return;
+var pendingCode, pendingAuth;   // var with no value: takeLinkCode runs at startup, before this line, and must not be reset by it
+// The sign-in link from the account email lands here too: #access_token=…&refresh_token=… (or #error=…)
+function takeLinkCode(){
+  const h = new URLSearchParams(location.hash.slice(1)), m = location.hash.match(/#ta=(TA1\.[A-Za-z0-9_-]+)/);
+  if (!m && !h.get('access_token') && !h.get('error_description')) return;
   try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
-  pendingCode = m[1]; }
-function landPendingCode(){ const ts = document.getElementById('title'); if (!pendingCode || !S.onboarded || ts && !ts.hidden) return; const c = pendingCode; pendingCode = null; setTimeout(() => takeCode(c), 500); }
+  if (m) pendingCode = m[1];
+  else pendingAuth = h.get('access_token') ? {access_token:h.get('access_token'), refresh_token:h.get('refresh_token'), expires_at:+h.get('expires_at') || 0, expires_in:+h.get('expires_in') || 3600} : {error:h.get('error_description')};
+}
+function landPendingCode(){ const ts = document.getElementById('title'); if (!(pendingCode || pendingAuth) || !S.onboarded || ts && !ts.hidden) return;
+  if (pendingAuth){ const p = pendingAuth; pendingAuth = null; setTimeout(() => landAuthLink(p), 1800); return; }
+  const c = pendingCode; pendingCode = null; setTimeout(() => takeCode(c), 1800); }
+async function landAuthLink(p){
+  if (p.error){ toast(/expired|invalid/i.test(p.error) ? 'That sign-in link has run out. Ask for a new one in Settings › Account.' : `Sign-in didn't work: ${p.error}`); return; }
+  try { const user = await sbRaw('/auth/v1/user', {}, p.access_token); setAuth(slimAuth({...p, user}));
+    if (cloud) cloud.booted = null; netFriends = null; netMe = null; acct = null; toast(`Signed in as ${user.email} on ${S.hero.name || 'Hero'}'s profile.`); render(); }
+  catch(e){ toast(netMsg(e)); } }
 const volLb = l => !l.vol ? 0 : l.unit === 'kg' ? l.vol * 2.20462 : l.vol;
 function chalState(c){
   if (c.k === 'lift'){ const b = bestMax(c.lift); return {have:b, goal:c.val, done:b >= c.val, gone:false}; }
@@ -3999,19 +4040,47 @@ function claimRivalChal(cid){ const c = (S.chals || []).find(x => x.cid === cid)
   const rw = rivalReward(c), old = S.xp; c.claimed = todayIso(); S.xp += rw.xp; if (window.TA_SHOP){ TA_SHOP.addCoins(rw.grind); if (rw.glory) TA_SHOP.addGems(rw.glory); }
   save(); render(); sfx('quest'); buzz(25); rankCheck(old); toast(`You beat ${c.n}'s challenge! +${fmt(rw.xp)} XP, +${rw.grind} Grind${rw.glory ? `, +${rw.glory} Glory` : ''}. Send one back?`); }
 function dropRivalChal(cid){ S.chals = (S.chals || []).filter(c => c.cid !== cid); save(); render(); }
-// Progress tab: your rivals, sharing your card, sending challenges, and a box to paste a code
-function rivalsHTML(){
-  const rv = Object.values(S.rivals || {}).sort((a, b) => b.ri - a.ri || b.lv - a.lv);
-  return `<section class="panel rivals"><div class="row-between"><h3>Rivals</h3><span class="fine">Share codes with friends. No account needed.</span></div>
-    <div class="rl-actions"><button type="button" class="btn btn-power btn-sm" data-act="rvShare">Share my card</button><button type="button" class="btn btn-ghost btn-sm" data-act="rvNew">Challenge a friend</button></div>
+// One tab of the Friends & Rivals page: live people (with an account), then cards swapped by code, then sharing
+function rivalsHTML(kind){
+  const rel = kind === 'rivals' ? 'rival' : 'friend', rv = Object.values(S.rivals || {}).filter(r => relOf(r.id, false) === rel).sort((a, b) => b.ri - a.ri || b.lv - a.lv);
+  return `<section class="panel rivals">
+    ${netHTML(rel)}
+    <span class="rl-sec">Swapped by code</span>
     ${rv.length ? `<div class="rl-list">${rv.map(r => `<button type="button" class="rl-row" data-act="rvOpen" data-id="${r.id}"><canvas class="rl-hero" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas>
       <span class="rl-who"><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}${r.title ? ` · ${esc(r.title)}` : ''}</small><small class="fine">Card from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</small></span><span class="rl-go" aria-hidden="true">›</span></button>`).join('')}</div>`
-      : '<p class="fine">Send your card to a friend and add theirs to compare heroes and lifts side by side. When they get stronger, they send you a new card.</p>'}
-    <div class="rl-add"><input id="rvCode" type="text" placeholder="Paste a friend's code or link" aria-label="Friend's code or link" autocomplete="off" spellcheck="false"><button type="button" class="btn btn-ghost btn-sm" data-act="rvAdd">Add</button></div></section>`;
+      : `<p class="fine">No account needed: send your card as a link and add theirs to compare heroes and lifts side by side.</p>`}
+    <div class="rl-actions"><button type="button" class="btn btn-ghost btn-sm" data-act="rvShare">Share my card</button></div>
+    <div class="rl-add"><input id="rvCode" type="text" placeholder="Paste a code or link" aria-label="Code or link" autocomplete="off" spellcheck="false"><button type="button" class="btn btn-ghost btn-sm" data-act="rvAdd">Add</button></div></section>`;
+}
+// Rivals has its own page, reached from Today's banner, the Progress header and the top bar (not the tab bar)
+const RV_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+let rvBack = 'today';
+var rvTab;   // 'friends' or 'rivals' on the Friends & Rivals page
+const friendsNew = () => (S.cheerIn || []).length;
+const rivalsNew2 = () => (S.chals || []).filter(c => !c.claimed && !c.gone && (c.k === 'lift' || !chalState(c).gone)).length + (S.tauntIn || []).length;
+const rivalsNew = () => friendsNew() + rivalsNew2();
+const rivalsBtn = () => { const n = rivalsNew(); return `<button type="button" class="icon-btn rv-btn" data-act="openRivals" aria-label="Friends and rivals${n ? `, ${n} new` : ''}">${RV_ICON}${n ? `<i class="rv-dot num">${n}</i>` : ''}</button>`; };
+// Today: a slim bar under the banner that says what's going on with your friends and rivals
+function rivalsBar(){ const f = friendsNew(), r = rivalsNew2(), n = f + r, ws = weekStart(todayIso());
+  let sub = 'Cheer on friends, challenge rivals';
+  if (n) sub = [f ? `${f} cheer${f === 1 ? '' : 's'}` : '', r ? `${r} challenge${r === 1 ? '' : 's'} or taunt${r === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
+  else if (auth() && netFriends && netFriends.length){ const me = netCard().wx, place = 1 + netFriends.filter(x => x.ws === ws && x.wx > me).length; sub = `You're #${place} of ${netFriends.length + 1} this week`; }
+  return `<button type="button" class="rv-bar" data-act="openRivals"><span class="rv-bar-ico">${RV_ICON}${n ? `<i class="rv-dot num">${n}</i>` : ''}</span><span class="rv-bar-t"><b>Friends &amp; Rivals</b><small>${sub}</small></span><span aria-hidden="true">›</span></button>`; }
+function openRivals(){ if (tab !== 'rivals') rvBack = tab; if (!rvTab) rvTab = rivalsNew2() && !friendsNew() ? 'rivals' : 'friends'; tab = 'rivals'; render(true); window.scrollTo(0, 0); }
+function viewRivals(){
+  const t = rvTab || 'friends', f = friendsNew(), r = rivalsNew2(), dot = n => n ? ` <i class="rv-dot num">${n}</i>` : '';
+  const top = t === 'friends'
+    ? `${cheersHTML()}<div class="rl-actions"><button type="button" class="btn btn-power btn-sm" data-act="rvCheer">Send a cheer</button></div>`
+    : `${rivalChalsHTML()}<div class="rl-actions"><button type="button" class="btn btn-power btn-sm" data-act="rvNew">Challenge or taunt</button></div>`;
+  return `<section class="row-between rv-head"><button type="button" class="icon-btn" data-act="tab" data-tab="${rvBack}" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+    <h1 class="sec">Friends &amp; Rivals</h1><span class="rv-head-pad" aria-hidden="true"></span></section>
+    <div class="seg seg-wide rl-tabs" role="tablist" aria-label="Friends or rivals"><button type="button" role="tab" data-act="rvTab" data-v="friends" aria-pressed="${t === 'friends'}" aria-selected="${t === 'friends'}">🤝 Friends${dot(f)}</button><button type="button" role="tab" data-act="rvTab" data-v="rivals" aria-pressed="${t === 'rivals'}" aria-selected="${t === 'rivals'}">⚔️ Rivals${dot(r)}</button></div>
+    ${top}
+    ${rivalsHTML(t)}`;
 }
 async function drawRival(cv, r){ try { const fr = await spriteFrames(r.g, RANKS[r.ri].k, r.look, r.style, r.acc); if (!cv.isConnected) return;
   cv.width = fr[0].bmp.width; cv.height = fr[0].bmp.height; const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(fr[0].bmp, 0, 0); } catch(e){} }
-const paintRivals = () => document.querySelectorAll('canvas[data-rv]').forEach(cv => { const r = (S.rivals || {})[cv.dataset.rv]; if (r && !cv.dataset.done){ cv.dataset.done = 1; drawRival(cv, r); } });
+const paintRivals = () => document.querySelectorAll('canvas[data-rv]').forEach(cv => { const id = cv.dataset.rv, r = id === 'me' ? myCard() : (S.rivals || {})[id] || (netFriends || []).find(f => f.id === id); if (r && !cv.dataset.done){ cv.dataset.done = 1; drawRival(cv, r); } });
 // One dialog for sharing a code, writing a challenge, and comparing with a rival
 function rvDlg(html){ const d = document.getElementById('rvDlg'); d.innerHTML = `<div class="pc-card rl-card" style="--rc:var(--power)">${html}</div>`; if (!d.open) d.showModal(); paintRivals(); }
 function rvShareBox(title, sub, text, code){
@@ -4025,7 +4094,7 @@ let rlTn = null;   // the taunt picked in the challenge composer
 function rvNewChal(){
   const lifts = Object.keys(LIFTS).filter(l => bestMax(l)), K = RL_KINDS;
   const opt = (k, n) => `<button type="button" class="opt" data-act="rvMake" data-k="${k}" data-v="${n}">${K[k].label(n)}</button>`;
-  rvDlg(`<b class="rl-h">Challenge a friend</b><p class="fine">Pick a taunt if you want one, then what they have to do. It only pays out for real training.</p>
+  rvDlg(`<b class="rl-h">Challenge a rival</b><p class="fine">Pick a taunt if you want one, then what they have to do. It only pays out for real training.</p>
     <p class="rl-sec">Taunt</p><div class="rl-taunts" role="group" aria-label="Taunt"><button type="button" class="opt" data-act="rvTn" data-v="" aria-pressed="${rlTn == null}">No taunt</button>${TAUNTS.map((t, i) => `<button type="button" class="opt" data-act="rvTn" data-v="${i}" aria-pressed="${rlTn === i}">${esc(t)}</button>`).join('')}</div>
     <button type="button" class="btn btn-ghost btn-sm" data-act="rvTauntOnly"${rlTn == null ? ' disabled' : ''}>Just send the taunt</button>
     <p class="rl-sec">Beat my max</p><div class="rl-pick">${lifts.map(l => `<button type="button" class="opt" data-act="rvMake" data-k="lift" data-v="${l}">${LIFTS[l]}: ${fmt(Math.round(bestMax(l)))} ${S.unit}</button>`).join('') || '<p class="fine">Enter your maxes to send lift challenges.</p>'}</div>
@@ -4041,15 +4110,16 @@ function rvMake(k, v){ const base = {t:'c', id:socialId(), n:S.hero.name || 'Her
   rvShareBox('Challenge ready', `Send this to a friend. They have to ${what}.${tt}`, `${o.n} challenged you in Training Arc: ${what}.${tt}`, toCode(o)); }
 function rvTauntOnly(){ if (rlTn == null) return; const o = {t:'t', id:socialId(), n:S.hero.name || 'Hero', u:S.unit, cid:rlCid(), tn:rlTn};
   rvShareBox('Taunt ready', `“${TAUNTS[rlTn]}” Send it and see if they answer.`, `${o.n} in Training Arc: “${TAUNTS[rlTn]}”`, toCode(o)); }
-function rvOpen(id){ const r = (S.rivals || {})[id]; if (!r) return; const me = myCard();
+function rvOpen(id){ const r = (S.rivals || {})[id] || (netFriends || []).find(f => f.id === id); if (!r) return; const me = myCard(), live = !(S.rivals || {})[id], rel = relOf(id, live);
   const row = (label, a, b, unit = '') => { const w = a > b ? 'me' : b > a ? 'them' : ''; return `<div class="rl-cmp-row"><b class="num${w === 'me' ? ' win' : ''}">${a ? fmt(a) + unit : '-'}</b><span>${label}</span><b class="num${w === 'them' ? ' win' : ''}">${b ? fmt(b) + unit : '-'}</b></div>`; };
   rvDlg(`<div class="rl-vs"><div><canvas class="rl-big" id="rvMe" width="128" height="208" aria-hidden="true"></canvas><b>${esc(me.n)}</b><small>${RANKS[me.ri].k}-Rank · Lv ${me.lv}</small>${me.pet ? `<img class="rl-pet" src="${petArt(me.pet.id, me.pet.f) || ''}" alt="">` : ''}</div>
       <span class="rl-vs-x">VS</span>
       <div><canvas class="rl-big" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small>${r.pet ? `<img class="rl-pet" src="${petArt(r.pet.id, r.pet.f) || ''}" alt="">` : ''}</div></div>
     <div class="rl-cmp">${Object.keys(LIFTS).map(l => row(LIFTS[l], me.m[l], Math.round(inMyUnit(r.m[l], r.u)), ` ${S.unit}`)).join('')}
       ${row('Level', me.lv, r.lv)}${row('Medals', me.md, r.md)}${row('Week streak', me.st, r.st)}${row('Workouts', me.wk, r.wk)}</div>
-    <p class="fine">${esc(r.n)}'s card is from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. Ask for a new one to see their latest.</p>
-    <div class="story-foot"><button type="button" class="wk-link" data-act="rvDel" data-id="${r.id}">Remove</button><button type="button" class="wk-link" data-act="rvClose">Close</button><button type="button" class="btn btn-power btn-sm" data-act="rvNew">Challenge</button></div>`);
+    <p class="fine">${live ? `Live card · updated ${agoText(r.at)}.` : `${esc(r.n)}'s card is from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. Ask for a new one to see their latest.`}</p>
+    <div class="seg seg-wide rl-relseg" role="group" aria-label="${esc(r.n)} is your"><button type="button" data-act="rvRel" data-id="${r.id}" data-v="friend" data-stay="1" aria-pressed="${rel === 'friend'}">🤝 Friend</button><button type="button" data-act="rvRel" data-id="${r.id}" data-v="rival" data-stay="1" aria-pressed="${rel === 'rival'}">⚔️ Rival</button></div>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="${live ? 'netDel' : 'rvDel'}" data-id="${r.id}">Remove</button><button type="button" class="wk-link" data-act="rvClose">Close</button>${rel === 'rival' ? '<button type="button" class="btn btn-power btn-sm" data-act="rvNew">Challenge</button>' : '<button type="button" class="btn btn-power btn-sm" data-act="rvCheer">Cheer</button>'}</div>`);
   drawRival(document.getElementById('rvMe'), me); }
 function rvAct(a, t){
   if (a === 'rvShare') rvShareCard(); else if (a === 'rvNew') rvNewChal(); else if (a === 'rvMake') rvMake(t.dataset.k, t.dataset.v);
@@ -4060,6 +4130,13 @@ function rvAct(a, t){
   else if (a === 'rvClaim') claimRivalChal(t.dataset.id); else if (a === 'rvDrop') dropRivalChal(t.dataset.id);
   else if (a === 'rvTn'){ rlTn = t.dataset.v === '' ? null : +t.dataset.v; const sc = document.querySelector('#rvDlg .pc-card')?.scrollTop; rvNewChal(); const pc = document.querySelector('#rvDlg .pc-card'); if (pc) pc.scrollTop = sc || 0; }
   else if (a === 'rvTauntOnly') rvTauntOnly();
+  else if (a === 'rvTab'){ rvTab = t.dataset.v; render(); }
+  else if (a === 'rvCheer') rvCheer(); else if (a === 'rvCheerMake') rvCheerMake(+t.dataset.v);
+  else if (a === 'rvCheerX'){ S.cheerIn = (S.cheerIn || []).filter(x => x.cid !== t.dataset.id); save(); render(); }
+  else if (a === 'rvRel'){ const id = t.dataset.id, v = t.dataset.v === 'rival' ? 'rival' : 'friend', who = ((S.rivals || {})[id] || (netFriends || []).find(f => f.id === id) || {}).n || 'They';
+    setRel(id, v); rvTab = v === 'rival' ? 'rivals' : 'friends';
+    if (t.dataset.stay) rvOpen(id); else document.getElementById('rvDlg').close();
+    if (tab === 'rivals') render(); toast(`${who} is now a ${v}.`); }
   else if (a === 'rvTauntX'){ S.tauntIn = (S.tauntIn || []).filter(x => x.cid !== t.dataset.id); save(); render(); }
   else if (a === 'rvCopy'){ const ta = document.querySelector('#rvDlg .rl-code'), v = rvShareBox.cur;
     (navigator.clipboard ? navigator.clipboard.writeText(v.url) : Promise.reject()).then(() => toast('Copied. Paste it to a friend.'), () => { ta?.select(); toast('Select the link and copy it.'); }); }
@@ -4067,6 +4144,165 @@ function rvAct(a, t){
   else return false;
   return true;
 }
+
+/* ---------- Accounts: sign-in, cloud save, live friends ---------- */
+// Optional. Signed out, everything stays on this device as before. Signed in (a 6-digit code by email, no
+// password), this profile's progress syncs to the account and friends added by code show their live card
+// and this week's numbers. Plain fetch to Supabase: the key is the public one, and the database rules in
+// supabase/schema.sql keep each person's data to themselves. Each profile on the device has its own sign-in.
+// The state below is var on purpose: save() runs during startup, before this part of the script.
+const SB_URL = 'https://cozbkvpiedqoxabdsovb.supabase.co', SB_KEY = 'sb_publishable_2hJrncpjszI5rw6wFxcctQ_jIpKQBSk';
+var authMem, refreshing, cloud, netFriends, netMe, netErr, acct;
+function authKey(){ return KEY ? KEY + ':auth' : null; }
+function auth(){ const k = authKey(); if (!authMem || authMem.k !== k){ let a = null; try { a = k && JSON.parse(localStorage.getItem(k)); } catch(e){} authMem = {k, a}; } return authMem.a; }
+function setAuth(a){ const k = authKey(); authMem = {k, a}; try { if (a) localStorage.setItem(k, JSON.stringify(a)); else localStorage.removeItem(k); } catch(e){} }
+const slimAuth = s => ({access_token:s.access_token, refresh_token:s.refresh_token, expires_at:s.expires_at || Math.floor(Date.now() / 1000) + (s.expires_in || 3600), user:{id:s.user.id, email:s.user.email}});
+const netMsg = e => e instanceof TypeError ? 'Couldn\'t reach the server. Check your connection.' : (e && e.message) || 'Something went wrong.';
+function agoText(t){ const s = (Date.now() - (typeof t === 'number' ? t : Date.parse(t))) / 1000; if (!Number.isFinite(s)) return 'a while ago';
+  return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(Date.now() - s * 1000).toLocaleDateString(undefined, {month:'short', day:'numeric'}); }
+async function sbRaw(path, opt = {}, token){
+  const r = await fetch(SB_URL + path, {...opt, headers:{apikey:SB_KEY, 'Content-Type':'application/json', ...(token ? {Authorization:'Bearer ' + token} : {}), ...(opt.headers || {})}});
+  const txt = await r.text(); let body = null; try { body = txt ? JSON.parse(txt) : null; } catch(e){ body = txt; }
+  if (!r.ok){ const e = new Error((body && (body.msg || body.message || body.error_description || body.error)) || `Server error ${r.status}`); e.status = r.status; throw e; }
+  return body;
+}
+// Signed-in request: refreshes the session first when it's about to run out
+async function sb(path, opt){
+  let a = auth(); if (!a) throw new Error('Sign in first.');
+  if (Date.now() / 1000 > a.expires_at - 60){
+    refreshing = refreshing || sbRaw('/auth/v1/token?grant_type=refresh_token', {method:'POST', body:JSON.stringify({refresh_token:a.refresh_token})})
+      .then(s => setAuth(slimAuth(s)), e => { if (e.status >= 400 && e.status < 500) setAuth(null); throw e; }).finally(() => { refreshing = null; });
+    await refreshing; a = auth(); if (!a) throw new Error('You were signed out. Sign in again.');
+  }
+  return sbRaw(path, opt, a.access_token);
+}
+// Cloud save. Every local save marks the profile changed; a few seconds later it goes up. gen guards a save
+// that lands while an upload is running.
+function cloudInit(){ if (!cloud) cloud = {busy:false, timer:0, at:0, err:'', quiet:false, gen:0, booted:null, lastPull:0, ask:null}; return cloud; }
+function cloudMark(){ cloudInit();
+  if (cloud.quiet || !auth()) return; S.cloudDirty = true; cloud.gen++; clearTimeout(cloud.timer); cloud.timer = setTimeout(cloudPush, 5000); }
+function quietSave(){ cloudInit(); cloud.quiet = true; save(); cloud.quiet = false; }
+async function cloudPush(){ cloudInit(); const a = auth(); if (!a || cloud.busy) return; clearTimeout(cloud.timer); cloud.busy = true; acctPaint();
+  const now = new Date().toISOString(), gen = cloud.gen;
+  try {
+    await sb('/rest/v1/saves?on_conflict=user_id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify({user_id:a.user.id, data:{...S, cloudDirty:false, cloudAt:now}, updated_at:now})});
+    await sb('/rest/v1/profiles?on_conflict=id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify({id:a.user.id, name:(S.hero.name || 'Hero').slice(0, 20), card:netCard(), updated_at:now})});
+    S.cloudAt = now; if (cloud.gen === gen) S.cloudDirty = false; quietSave(); cloud.at = Date.now(); cloud.err = '';
+    if (S.cloudDirty) cloud.timer = setTimeout(cloudPush, 5000);
+  } catch(e){ cloud.err = netMsg(e); } finally { cloud.busy = false; acctPaint(); }
+}
+// After signing in, opening the app, or coming back to it: bring this device and the account in line
+async function cloudPull(){ const a = auth(); if (!a) return; cloud.lastPull = Date.now();
+  const rows = await sb(`/rest/v1/saves?select=data,updated_at&user_id=eq.${a.user.id}`), row = rows && rows[0];
+  if (!row || !row.data) return cloudPush();   // a brand-new account: this device's progress becomes the cloud copy
+  const rAt = Date.parse(row.updated_at), mine = S.cloudAt ? Date.parse(S.cloudAt) : 0;
+  if (mine && Math.abs(rAt - mine) < 2000) return S.cloudDirty ? cloudPush() : undefined;   // same version
+  if (mine && rAt < mine) return cloudPush();
+  const fresh = !S.log.length && !S.xp;   // nothing here to lose
+  if (fresh || mine && !S.cloudDirty) return adoptCloud(row.data, row.updated_at, mine ? 'Synced: progress from your other device.' : 'Signed in. Your progress is back.');
+  cloudAsk(row.data, row.updated_at);   // both sides have progress: the person chooses
+}
+function adoptCloud(data, at, msg){
+  try { localStorage.setItem(undoKey(), JSON.stringify(S)); undoAvail = true; } catch(e){}   // this device's copy can be undone in Settings
+  S = normalize(Object.assign(clone(DEFAULT), {onboarded:true}, data)); S.cloudAt = at; S.cloudDirty = false; quietSave(); render(); toast(msg);
+}
+function cloudAsk(data, at){ cloud.ask = {data, at};
+  const side = (o, h) => `<div class="ac-side"><b>${h}</b><span class="num">Lv ${levelInfo(o.xp || 0).L} · ${fmt(o.xp || 0)} XP</span><small class="num">${fmt((o.log || []).length)} workouts</small><small>${(o.log || [])[0] && o.log[0].date ? `Last workout ${esc(o.log[0].date)}` : 'No workouts yet'}</small></div>`;
+  acctDlg(`<b class="rl-h">Which progress?</b><p class="fine">This device and your account both have progress. Pick the one to keep. The other is saved as a backup you can undo in Settings.</p>
+    <div class="ac-sides">${side(data, `Account · saved ${agoText(at)}`)}${side(S, 'This device')}</div>
+    <div class="ac-col"><button type="button" class="btn btn-power" data-act="cloudUse">Use account progress</button><button type="button" class="btn btn-ghost" data-act="cloudKeep">Keep this device's</button></div>`, true);
+}
+function cloudBoot(){ const ts = document.getElementById('title'); if (!KEY || !auth() || ts && !ts.hidden) return; cloudInit();
+  if (cloud.booted === KEY) return; cloud.booted = KEY; netFriends = null;
+  cloudPull().catch(e => { cloud.err = netMsg(e); }).then(netLoad); }
+document.addEventListener('visibilitychange', () => { if (!auth() || !cloud) return;
+  if (document.hidden){ if (S.cloudDirty) cloudPush(); }
+  else if (Date.now() - cloud.lastPull > 120000 && !document.querySelector('dialog[open]')) cloudPull().catch(e => { cloud.err = netMsg(e); }).then(netLoad); });
+// Live friends. Your card on the server carries this week's numbers for the leaderboard.
+function netCard(){ const ws = weekStart(todayIso()), logs = S.log.filter(l => l.iso && l.iso >= ws);
+  return {...myCard(), ws, wx:logs.reduce((t, l) => t + (l.xp || 0), 0), wsets:logs.reduce((t, l) => t + (l.sets || 0), 0), wwk:logs.filter(l => !l.bossFight).length}; }
+async function netLoad(){ const a = auth(); if (!a) return;
+  try { const rows = await sb('/rest/v1/profiles?select=id,friend_code,name,card,updated_at') || [];
+    netMe = rows.find(r => r.id === a.user.id) || null;
+    netFriends = rows.filter(r => r.id !== a.user.id).map(r => { const c = r.card && typeof r.card === 'object' ? r.card : {};
+      return {...cleanCard(c, {id:r.id, n:String(r.name || 'Friend').replace(/[\u0000-\u001f]/g, '').slice(0, 20), u:c.u === 'kg' ? 'kg' : 'lb'}), at:r.updated_at}; });
+    netErr = ''; } catch(e){ netErr = netMsg(e); if (!netFriends) netFriends = []; }
+  netPaint(); acctPaint(); }
+function netPaint(){ const box = document.getElementById('netBox'); if (box){ box.outerHTML = netHTML(); paintRivals(); } }
+function netHTML(rel = rvTab === 'rivals' ? 'rival' : 'friend'){
+  if (!auth()) return `<div id="netBox" class="net-box"><p class="fine">Sign in for live friends and rivals, a weekly leaderboard and a cloud backup of your progress.</p><div><button type="button" class="btn btn-ghost btn-sm" data-act="acctOpen">Sign in</button></div></div>`;
+  const ws = weekStart(todayIso()), me = {...netCard(), id:'me', n:S.hero.name || 'Hero', isMe:true}, mine = (netFriends || []).filter(f => relOf(f.id, true) === rel);
+  const board = [me, ...mine].map(c => c.ws === ws ? c : {...c, wx:0, wsets:0, wwk:0}).sort((x, y) => y.wx - x.wx || y.wsets - x.wsets);
+  return `<div id="netBox" class="net-box"><div class="row-between"><span class="rl-sec">${rel === 'rival' ? 'Rivals' : 'Friends'} · this week</span><button type="button" class="wk-link" data-act="netCopy">Your code <b class="num">${netMe ? netMe.friend_code : '…'}</b></button></div>
+    ${netFriends === null ? '<p class="fine">Loading friends…</p>' : ''}${netErr ? `<p class="fine">${esc(netErr)}</p>` : ''}
+    <ol class="lb">${board.map((c, i) => `<li><button type="button" class="lb-row${c.isMe ? ' me' : ''}"${c.isMe ? ' disabled' : ` data-act="rvOpen" data-id="${c.id}"`}><span class="lb-n num">${i + 1}</span><canvas class="rl-hero" data-rv="${c.id}" width="128" height="208" aria-hidden="true"></canvas>
+      <span class="rl-who"><b>${esc(c.n)}${c.isMe ? ' (you)' : ''}</b><small>${RANKS[c.ri].k}-Rank · Lv ${c.lv}</small></span><span class="lb-xp"><b class="num">${fmt(c.wx)} XP</b><small>${c.wwk} workout${c.wwk === 1 ? '' : 's'} · ${fmt(c.wsets)} sets</small></span></button></li>`).join('')}</ol>
+    ${netFriends && !mine.length ? `<p class="fine">${rel === 'rival' ? 'No live rivals yet. Add someone by their code and pick Rival.' : 'No live friends yet. Send them your code, or type theirs below.'}</p>` : ''}
+    <div class="rl-add"><input id="netCode" type="text" placeholder="Friend's 8-character code" aria-label="Friend's code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10"><button type="button" class="btn btn-ghost btn-sm" data-act="netAdd">Add friend</button></div></div>`;
+}
+async function netAdd(){ const el = document.getElementById('netCode'), code = (el && el.value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+  if (code.length !== 8){ toast('Friend codes are 8 letters and numbers.'); return; }
+  try { const r = await sb('/rest/v1/rpc/add_friend', {method:'POST', body:JSON.stringify({code})}); if (el) el.value = '';
+    await netLoad(); if (r && r.id) relAsk(r.id, r.name || 'Friend'); else toast('Added.'); } catch(e){ toast(netMsg(e)); } }
+// The account sheet: sign in, then cloud save status, your friend code, sign out and delete
+function acctState(){ if (!acct) acct = {step:'email', email:'', busy:false, err:'', sent:0, delArmed:false}; return acct; }
+function acctDlg(html, sticky){ const d = document.getElementById('acctDlg'); d.innerHTML = `<div class="pc-card rl-card ac-card" style="--rc:var(--power)">${html}</div>`; d.dataset.sticky = sticky ? 1 : ''; if (!d.open) d.showModal(); }
+function acctOpen(){ acctState(); acctShow(); }
+function acctPaint(){ const d = document.getElementById('acctDlg'); if (d && d.open && !d.dataset.sticky) acctShow(); }
+function acctShow(){
+  const st = acctState(), a = auth(), err = st.err ? `<p class="ac-err" role="alert">${esc(st.err)}</p>` : '', dis = st.busy ? ' disabled' : '';
+  if (!a && st.step === 'email') return acctDlg(`<b class="rl-h">Sign in</b><p class="fine">Back up this profile's progress and add friends. We email you a sign-in link: no password. Your email is only used to sign in.</p>
+    <input id="acEmail" class="ac-in" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(st.email)}" aria-label="Email">${err}
+    <div class="story-foot"><button type="button" class="wk-link" data-act="acctClose">Not now</button><button type="button" class="btn btn-power btn-sm" data-act="acctSend"${dis}>${st.busy ? 'Sending…' : 'Send code'}</button></div>`);
+  if (!a) return acctDlg(`<b class="rl-h">Check your email</b><p class="fine">We emailed <b>${esc(st.email)}</b>. Tap the sign-in link in it, or type the code if it has one. It can take a minute; check spam too.</p>
+    <input id="acCode" class="ac-in ac-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" aria-label="Code from the email">${err}
+    <div class="story-foot"><button type="button" class="wk-link" data-act="acctBack">Different email</button><button type="button" class="wk-link" data-act="acctSend"${Date.now() - st.sent < 60000 ? ' disabled' : ''}>Send again</button><button type="button" class="btn btn-power btn-sm" data-act="acctVerify"${dis}>${st.busy ? 'Checking…' : 'Sign in'}</button></div>`);
+  const status = cloud && cloud.busy ? 'Syncing…' : cloud && cloud.err ? `Not synced: ${esc(cloud.err)}` : S.cloudAt ? `Saved to your account ${agoText(S.cloudAt)}` : 'Not synced yet';
+  acctDlg(`<b class="rl-h">Account</b><p class="fine">Signed in as <b>${esc(a.user.email)}</b> on ${esc(S.hero.name || 'Hero')}'s profile.</p>
+    <div class="ac-row"><div><b>Cloud save</b><small>${status}</small></div><button type="button" class="btn btn-ghost btn-sm" data-act="acctSync"${cloud && cloud.busy ? ' disabled' : ''}>Sync now</button></div>
+    <div class="ac-row"><div><b>Your friend code</b><small>Friends type it under Progress › Rivals.</small></div><button type="button" class="btn btn-ghost btn-sm num" data-act="netCopy">${netMe ? netMe.friend_code : '…'}</button></div>
+    <div class="ac-row"><div><b>Sign out</b><small>This device keeps its progress.</small></div><button type="button" class="btn btn-ghost btn-sm" data-act="acctOut">Sign out</button></div>
+    <div class="ac-row ac-danger"><div><b>Delete account</b><small>Deletes your account, cloud save and friend list for good. Progress on this device stays.</small></div><button type="button" class="btn btn-danger btn-sm" data-act="acctDel">${st.delArmed ? 'Tap again to delete' : 'Delete'}</button></div>
+    <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="acctClose">Done</button></div>`);
+}
+async function acctSend(){ const st = acctState(), el = document.getElementById('acEmail'), email = (el ? el.value : st.email).trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ st.err = 'Type your email address.'; return acctShow(); }
+  st.busy = true; st.err = ''; st.email = email; acctShow();
+  // redirect_to: a sign-in link comes back to this same address (the server only allows the ones set in Supabase)
+  try { await sbRaw(`/auth/v1/otp?redirect_to=${encodeURIComponent(location.origin + location.pathname)}`, {method:'POST', body:JSON.stringify({email, create_user:true})}); st.step = 'code'; st.sent = Date.now(); }
+  catch(e){ st.err = e.status === 429 ? 'Too many emails asked for. Wait a while and try again.' : /not authorized/i.test(e.message) ? 'Sign-up isn\'t open to everyone yet. Try again soon.' : netMsg(e); }
+  st.busy = false; acctShow(); setTimeout(() => document.getElementById(st.step === 'code' ? 'acCode' : 'acEmail')?.focus(), 50); }
+async function acctVerify(){ const st = acctState(), code = (document.getElementById('acCode')?.value || '').replace(/\D/g, '');
+  if (code.length < 6){ st.err = 'Type the code from the email.'; return acctShow(); }
+  st.busy = true; st.err = ''; acctShow();
+  try { const s = await sbRaw('/auth/v1/verify', {method:'POST', body:JSON.stringify({type:'email', email:st.email, token:code})}); setAuth(slimAuth(s));
+    acct = null; acctState(); if (cloud) cloud.booted = null; netFriends = null; netMe = null;
+    document.getElementById('acctDlg').close(); toast('Signed in.'); render(); cloudBoot(); }
+  catch(e){ st.busy = false; st.err = e.status === 403 || /expired|invalid/i.test(e.message) ? 'That code didn\'t work or has run out. Send a new one.' : netMsg(e); acctShow(); } }
+function acctSignedOut(msg){ setAuth(null); delete S.cloudAt; delete S.cloudDirty; quietSave(); netFriends = null; netMe = null; if (cloud) cloud.booted = null; acct = null;
+  document.getElementById('acctDlg').close(); render(); if (settingsOpen()) renderSettings(); toast(msg); }
+function acctAct(a, t){
+  if (a === 'acctOpen') acctOpen(); else if (a === 'acctClose') document.getElementById('acctDlg').close();
+  else if (a === 'acctSend') acctSend(); else if (a === 'acctVerify') acctVerify(); else if (a === 'acctBack'){ acctState().step = 'email'; acct.err = ''; acctShow(); }
+  else if (a === 'acctSync') cloudPull().catch(e => { cloud.err = netMsg(e); }).then(() => { acctPaint(); return netLoad(); });
+  else if (a === 'acctOut'){ const tok = auth() && auth().access_token; if (tok) sbRaw('/auth/v1/logout', {method:'POST'}, tok).catch(() => {}); acctSignedOut('Signed out. Your progress stays on this device.'); }
+  else if (a === 'acctDel'){ const st = acctState(); if (!st.delArmed){ st.delArmed = true; acctShow(); return true; }
+    sb('/rest/v1/rpc/delete_account', {method:'POST', body:'{}'}).then(() => acctSignedOut('Your account is deleted. Progress on this device stays.'), e => { st.delArmed = false; toast(netMsg(e)); acctShow(); }); }
+  else if (a === 'cloudUse'){ const q = cloud.ask; cloud.ask = null; document.getElementById('acctDlg').close(); if (q) adoptCloud(q.data, q.at, 'Using your account\'s progress. This device\'s old progress can be undone in Settings.'); }
+  else if (a === 'cloudKeep'){ const q = cloud.ask; cloud.ask = null; document.getElementById('acctDlg').close();
+    if (q) try { localStorage.setItem(undoKey(), JSON.stringify(q.data)); undoAvail = true; } catch(e){}
+    cloudPush().then(() => toast('Kept this device\'s progress and saved it to your account.')); }
+  else if (a === 'netAdd') netAdd();
+  else if (a === 'netCopy'){ const c = netMe && netMe.friend_code; if (!c) return true; (navigator.clipboard ? navigator.clipboard.writeText(c) : Promise.reject()).then(() => toast(`Copied your code: ${c}`), () => toast(`Your code: ${c}`)); }
+  else if (a === 'netDel'){ const f = (netFriends || []).find(x => x.id === t.dataset.id); if (!f) return true;
+    if (!t.dataset.sure){ t.dataset.sure = 1; t.textContent = `Remove ${f.n}?`; return true; }
+    sb('/rest/v1/rpc/remove_friend', {method:'POST', body:JSON.stringify({fid:f.id})}).then(() => { document.getElementById('rvDlg').close(); toast(`${f.n} removed.`); return netLoad(); }, e => toast(netMsg(e))); }
+  else return false;
+  return true;
+}
+document.getElementById('acctDlg')?.addEventListener('keydown', e => { if (e.key !== 'Enter') return; if (e.target.id === 'acEmail'){ e.preventDefault(); acctSend(); } else if (e.target.id === 'acCode'){ e.preventDefault(); acctVerify(); } });
+document.getElementById('acctDlg')?.addEventListener('cancel', e => { if (e.currentTarget.dataset.sticky) e.preventDefault(); });   // the progress choice needs an answer
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'netCode'){ e.preventDefault(); netAdd(); } });
 
 /* ---------- Year in review ---------- */
 // A recap of the calendar year as tap-through slides (counters roll up), ending on a summary you can share
@@ -4999,7 +5235,7 @@ function renameProfile(id, name){
   pf.edit = null; renderProfiles(); toast(`Renamed to ${name}.`);
 }
 function deleteProfile(id){
-  try { localStorage.removeItem(keyFor(id)); localStorage.removeItem(keyFor(id) + '-before-restore'); } catch(e){}
+  try { localStorage.removeItem(keyFor(id)); localStorage.removeItem(keyFor(id) + '-before-restore'); localStorage.removeItem(keyFor(id) + ':auth'); } catch(e){}   // its sign-in goes with it
   const name = (PROFILES.list.find(p => p.id === id) || {}).name || 'Profile';
   PROFILES.list = PROFILES.list.filter(p => p.id !== id);
   if (PROFILES.active === id){ PROFILES.active = null; KEY = null; pf.canClose = false; }   // nothing saves until another profile is chosen
@@ -5060,6 +5296,8 @@ function renderSettings(){
     <div class="st-group"><div class="st-row"><div><b>Scene</b><span>The main menu each time the app opens</span></div>
       <select id="stTitleScene" class="st-select" aria-label="Title screen scene"><option value="shuffle"${p.title === "shuffle" ? " selected" : ""}>Shuffle</option>${TITLE_SCENES.map(s => `<option value="${s.id}"${p.title === s.id ? " selected" : ""}>${s.name}</option>`).join("")}</select></div>
       <button type="button" class="st-row st-link" data-act="showTitle"><div><b>Show title screen</b><span>See it now</span></div><span aria-hidden="true">›</span></button></div>
+    <h4 class="st-h">Account</h4>
+    <div class="st-group"><button type="button" class="st-row st-link" data-act="acctOpen"><div><b>${auth() ? esc(auth().user.email) : 'Sign in'}</b><span>${auth() ? `Cloud save on${S.cloudAt ? ` · synced ${agoText(S.cloudAt)}` : ''} · friends · sign out` : 'Optional. Back up your progress and add friends.'}</span></div><span aria-hidden="true">›</span></button></div>
     <h4 class="st-h">Profile</h4>
     <div class="st-group"><button type="button" class="st-row st-link" data-act="switchProfile"><div><b>${esc(S.hero.name || 'Hero')}'s profile</b><span>Switch profile or add someone new · ${PROFILES.list.length} on this device</span></div><span aria-hidden="true">›</span></button></div>
     <h4 class="st-h">Character</h4>
@@ -5073,7 +5311,7 @@ function renderSettings(){
     <h4 class="st-h">Danger zone</h4>
     <div class="st-group st-danger"><div class="st-row st-col"><div><b>Reset all progress</b><span>Erases levels, gear, achievements, maxes and history on this device. Back up first.</span></div>
       <button class="btn btn-danger btn-sm" data-act="reset">${resetArmed ? 'Tap again to erase everything' : 'Reset all progress'}</button></div></div>
-    <p class="fine st-foot">Training Arc · Your progress is saved on this device.</p>`;
+    <p class="fine st-foot">Training Arc · Your progress is saved on this device${auth() ? ' and backed up to your account' : ''}.</p>`;
 }
 function openSettings(){ renderSettings(); openDialog('settings', '[data-act=closeSettings]'); }
 const settingsOpen = () => !document.getElementById('settings').hidden;
@@ -5457,7 +5695,7 @@ function viewProgress(){
   const r = rankFor(S.xp), n = nextRank(S.xp), lv = levelInfo(S.xp);
   const hist = S.history.slice(0, 10).map(h => `<div class="li"><div class="l">${LIFTS[h.lift]}<small>${h.date} · ${h.src}</small></div><span class="r num">${fmt(h.val)} ${h.unit}</span></div>`).join('');
   const log = S.log.slice(0, 10).map(l => `<div class="li"><div class="l">${l.day}<small>${l.date} · ${l.prog}, week ${l.week} · ${l.sets} sets</small></div><span class="r num" style="color:var(--power)">+${l.xp} XP</span></div>`).join('');
-  return `<section class="row-between"><h1 class="sec">Progress</h1><button class="icon-btn" data-act="openSettings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></section>
+  return `<section class="row-between"><h1 class="sec">Progress</h1><span class="sec-btns">${rivalsBtn()}<button class="icon-btn" data-act="openSettings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></span></section>
   ${backupNudge()}
   ${tcardHTML(r, n, lv)}
   <div class="stats">
@@ -5466,7 +5704,6 @@ function viewProgress(){
     <div class="stat"><b class="num">${S.prs}</b><span>PRs</span></div>
   </div>
   ${S.log.some(l => l.iso && l.iso.startsWith(todayIso().slice(0, 4))) ? `<button class="yir-btn" data-act="openYear"><span><small>Year in review</small><b>Your ${todayIso().slice(0, 4)}</b></span><span aria-hidden="true">›</span></button>` : ''}
-  ${rivalsHTML()}
   ${rewardsHTML()}
   ${gatesHTML()}
   ${achHTML()}
@@ -6371,9 +6608,9 @@ function render(animate){
   if (S.storyNext || S.petEvolve || S.petUp || S.petReact) setTimeout(storyAfter, 500);
   const v = document.getElementById('view');
   v.classList.toggle('view-enter', !!animate);
-  document.querySelector('.hud').hidden = tab === 'today' || tab === 'progress';   // the banner and the card carry the character there
-  v.innerHTML =tab === 'today' ? viewToday() : tab === 'calendar' ? viewCalendar() : tab === 'maxes' ? viewMaxes() : tab === 'arcs' ? viewArcs() : viewProgress();
-  paintRivals(); landPendingCode();
+  document.querySelector('.hud').hidden = tab === 'today' || tab === 'progress' || tab === 'rivals';   // the banner and the card carry the character there
+  v.innerHTML =tab === 'rivals' ? viewRivals() : tab === 'today' ? viewToday() : tab === 'calendar' ? viewCalendar() : tab === 'maxes' ? viewMaxes() : tab === 'arcs' ? viewArcs() : viewProgress();
+  paintRivals(); landPendingCode(); cloudBoot();
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
   if (animate) [...v.children].forEach((c, i) => c.style.setProperty('--i', Math.min(i, 6)));
   if (tab === 'maxes') updateEstimate();
@@ -6534,7 +6771,9 @@ document.addEventListener('click', e => {
   else if (a === 'storyNext'){ if (!story) return; if (story.i < story.lines.length - 1){ story.i++; storyShow(); } else storyEnd(); }
   else if (a === 'storySkip') storyEnd();
   else if (a.startsWith('rv') && rvAct(a, t)){}
+  else if (/^(acct|cloud|net)[A-Z]/.test(a) && acctAct(a, t)){}
   else if (a === 'petCard'){ e.stopPropagation(); openPetCard(t.dataset.id); } else if (a === 'petPoke') petPoke(); else if (a === 'petClose') petClose();
+  else if (a === 'openRivals') openRivals();
   else if (a === 'openYear') openYear(); else if (a === 'yirNext') yirNext(); else if (a === 'yirClose') yirClose(); else if (a === 'yirShare') shareYear();
   else if (a === 'startWkPlain') openWorkout();
   else if (a === 'checkQuest'){   // daily check-ins are on your honor: tap when you've done it

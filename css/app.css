@@ -420,6 +420,55 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .rl-pick{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .rl-pick .opt{width:100%;text-align:left;min-height:44px;white-space:normal;line-height:1.2}
 .rl-card>*{flex-shrink:0}
+.rl-tabs{margin:0 0 12px}
+.rl-tabs button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.rl-tabs .rv-dot{position:static;box-shadow:none}
+.rl-rel{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rl-rel .btn{min-height:52px;font-size:16px}
+.rl-relseg{margin-top:2px}
+.rl-taunt.rl-cheer{border-left-color:#3ddc84}
+.rl-taunt.rl-cheer .rl-quote{color:#c8ffe0}
+.rv-head h1.sec{font-size:clamp(24px,7.5vw,34px);white-space:nowrap}
+.rl-cheers .opt{min-height:52px}
+.rivals>.rl-actions{margin-top:2px}
+#view>.rl-actions{margin:0 0 14px}
+.rv-btn{position:relative}
+.rv-dot{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#ff4d6a;color:#fff;font-style:normal;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--bg)}
+.rv-bar{display:flex;align-items:center;gap:12px;width:100%;margin:0 0 14px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.rv-bar-ico{position:relative;display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:10px;background:color-mix(in srgb,var(--power) 16%,transparent);color:var(--power)}
+.rv-bar-t{display:flex;flex-direction:column;flex:1;min-width:0}
+.rv-bar-t b{font-family:var(--display);font-size:18px;text-transform:uppercase}
+.rv-bar-t small{color:var(--dim);font-size:13px}
+.rv-bar>span:last-child{font-size:24px;color:var(--dim)}
+.sec-btns{display:flex;gap:8px;align-items:center}
+.rv-head{margin-bottom:6px}
+.rv-head-pad{width:44px;flex:none}
+.rv-sub{display:block;margin:6px 0 8px}
+#hudRv{margin-left:6px;display:inline-flex}
+#hudRv .icon-btn{width:36px;height:36px}
+.net-box{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:color-mix(in srgb,var(--power) 7%,transparent);border:1px solid color-mix(in srgb,var(--power) 25%,transparent)}
+.net-box .wk-link b{color:var(--power);letter-spacing:.08em}
+.lb{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.lb-row{display:flex;align-items:center;gap:8px;width:100%;padding:4px 10px 4px 6px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.lb-row:disabled{cursor:default;opacity:1}
+.lb-row.me{border-color:color-mix(in srgb,var(--power) 60%,transparent)}
+.lb-n{width:20px;flex:none;font-family:var(--display);font-size:20px;text-align:center;color:var(--dim)}
+.lb li:first-child .lb-n{color:var(--power)}
+.lb-xp{display:flex;flex-direction:column;align-items:flex-end;flex:none}
+.lb-xp b{font-family:var(--display);font-size:16px}
+.lb-xp small{font-size:11px;color:var(--dim)}
+.ac-in{width:100%;min-height:48px;padding:10px 12px;border:1px solid rgba(255,255,255,.25);border-radius:12px;background:rgba(0,0,0,.35);color:#fff;font:inherit;font-size:17px}
+.ac-code{font-family:var(--display);font-size:28px;letter-spacing:.3em;text-align:center}
+.ac-err{margin:0;color:#ff8a9a;font-size:14px}
+.ac-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.1)}
+.ac-row>div{display:flex;flex-direction:column;min-width:0}
+.ac-row b{color:#fff}.ac-row small{color:#a197b8;font-size:12px}
+.ac-danger b{color:#ff8a9a}
+.ac-sides{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ac-side{display:flex;flex-direction:column;gap:2px;padding:10px;border-radius:12px;background:rgba(255,255,255,.06)}
+.ac-side b{color:var(--power);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.ac-side span{color:#fff;font-family:var(--display);font-size:16px}.ac-side small{color:#a197b8;font-size:12px}
+.ac-col{display:flex;flex-direction:column;gap:8px}
 .rl-sec{margin:4px 0 -4px;font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--power)}
 .rl-taunts{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
 .rl-taunts .opt{flex:none;max-width:220px;white-space:normal;min-height:40px;text-align:left}

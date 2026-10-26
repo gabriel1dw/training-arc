@@ -2167,6 +2167,18 @@ body:has(.wk:not([hidden])){overflow:hidden}
 .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
 .inv-item{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px 8px;min-height:128px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;text-align:center;cursor:pointer}
 .inv-item img{width:56px;height:56px;image-rendering:pixelated;background:radial-gradient(circle,color-mix(in srgb,var(--rc) 30%,transparent),transparent 70%)}
+.loot-box summary{list-style:none;cursor:pointer}
+.loot-box summary::-webkit-details-marker{display:none}
+.loot-box summary h4::after{content:'▾';float:right;color:var(--muted);transition:transform .2s}
+.loot-box:not([open]) summary h4::after{transform:rotate(-90deg)}
+.loot-row{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-top:1px solid var(--line)}
+.loot-boss{margin:0;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;display:flex;justify-content:space-between}
+.loot-chips{display:flex;flex-wrap:wrap;gap:6px}
+.loot-chip{width:44px;height:44px;display:grid;place-items:center;padding:0;border-radius:10px;border:1px solid var(--line);background:radial-gradient(circle,color-mix(in srgb,var(--rc) 28%,transparent),transparent 72%),var(--surface);cursor:pointer}
+.loot-chip img{width:36px;height:36px;image-rendering:pixelated}
+.loot-chip.on{border-color:var(--power);box-shadow:0 0 0 1px var(--power)}
+.loot-chip.lock{cursor:default;border-style:dashed;background:var(--surface)}
+.loot-chip.lock img{filter:brightness(0) opacity(.4)}
 .inv-item b{font-size:13px;line-height:1.2}
 .inv-item.on{border:2px solid var(--rc);background:color-mix(in srgb,var(--rc) 12%,var(--surface))}
 .inv-item.sel{outline:2px solid var(--fg);outline-offset:2px}

@@ -2048,9 +2048,19 @@ function invEditorHTML(){
   if (!window.TA_SHOP) return '';
   const D = TA_SHOP_DATA, st = TA_SHOP.state(), eq = st.equipped, item = id => D.items[id];
   const owned = [...new Set(st.owned)].filter(id => item(id));
+  // Boss loot: every drop in the game, the ones you've won ready to wear, the rest showing which boss has them
+  const bosses = Object.entries(D.drops || {}).map(([b, ids]) => [b, [...new Set(ids)].filter(id => item(id))]).filter(([, ids]) => ids.length);
+  const drops = bosses.flatMap(([, ids]) => ids), got = drops.filter(id => owned.includes(id));
+  const chip = id => { const it = item(id), have = owned.includes(id), on = eq[it.type] === id;
+    return have ? `<button type="button" class="loot-chip${on ? ' on' : ''}" data-act="invItem" data-id="${id}" aria-pressed="${on}" aria-label="${esc(it.name)}${on ? ', wearing' : ''}" title="${esc(it.name)}" style="--rc:${D.rarity[it.r]}"><img src="${it.icon}" alt=""></button>`
+      : `<span class="loot-chip lock" role="img" aria-label="Locked" style="--rc:${D.rarity[it.r]}"><img src="${it.icon}" alt=""></span>`; };
+  const loot = drops.length ? `<details class="he-group loot-box"${got.length ? ' open' : ''}><summary><h4>Boss loot <span class="he-note">${got.length} of ${drops.length} collected · tap gear you've won to wear it</span></h4></summary>
+    ${bosses.map(([b, ids]) => { const name = item(ids[0]).bossName || b, n = ids.filter(id => owned.includes(id)).length;
+      return `<div class="loot-row"><p class="loot-boss">${esc(name)} <span class="num">${n}/${ids.length}</span></p><div class="loot-chips">${ids.map(chip).join('')}</div></div>`; }).join('')}
+    <p class="fine">Each win against a boss is a chance at one of its pieces.</p></details>` : '';
   if (!owned.length) return `<div class="he-group"><h4>Shop items</h4>
     <p class="fine">Nothing yet. Outfits, hair dyes, pets, auras and more that you buy in the shop show up here, ready to wear. Workouts pay Grind.</p>
-    <div><button type="button" class="btn btn-ghost btn-sm" data-act="invShop">Open the shop</button></div></div>`;
+    <div><button type="button" class="btn btn-ghost btn-sm" data-act="invShop">Open the shop</button></div></div>${loot}`;
   if (invTab !== 'all' && !owned.some(id => item(id).type === invTab)) invTab = 'all';
   const n = t => owned.filter(id => item(id).type === t).length;
   const list = owned.filter(id => invTab === 'all' || item(id).type === invTab)
@@ -2063,7 +2073,7 @@ function invEditorHTML(){
     <div class="opt-chips inv-tabs" role="group" aria-label="Show">${INV_SLOTS.filter(([k]) => k === 'all' || n(k)).map(([k, l]) =>
       `<button type="button" class="opt" data-act="invTab" data-v="${k}" aria-pressed="${invTab === k}">${l} <span class="num">${k === 'all' ? owned.length : n(k)}</span></button>`).join('')}</div>
     <div class="inv-grid">${list.map(tile).join('')}</div>
-    <p class="fine inv-info" aria-live="polite">${sel ? `<b>${esc(sel.name)}</b>: ${esc(sel.desc || '')}` : 'One item per slot. Your own colors come back when you take shop gear off.'}</p></div>`;
+    <p class="fine inv-info" aria-live="polite">${sel ? `<b>${esc(sel.name)}</b>: ${esc(sel.desc || '')}` : 'One item per slot. Your own colors come back when you take shop gear off.'}</p></div>${loot}`;
 }
 // The editor preview wears your aura and has your pet beside you
 function paintEditorExtras(){

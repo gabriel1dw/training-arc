@@ -382,7 +382,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     $('.tsh-bub').onclick = () => { li = (li + 1) % lines.length; say(lines[li]); };
 
     // ---------- tabs ----------
-    const TABS = [['FEATURED', null], ['BOSS LOOT', 'loot'], ['OUTFITS', 'outfit'], ['HAIR', 'hair'], ['SHOES', 'shoes'], ['CAPES', 'cape'], ['AURAS', 'aura'], ['PETS', 'pet'], ['FX', 'fx'], ['TITLES', 'title']];
+    const TABS = [['FEATURED', null], ['OUTFITS', 'outfit'], ['HAIR', 'hair'], ['SHOES', 'shoes'], ['CAPES', 'cape'], ['AURAS', 'aura'], ['PETS', 'pet'], ['FX', 'fx'], ['TITLES', 'title']];
     const heroLook = opts.hero ? opts.hero($('.tsh-hero')) : liveLook ? TA_LOOK.create($('.tsh-hero'), { body: opts.body || 'm', rank: opts.rank || 'B' }) : null;
     let tab = 0, selId = stock.items[0];
     const allDrops = () => Object.values(data.drops || {}).flat().filter(id => data.items[id]);

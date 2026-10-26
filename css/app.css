@@ -2107,6 +2107,8 @@ body:has(.wk:not([hidden])){overflow:hidden}
 .wk-chip[aria-pressed="true"]{background:var(--surface-ink);color:var(--surface)}
 .wk-tools{display:flex;flex-wrap:wrap;gap:8px}
 .wk-tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.wk-form{display:flex;flex-direction:column;gap:10px}
+.wk-video{display:inline-flex;align-items:center;align-self:flex-start;text-decoration:none}
 .wk-swaps{display:flex;flex-wrap:wrap;gap:6px}
 .wk-swapped{font-size:12px;font-weight:700;opacity:.8}
 .wk-plates{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}

@@ -5021,6 +5021,9 @@ const CUES = [
 ];
 const cuesFor = name => CUES.find(([re]) => re.test(name))[1];
 
+// Under Form tips, a button opens YouTube searched for this exercise, for a real-person demo
+const demoVideo = name => `https://www.youtube.com/results?search_query=${encodeURIComponent(name.replace(/\(.*?\)/g, '').trim() + ' exercise proper form')}`;
+
 // Rest timer: starts when you log a set; heavier work gets longer rest
 let rest = null, restT = null;
 function restFor(e, s){
@@ -5199,7 +5202,9 @@ function renderWorkout(){
       ${e.lift && !all ? (pv => `<p class="wk-plates">${pv.viz}<span>${pv.text}</span></p>`)(plateViz(inRamp ? ramp[rs][0] : +dr.w || 0)) : ''}
       ${rampHTML}
       <div class="wk-tools"><button type="button" class="wk-chip" data-wk="tool" data-v="tips" aria-pressed="${wk.tool === 'tips'}">Form tips</button>${SWAPS[e.base] && !e.lift ? `<button type="button" class="wk-chip" data-wk="tool" data-v="swap" aria-pressed="${wk.tool === 'swap'}">Swap</button>` : ''}</div>
-      ${wk.tool === 'tips' ? `<ul class="wk-tips">${cuesFor(e.name).map(c => `<li>${c}</li>`).join('')}</ul>` : ''}
+      ${wk.tool === 'tips' ? `<div class="wk-form">
+        <ul class="wk-tips">${cuesFor(e.name).map(c => `<li>${c}</li>`).join('')}</ul>
+        <a class="wk-chip wk-video" href="${demoVideo(e.name)}" target="_blank" rel="noopener">Watch a video demo</a></div>` : ''}
       ${wk.tool === 'swap' && SWAPS[e.base] && !e.lift ? `<div class="wk-swaps" role="group" aria-label="Swap ${e.base} for">${[e.base, ...SWAPS[e.base]].map(n => `<button type="button" class="wk-chip" data-wk="swapTo" data-v="${n.replace(/"/g, '&quot;')}" aria-pressed="${e.name === n}">${n === e.base ? `${n} (original)` : n}</button>`).join('')}</div>` : ''}
       ${inRamp ? `<p class="wk-status">Warm-up ${rs + 1} of ${ramp.length}. Light and smooth, then your first set of ${fmt(e.sets[0].weight)}.</p>
       <button type="button" class="wk-btn" data-wk="rampLog">Done · ${rs ? fmt(ramp[rs][0]) : 'Bar'} × ${ramp[rs][1]}</button>

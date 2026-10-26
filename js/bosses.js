@@ -255,7 +255,7 @@
         }).join('');
         const target = e.unit === 'time' ? `${e.sets} × beat ${e.reps.toFixed(2)}s` : `${e.sets} × ${e.reps}${e.unit === 'sec' ? ' sec' : ''}${e.weight ? ' · ' + e.weight + ' ' + UNIT : ''}`;
         return `<li class="ta-exc ${isDone ? 'done' : isNow ? 'now' : ''}"><div class="ta-exh"><span class="n">${isDone ? '✓' : i + 1}</span>
-          <div><b>${e.name}</b><small>${target} · rest ${fmtT(e.rest)}</small></div><em>${isDone ? 'DONE' : isNow ? 'NOW' : 'UP NEXT'}</em></div>
+          <div><b>${e.name}</b><small>${target} · rest ${fmtT(e.rest)}</small><a class="ta-vid" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e.name.replace(/\(.*?\)/g, '').trim() + ' exercise proper form')}" target="_blank" rel="noopener">▶ Watch a video demo</a></div><em>${isDone ? 'DONE' : isNow ? 'NOW' : 'UP NEXT'}</em></div>
           <div class="ta-sets">${rows}</div></li>`;
       }).join('');
       listStatus();

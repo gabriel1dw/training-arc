@@ -2271,7 +2271,8 @@ function exCard(p, ex, ei){
   const extra = (lt ? `<div class="ex-last">Last time: ${setsText(lt[0].sets, pe.unit)}${pe.weighted && lt[0].sets[0][0] ? ' ' + S.unit : ''}</div>` : '')
     + (ramp ? `<div class="ex-last">Warm-up: ${ramp.map(([w, r], i) => i ? `${fmt(w)}×${r}` : `bar×${r}`).join(' · ')}</div>` : '');
   return `<section class="ex">
-    <div class="ex-head"><div class="ex-title"><h2 class="ex-name">${ex.lift ? ex.name : swapOf(ex.name)}</h2>${sub ? `<div class="ex-sub num">${sub}</div>` : ''}${note}${extra}</div><span class="ex-scheme num">${scheme}</span></div>
+    <div class="ex-head"><div class="ex-title"><h2 class="ex-name">${ex.lift ? ex.name : swapOf(ex.name)}</h2>${sub ? `<div class="ex-sub num">${sub}</div>` : ''}${note}${extra}
+      <a class="ex-video" href="${demoVideo(ex.lift ? ex.name : swapOf(ex.name))}" target="_blank" rel="noopener">▶ Watch a video demo</a></div><span class="ex-scheme num">${scheme}</span></div>
     ${ex.sets.map((s, si) => setRow(p, ex, ei, s, si)).join('')}
   </section>`;
 }

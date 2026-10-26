@@ -204,6 +204,8 @@ summary.fine{cursor:pointer;padding-block:11px}
 .restore-paste[open]{gap:8px}
 .max-next b{color:var(--power);font-weight:700}
 .ex-last{margin-top:4px;font-size:13px;color:var(--muted)}
+.ex-video{display:inline-flex;align-items:center;min-height:32px;margin-top:4px;font-size:13px;font-weight:700;color:var(--power);text-decoration:none}
+.ta-vid{display:inline-block;margin-top:3px;font-size:11px;font-weight:800;color:var(--accent,#f3c94a);text-decoration:none}
 /* Strength achievements: medals per lift */
 .ach-row{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line)}
 .ach-lift{font-family:var(--label);font-size:15px;letter-spacing:.04em;text-transform:uppercase}

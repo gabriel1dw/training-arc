@@ -644,6 +644,18 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .k-plan .mk,.k-plan i{color:var(--violet)}
 .k-boss{border:1px dashed #ff4d7d;background:color-mix(in srgb,#ff4d7d 12%,var(--surface-2))}
 .k-boss .mk,.k-boss i{color:#ff4d7d}
+.k-deload{border:1px dashed #4fc3a1;background:color-mix(in srgb,#4fc3a1 12%,var(--surface-2))}
+.k-deload .mk,.k-deload i{color:#4fc3a1}
+/* Deload weeks: the card on Today */
+.deload-card{border-color:color-mix(in srgb,#4fc3a1 55%,var(--line));background:linear-gradient(160deg,color-mix(in srgb,#4fc3a1 14%,var(--surface)),var(--surface) 70%)}
+.deload-card h3{margin:4px 0 2px}
+.deload-card .eyebrow{color:#4fc3a1}
+.deload-card .dl-why{margin:4px 0 6px;font-size:15px;line-height:1.4}
+.deload-card .dl-count{font-size:13px;color:var(--muted)}
+.deload-card .dl-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.deload-card .wk-link{margin-top:4px}
+.dl-tag{background:#4fc3a1;color:#0f1a16}
+.st-dl{margin-top:8px;align-self:flex-start}
 .k-missed .cd{color:var(--dim)}.k-missed .mk,.k-missed i{color:#ff5a6e}
 .k-shield .cd{color:var(--dim)}.k-shield .mk,.k-shield i{color:#4cc3ff}
 .legend .sw{display:grid;place-items:center;width:18px;height:18px;padding:3px;border-radius:5px;border:1px solid var(--line);box-sizing:border-box}

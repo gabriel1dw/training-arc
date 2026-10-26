@@ -1686,7 +1686,7 @@ const WEEKLY_Q = [
 const questGrind = (xp, check) => check ? 10 : Math.max(5, Math.round(xp / 2 / 5) * 5);
 const seeded = (key, n) => { let h = 7; for (const c of key) h = Math.imul(h ^ c.charCodeAt(0), 2654435761) >>> 0; return h % n; };
 function ensureQuests(){
-  const q = S.q, t = todayIso(), wk = weekStart(t), p = prog(), day = p.weeks[S.pos.w].days[S.pos.d];
+  const q = S.q, t = todayIso(), wk = weekStart(t), p = prog(), day = liveDay(p, curPos().w, curPos().d);
   if (q.wk !== wk){
     const pool = WEEKLY_Q.filter(x => !x.when || x.when()).map(x => x.id), ids = [];
     while (ids.length < 3 && pool.length) ids.push(pool.splice(seeded(wk + ids.length, pool.length), 1)[0]);
@@ -1724,6 +1724,78 @@ function claimQuests(entry){
 const BOSS = {cali:'Gravity Golem', power:'Iron Titan', build:'Mirror Phantom', sprint:'Lightning Wraith', athlete:'Stadium King', fighter:'Shadow Champion', custom:'Shadow Self', home:'Couch Warden',
   glute:'Stairway Siren', sculpt:'Marble Muse', pilates:'Iron Lotus', strong:'Valkyrie Queen', run:'Endless Road', sport:'Arena Empress'};
 const isBoss = (p, w, d) => w === p.weeks.length - 1 && d === p.weeks[w].days.length - 1;
+
+/* ---------- Deload weeks ---------- */
+// Every so often (every 5th training week by default), or when the signs say you're worn down, a deload week:
+// the same workouts at about 60% of the weight and about half the sets, no rep-outs. The arc pauses while it
+// runs and picks up where it was after; bosses wait. S.deload = {prog, w, d, total, left, reason} while it's on.
+const DELOAD_W = .6;
+function deloadOn(){ const dl = S.deload; if (!dl) return false; if (dl.prog !== S.programId || !(dl.left > 0)){ S.deload = null; return false; } return true; }
+const bossDay = (p, w, d) => !deloadOn() && isBoss(p, w, d);
+// Which workout is up: during a deload, the paused week's days in turn from where you were; otherwise your arc spot
+function curPos(){
+  if (!deloadOn()) return S.pos;
+  const dl = S.deload, n = prog().weeks[dl.w].days.length;
+  return {w:dl.w, d:(dl.d + dl.total - dl.left) % n};
+}
+// A day as it's trained today: lighter and shorter during a deload
+function liveDay(p, w, d){
+  const day = p.weeks[w].days[d]; if (!deloadOn()) return day;
+  return {...day, ex:day.ex.map(x => /warm-up/i.test(x.name) ? x : {...x, sets:x.sets.slice(0, Math.max(1, Math.ceil(x.sets.length / 2)))
+    .map(s => ({...s, pct:s.pct != null ? s.pct * DELOAD_W : s.pct, amrap:false}))})};
+}
+function startDeload(reason){
+  const p = prog(); S.deload = {prog:S.programId, w:S.pos.w, d:S.pos.d, total:p.weeks[S.pos.w].days.length, left:p.weeks[S.pos.w].days.length, reason, from:todayIso()};
+  S.deloadAsk = null; S.sinceDeload = 0; S.liftMiss = {}; S.bossMiss = 0;
+}
+const DELOAD_WHY = [
+  'Muscles, tendons and joints catch up this week, so you come back stronger than you left.',
+  'Fatigue hides strength. Drop it for a week and your real numbers show up.',
+  'Skipping deloads is how plateaus and nagging injuries happen. This is the smart move.',
+  'Light weight, perfect reps. Use this week to clean up your form.',
+  'Your nervous system recovers too. Expect heavier weights to feel lighter next week.',
+  'The masters train smart, not just hard. Rest is part of the program.',
+  'This week you keep the habit and let the body rebuild. Both matter.'
+];
+const DELOAD_REASON = {scheduled:"It's been a few hard weeks. Time to let your body catch up.",
+  lifts:"You've missed reps on a main lift two sessions in a row. That's often fatigue, not weakness.",
+  boss:"The boss has beaten you twice. A lighter week usually fixes that.",
+  missed:"You've missed several training days lately. A lighter week is the easiest way back in.",
+  manual:'Your call. Listening to your body is part of training.'};
+// After a normal workout: count toward the next scheduled deload and watch for signs you need one early
+function deloadCheck(rows, boss, bossWon){
+  const every = S.prefs.deloadEvery, perWeek = prog().weeks[S.pos.w].days.length;
+  S.sinceDeload = (S.sinceDeload || 0) + 1;
+  S.liftMiss = S.liftMiss || {};
+  for (const r of rows) if (r.e.lift && r.sets){ const hit = r.e.sets.every(s => setDone(s) && setActual(s).r >= s.reps); S.liftMiss[r.e.lift] = hit ? 0 : (S.liftMiss[r.e.lift] || 0) + 1; }
+  if (boss) S.bossMiss = bossWon ? 0 : (S.bossMiss || 0) + 1;
+  let reason = null;
+  if (Object.values(S.liftMiss).some(n => n >= 2)) reason = 'lifts';
+  else if ((S.bossMiss || 0) >= 2) reason = 'boss';
+  else if (every && S.sinceDeload >= every * perWeek) reason = 'scheduled';
+  if (reason && !(S.deloadSnooze && S.deloadSnooze > todayIso())) S.deloadAsk = {reason, iso:todayIso()};
+}
+// Several missed training days in the last two weeks also suggests one (checked when Today opens)
+function deloadMissedCheck(){
+  if (deloadOn() || S.deloadAsk || (S.deloadSnooze && S.deloadSnooze > todayIso()) || !S.log.length) return;
+  const t = todayIso(), from = ymd(new Date(fromYmd(t).getTime() - 14 * 864e5));
+  if (from < S.startedOn) return;
+  const m = missMap(logsByDay(), t, from, t); if (Object.keys(m).length >= 3) S.deloadAsk = {reason:'missed', iso:t};
+}
+function deloadHTML(){
+  if (deloadOn()){ const dl = S.deload, k = dl.total - dl.left;
+    return `<section class="panel deload-card" aria-label="Deload week"><div class="row-between"><span class="eyebrow">Deload week</span><span class="num dl-count">Session ${k + 1} of ${dl.total}</span></div>
+      <h3>Light on purpose</h3><p class="dl-why">${DELOAD_WHY[(k + dayNum(todayIso())) % DELOAD_WHY.length]}</p>
+      <p class="fine">About ${Math.round(DELOAD_W * 100)}% of your usual weight and about half the sets. Your arc is paused and picks up right where you left it. Bosses wait for you.</p>
+      <button type="button" class="wk-link" data-act="deloadEnd">End the deload early</button></section>`; }
+  if (S.deloadDone) return `<section class="panel deload-card done" aria-label="Deload complete"><span class="eyebrow">Deload complete</span><h3>Recharged</h3>
+      <p class="dl-why">Your body caught up. Expect strong sessions this week. Back to the arc.</p><button type="button" class="btn btn-power btn-sm" data-act="deloadOk">Let's go</button></section>`;
+  if (S.deloadAsk && !(S.deloadSnooze && S.deloadSnooze > todayIso())) return `<section class="panel deload-card ask" aria-label="Deload suggested"><span class="eyebrow">${S.deloadAsk.reason === 'scheduled' ? 'Deload week due' : 'Your body is asking for a deload'}</span>
+      <h3>Time for a deload week?</h3><p class="dl-why">${DELOAD_REASON[S.deloadAsk.reason] || ''}</p>
+      <p class="fine">One week at about ${Math.round(DELOAD_W * 100)}% weight and half the sets. Your arc pauses, your streak keeps going, and you earn a little Recovery XP.</p>
+      <div class="dl-acts"><button type="button" class="btn btn-power btn-sm" data-act="deloadStart">Start deload</button><button type="button" class="btn btn-ghost btn-sm" data-act="deloadLater">Not now</button></div></section>`;
+  return '';
+}
 // The arc one rank up on the same path (none after S-Rank or for your own arcs)
 const nextArcOf = p => { const R = ["E", "D", "C", "B", "A", "S"], i = R.indexOf(p.rank); return p.custom || i < 0 ? null : PROGRAMS.find(x => x.path === p.path && x.rank === R[i + 1]) || null; };
 function nextArcHTML(p, cls){
@@ -2133,7 +2205,7 @@ function normalize(s){
   for (const k of ['swaps', 'stats', 'items', 'ach', 'exLog', 'ramp', 'tmAdd']) if (!s[k] || typeof s[k] !== 'object' || Array.isArray(s[k])) s[k] = {};   // items: unlocked gear, ach: strength achievements; exLog: each exercise's recent sessions; ramp: warm-up progress; tmAdd: working-weight boosts
   if (typeof s.arcs !== 'number') s.arcs = 0;   // arcs finished, for the Hero scarf
   // Settings, with defaults for anything not set yet
-  s.prefs = Object.assign({vibrate:true, restAuto:true, restScale:1, ramp:true, quotes:true, title:"shuffle", allArcs:false, sound:true}, s.prefs && typeof s.prefs === 'object' ? s.prefs : {});
+  s.prefs = Object.assign({vibrate:true, restAuto:true, restScale:1, ramp:true, quotes:true, title:"shuffle", allArcs:false, sound:true, deloadEvery:5}, s.prefs && typeof s.prefs === 'object' ? s.prefs : {});
   // The power clean joined the maxes later: start older saves at 55% of their deadlift, marked as an estimate
   if (!s.maxEst || typeof s.maxEst !== 'object') s.maxEst = {};
   if (!(s.maxes.clean > 0)){ const step = s.unit === 'kg' ? 2.5 : 5; s.maxes.clean = Math.round((s.maxes.deadlift || 0) * .55 / step) * step || DEFAULT.maxes.clean; if (!s.example) s.maxEst.clean = true; }
@@ -2211,7 +2283,7 @@ const EM_BASE = {md:26, sm:22, lg:42, xs:17};
 const emFont = (k, size) => Math.round(EM_BASE[size] * [1, .74, .56][k.length - 1]) + 'px';
 const emblem = (k, size) => `<div class="emblem ${size}" style="--rc:var(--rank-${k.toLowerCase()});font-size:${emFont(k, size)}">${k}</div>`;
 const today = () => new Date().toLocaleDateString(undefined, {month:'short', day:'numeric'});
-const dayPrefix = () => `${S.programId}|${S.pos.w}|${S.pos.d}|`;
+const dayPrefix = () => { const c = curPos(); return `${S.programId}|${c.w}|${c.d}|${deloadOn() ? 'dl' + (S.deload.total - S.deload.left) + '|' : ''}`; };
 const sessionSets = () => Object.keys(S.done).filter(k => k.startsWith(dayPrefix()) && S.done[k]).length;
 
 /* ---------- Header ---------- */
@@ -2661,22 +2733,22 @@ function questsHTML(){
   </section>`;
 }
 function viewToday(){
-  const p = prog(), {w, d} = S.pos, wk = p.weeks[w], day = wk.days[d];
+  deloadMissedCheck(); const p = prog(), {w, d} = curPos(), wk = p.weeks[w], day = liveDay(p, w, d);
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
   const pips = Array.from({length:total}, (_, i) => `<span class="pip${i < idx ? ' on' : i === idx ? ' cur' : ''}"></span>`).join('');
   const n = sessionSets();
-  let h = gateCardHTML() + bannerHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
-    <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${isBoss(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
+  let h = gateCardHTML() + bannerHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+    <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
-    <div class="stage-meta">Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}</div>
-    ${isBoss(p, w, d) ? `<div class="boss-line">Boss battle: <b>${bossName(p)}</b>. Clear every set to defeat it for +${fmt(bossXp(p))} XP.</div>` : ''}
-    ${isBoss(p, w, d) && window.TA_BOSSES ? `<button class="btn btn-power wk-start" data-act="startWk">${arcBossMid() ? `Resume the boss fight · ${arcBossMid()} sets in` : 'Fight the boss'}</button><button type="button" class="wk-link boss-plain" data-act="startWkPlain">Log it as a normal workout instead</button>`
+    <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
+    ${bossDay(p, w, d) ? `<div class="boss-line">Boss battle: <b>${bossName(p)}</b>. Clear every set to defeat it for +${fmt(bossXp(p))} XP.</div>` : ''}
+    ${bossDay(p, w, d) && window.TA_BOSSES ? `<button class="btn btn-power wk-start" data-act="startWk">${arcBossMid() ? `Resume the boss fight · ${arcBossMid()} sets in` : 'Fight the boss'}</button><button type="button" class="wk-link boss-plain" data-act="startWkPlain">Log it as a normal workout instead</button>`
       : `<button class="btn btn-power wk-start" data-act="startWk">${n ? 'Continue workout' : 'Start workout'}</button>`}
-    <div class="stage-nav">
+    ${deloadOn() ? '' : `<div class="stage-nav">
       <button class="btn btn-ghost btn-sm" data-act="move" data-dir="-1" aria-label="Previous workout">‹ Prev</button>
       <div class="pips" aria-hidden="true">${pips}</div>
       <button class="btn btn-ghost btn-sm" data-act="move" data-dir="1" aria-label="Next workout">Next ›</button>
-    </div>
+    </div>`}
   </section>`;
   h += questsHTML();
   if (p.needsMax && S.example) h += `<div class="notice">These weights use example maxes. <button data-act="tab" data-tab="maxes">Enter your maxes</button> and every number updates.</div>`;
@@ -3146,6 +3218,9 @@ function projectPlan(untilIso){
     if (i === 0 && done[iso]) continue;              // today's session already cleared
     slots.push(iso);
   }
+  // A deload in progress takes the next training days first; the arc picks up after it
+  const dlSlots = deloadOn() ? slots.splice(0, S.deload.left) : [];
+  dlSlots.forEach((iso, k) => { const c = curPos(), n2 = p.weeks[c.w].days.length, dd = (c.d + k) % n2; out[iso] = {w:c.w, d:dd, n:-1, deload:true, name:p.weeks[c.w].days[dd].name, prog:p.name}; });
   const start = S.pos.w * perWeek + S.pos.d, free = slots.map((_, k) => (start + k) % total), pinned = {};
   for (const iso of slots){ const j = pins[iso] == null ? -1 : free.indexOf(pins[iso]); if (j >= 0){ pinned[iso] = free[j]; free.splice(j, 1); } }
   for (const iso of slots){ const n = iso in pinned ? pinned[iso] : free.shift(); if (n == null) continue;
@@ -3210,17 +3285,18 @@ const CAL_ICON = {
   boss:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="m3 8 4.5 3.5L12 4l4.5 7.5L21 8l-2 11H5z"/></svg>',
   missed:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M7 7l10 10M17 7 7 17"/></svg>',
   shield:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/></svg>',
-  plan:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4.5"/></svg>'
+  plan:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4.5"/></svg>',
+  deload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c8 0 14-6 14-14C11 5 5 11 5 19z"/><path d="M5 19 13 11"/></svg>'
 };
 // One day's look: done (gold when every set was cleared), a planned workout (crowned on a boss day), a miss, or a
 // miss the shield covered
 function calKind(iso, tIso, done, plan, miss){
   if (done[iso]) return done[iso].some(l => l.full) ? 'full' : 'done';
-  if (plan[iso]) return isBoss(prog(), plan[iso].w, plan[iso].d) ? 'boss' : 'plan';
+  if (plan[iso]) return plan[iso].deload ? 'deload' : isBoss(prog(), plan[iso].w, plan[iso].d) ? 'boss' : 'plan';
   return miss[iso] || 'rest';
 }
-const CAL_WORD = {full:'full clear', done:'workout done', boss:'boss day planned', plan:'workout planned', missed:'missed', shield:'missed, covered by your streak shield', rest:'rest day'};
-const calGlyph = k => ({full:CAL_ICON.done, done:CAL_ICON.done, boss:CAL_ICON.boss, plan:CAL_ICON.plan, missed:CAL_ICON.missed, shield:CAL_ICON.shield})[k] || '';
+const CAL_WORD = {full:'full clear', done:'workout done', boss:'boss day planned', plan:'workout planned', deload:'deload session planned', missed:'missed', shield:'missed, covered by your streak shield', rest:'rest day'};
+const calGlyph = k => ({full:CAL_ICON.done, done:CAL_ICON.done, boss:CAL_ICON.boss, plan:CAL_ICON.plan, deload:CAL_ICON.deload, missed:CAL_ICON.missed, shield:CAL_ICON.shield})[k] || '';
 const longDate = iso => fromYmd(iso).toLocaleDateString(undefined, {weekday:'long', month:'long', day:'numeric'});
 const shortDate = iso => fromYmd(iso).toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'});
 const volIn = l => l.vol ? l.vol * (l.unit && l.unit !== S.unit ? (S.unit === 'kg' ? 1 / 2.20462 : 2.20462) : 1) : 0;
@@ -3235,11 +3311,11 @@ function dayDetail(iso, tIso, done, plan, miss){
   if (prs.length) body += `<div class="dd-prs"><span class="eyebrow">New maxes</span>${prs.map(h => `<span class="chip gold">${LIFTS[h.lift]} ${fmt(h.val)} ${h.unit || S.unit}</span>`).join('')}</div>`;
   const pl = plan[iso];
   if (pl){
-    const p = prog(), day = p.weeks[pl.w].days[pl.d], boss = isBoss(p, pl.w, pl.d), ex = day.ex.filter(x => !/warm-up/i.test(x.name));
-    body += `<div class="dd-block"><span class="eyebrow">${iso === tIso ? "Today's workout" : 'Planned'}${boss ? ' · boss day' : ''}</span>
+    const p = prog(), day = (pl.deload ? liveDay(p, pl.w, pl.d) : p.weeks[pl.w].days[pl.d]), boss = !pl.deload && isBoss(p, pl.w, pl.d), ex = day.ex.filter(x => !/warm-up/i.test(x.name));
+    body += `<div class="dd-block"><span class="eyebrow">${iso === tIso ? "Today's workout" : 'Planned'}${boss ? ' · boss day' : ''}${pl.deload ? ' · deload, light on purpose' : ''}</span>
       <div class="dd-name">${pl.name}</div><div class="fine">${pl.prog} · Week ${pl.w + 1}, Day ${pl.d + 1}${boss ? ` · ${bossName(p)}` : ''}</div>
       <ul class="dd-ex">${ex.slice(0, 6).map(x => `<li><span>${x.lift ? x.name : swapOf(x.name)}</span><b class="num">${x.sets.length} × ${x.sets[0].reps}${unitShort(x.sets[0].unit)}</b></li>`).join('')}${ex.length > 6 ? `<li class="fine">+${ex.length - 6} more</li>` : ''}</ul>
-      <div class="dd-acts">${iso === tIso ? `<button class="btn btn-power btn-sm" data-act="startWk">${boss && window.TA_BOSSES ? 'Fight the boss' : 'Start workout'}</button>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-act="planEdit" data-iso="${iso}">Edit</button></div></div>`;
+      <div class="dd-acts">${iso === tIso ? `<button class="btn btn-power btn-sm" data-act="startWk">${boss && window.TA_BOSSES ? 'Fight the boss' : 'Start workout'}</button>` : ''}${pl.deload ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-act="planEdit" data-iso="${iso}">Edit</button>`}</div></div>`;
   } else if (!done[iso]){
     body = miss[iso] === 'shield' ? `<p class="empty">${CAL_ICON.shield}Missed, but your streak shield covered it. One miss a week won't break your streak.</p>`
       : miss[iso] ? '<p class="empty">Missed. This was a training day with no workout logged.</p>'
@@ -3296,6 +3372,7 @@ function viewCalendar(){
       <span class="lg"><i class="sw k-full">${CAL_ICON.done}</i>Full clear</span>
       <span class="lg"><i class="sw k-plan">${CAL_ICON.plan}</i>Planned</span>
       <span class="lg"><i class="sw k-boss">${CAL_ICON.boss}</i>Boss day</span>
+      <span class="lg"><i class="sw k-deload">${CAL_ICON.deload}</i>Deload</span>
       <span class="lg"><i class="sw k-missed">${CAL_ICON.missed}</i>Missed</span>
       <span class="lg"><i class="sw k-shield">${CAL_ICON.shield}</i>Shielded</span>
     </div>
@@ -4441,6 +4518,9 @@ function renderSettings(){
       <div class="st-row st-col"><div><b>Rest length</b><span>Heavy lifts start at 2:30 to 3:00 on Standard</span></div>
         <div class="seg seg-wide" role="group" aria-label="Rest length">${REST_SCALES.map(([v, t]) => `<button type="button" data-act="restScale" data-v="${v}" aria-pressed="${p.restScale === v}">${t}</button>`).join('')}</div></div>
       ${sw('ramp', 'Warm-up ramp', 'Warm-up sets before the big barbell lifts')}
+      <div class="st-row st-col"><div><b>Deload weeks</b><span>A lighter week (about ${Math.round(DELOAD_W * 100)}% weight, half the sets) so your body catches up. It's also suggested early if you show signs of fatigue.</span></div>
+        <div class="seg seg-wide" role="group" aria-label="Deload schedule">${[[0, 'Off'], [4, 'Every 4th wk'], [5, 'Every 5th wk'], [6, 'Every 6th wk']].map(([v, t]) => `<button type="button" data-act="deloadEvery" data-v="${v}" aria-pressed="${p.deloadEvery === v}">${t}</button>`).join('')}</div>
+        <button type="button" class="btn btn-ghost btn-sm st-dl" data-act="${deloadOn() ? 'deloadEnd' : 'deloadStart'}" data-manual="1">${deloadOn() ? 'End the deload now' : 'Start a deload week now'}</button></div>
       ${sw('sound', 'Sound effects', '8-bit sounds for sets, PRs, level-ups and rank-ups')}
       ${sw('vibrate', 'Vibration', 'A buzz when you log a set or rest is over, and a big one for PRs')}
       ${sw('quotes', 'Quotes', 'Words from the masters on Today and between sets')}
@@ -5338,6 +5418,8 @@ const LOWER = /squat|deadlift|rdl|lunge|leg press|hip thrust|hack|step-up|split|
 // halves), two misses in a row drop 10%, otherwise hold
 function suggestFor(e){
   if (!e.pick) return null;
+  if (deloadOn()){ const L = lastTime(e.name), top = L ? Math.max(...L[0].sets.map(s => s[0])) : (S.lastPick[e.name] || 0);
+    return top ? {w:roundW(top * DELOAD_W), why:`Deload: about ${Math.round(DELOAD_W * 100)}% of your usual weight.`} : null; }
   const L = lastTime(e.name); if (!L) return null;
   const top = Math.max(...L[0].sets.map(s => s[0])); if (!top) return null;
   const step = (LOWER.test(e.name) ? 10 : 5) * (S.unit === 'kg' ? .5 : 1);
@@ -5364,19 +5446,20 @@ function coachLine(plan, e, next, all, doneN, total){
   { const rp = rampFor(plan, e); if (rp && rampAt(e, rp) < rp.length) return pick(['Easy weight. Groove the movement and save your energy.', 'Warm-up sets are practice reps. Make them perfect.', 'Build up slow. The heavy set will feel better for it.']); }
   if (rest) return pick(['Breathe. Shake it out. Next set soon.', 'Sip some water. You earned that one.', 'Rest is part of the work. Stay ready.', 'Slow breaths. Let your heart rate settle.', 'Picture the next set going perfectly.', 'Loosen up the arms. Stay warm.']);
   if (all) return 'Exercise done! Pick the next one below.';
+  if (deloadOn()) return pick(['Light on purpose. Smooth reps, perfect form.', 'Leave fresh. That\'s the whole goal today.', 'Feel how easy this moves. That\'s recovery working.', 'No grinding this week. Crisp and controlled.', 'Use the light weight to polish your technique.', 'Your body is rebuilding. Let it.']);
   if (/warm-up/i.test(e.base)) return 'Warm up right. We go hard after this.';
-  if (isBoss(p, w, d) && doneN > 0 && doneN % 3 === 0) return `${BOSS[p.path]} is down to ${total - doneN} HP. Keep hitting!`;
+  if (bossDay(p, w, d) && doneN > 0 && doneN % 3 === 0) return `${BOSS[p.path]} is down to ${total - doneN} HP. Keep hitting!`;
   if (next.amrap) return 'Rep-out set! Leave nothing in the tank.';
   if (e.lift && next.reps <= 3) return 'Heavy one. Brace hard and drive!';
   if (e.sets.indexOf(next) === e.sets.length - 1 && e.sets.length > 1) return 'Last set of this one. Make it your best.';
-  if (doneN === 0) return isBoss(p, w, d) ? `Boss day. ${bossName(p)} is waiting. Let's go!` : 'Let\'s work. First set, clean reps.';
+  if (doneN === 0) return bossDay(p, w, d) ? `Boss day. ${bossName(p)} is waiting. Let's go!` : 'Let\'s work. First set, clean reps.';
   if (total - doneN <= 3) return `${total - doneN} set${total - doneN === 1 ? '' : 's'} left. Finish strong!`;
   return pick(COACH_PATH[p.path] || COACH_PATH.power);
 }
 
 let wk = null;   // {active: exercise index, drafts: what's typed per exercise, tool: 'tips' | 'swap' | null}
 function wkPlan(){
-  const p = prog(), {w, d} = S.pos, day = p.weeks[w].days[d];
+  const p = prog(), {w, d} = curPos(), day = liveDay(p, w, d);
   return {p, w, d, day, ex:day.ex.map((ex, ei) => ({ei, base:ex.name, name:ex.lift ? ex.name : swapOf(ex.name), acc:!!ex.acc, note:!ex.lift && S.swaps[ex.name] ? '' : ex.note, lift:ex.lift, unit:ex.sets[0].unit || null,
     pick:!ex.lift && !!ex.sets[0].pick, weighted:!!ex.lift || !!ex.sets[0].pick,
     sets:ex.sets.map((s, si) => ({key:`${dayPrefix()}${ei}|${si}`, reps:s.reps, amrap:!!s.amrap, weight:ex.lift ? setWeight(p, s, ex.lift) : 0}))}))};
@@ -5438,9 +5521,9 @@ function renderWorkout(){
       <span class="wk-mini" aria-label="${k} of ${x.sets.length} sets done">${x.sets.map(s => `<i class="${setDone(s) ? 'done' : ''}"></i>`).join('')}</span></button>`;
   }).join('');
   page.innerHTML = `<button type="button" class="wk-back" data-wk="back">‹ Back to Today</button>
-    <header class="wk-head"><p class="wk-kicker">${pathOf(p).name} · ${p.name}, week ${w + 1} day ${d + 1}</p><h1 class="wk-title" id="wkTitle">${day.name}</h1></header>
+    <header class="wk-head"><p class="wk-kicker">${deloadOn() ? `Deload session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · about ${Math.round(DELOAD_W * 100)}% weight, half the sets` : `${pathOf(p).name} · ${p.name}, week ${w + 1} day ${d + 1}`}</p><h1 class="wk-title" id="wkTitle">${day.name}</h1></header>
     <div class="wk-rank"><div class="wk-rank-row"><span class="wk-rank-name">Lv ${rb.lv.L} · ${rb.r.k}-Rank ${rb.r.t}</span><span>${rb.next}</span></div>${rb.bar}</div>
-    ${isBoss(p, w, d) ? `<section class="wk-panel wk-boss" aria-label="Boss battle"><div class="wk-boss-top"><span class="wk-boss-name">${bossName(p)}</span><span class="wk-boss-tag">Boss · HP ${total - doneN}/${total}</span></div>
+    ${bossDay(p, w, d) ? `<section class="wk-panel wk-boss" aria-label="Boss battle"><div class="wk-boss-top"><span class="wk-boss-name">${bossName(p)}</span><span class="wk-boss-tag">Boss · HP ${total - doneN}/${total}</span></div>
       <div class="wk-hp" role="img" aria-label="Boss health ${total - doneN} of ${total}"><i style="width:${(total - doneN) / total * 100}%"></i></div><p>Every set you log is a hit. Clear every set to defeat it: +${fmt(bossXp(p))} XP.</p></section>` : ''}
     ${restHTML()}
     <section class="wk-panel wk-active" aria-live="polite">
@@ -5487,7 +5570,7 @@ function wkLog(){
   const dr = wkDraft(e), r = Math.max(1, Math.round(+dr.r || 0)), wt = e.weighted ? Math.max(0, +dr.w || 0) : 0;
   S.done[s.key] = true; S.setLog[s.key] = {w:wt, r};
   if (s.amrap) S.amrap[s.key] = r;
-  if (e.pick && wt) S.lastPick[e.name] = wt;
+  if (e.pick && wt && !deloadOn()) S.lastPick[e.name] = wt;   // deload weights aren't your working weights
   if (exDone(e)){ const nx = plan.ex.find(x => !exDone(x)); if (nx){ wk.active = nx.ei; wk.tool = null; } }
   if (plan.ex.some(x => !exDone(x))) startRest(restFor(e, s)); else stopRest();
   save(); renderWorkout();
@@ -5514,26 +5597,29 @@ function completeWorkout(){
   });
   // Remember each exercise's sets for "last time" and auto-progression (the general warm-up aside). hit:
   // every set done with at least its target reps.
-  for (const r of rows){ if (!r.sets || /warm-up/i.test(r.e.base)) continue;
+  // (not during a deload: light weights mustn't become the base for your next suggestions)
+  const dl = deloadOn();
+  for (const r of rows){ if (dl || !r.sets || /warm-up/i.test(r.e.base)) continue;
     const done = r.e.sets.filter(setDone), hit = done.length === r.e.sets.length && done.every(s => setActual(s).r >= s.reps);
     S.exLog[r.e.name] = [{iso:todayIso(), unit:S.unit, sets:done.map(s => { const a = setActual(s); return [a.w, a.r]; }), hit}, ...(S.exLog[r.e.name] || [])].slice(0, 3); }
   const total = plan.ex.reduce((a, e) => a + e.sets.length, 0), clear = clearXp(n, total);
   const prs = rows.filter(r => r.pr), base = xpFor(n, p, total), full = n >= total;
   const achs = prs.flatMap(r => setMax(r.e.lift, r.pr, 'PR'));   // same as the Lock it in button
   const vol = rows.reduce((a, r) => a + r.vol, 0);
-  const boss = isBoss(p, w, d), bossWon = boss && full;
+  const boss = bossDay(p, w, d), bossWon = boss && full;
   const entry = {date:today(), iso:todayIso(), prog:p.name, path:p.path, rank:p.rank, day:day.name, week:w + 1, sets:n, total, full,
     acc:rows.some(r => r.e.acc) && rows.filter(r => r.e.acc).every(r => r.sets >= r.e.sets.length),
     beat:rows.some(r => r.e.sets.some(s => s.amrap && setDone(s) && setActual(s).r > s.reps)),
     warm:rows.some(r => /warm-up/i.test(r.e.base) && r.sets), boss:bossWon || undefined, vol:vol ? Math.round(vol) : undefined, unit:vol ? S.unit : undefined, xp:0,
     // every set as done, so the workout can be corrected later from the Calendar
-    id:logId(), ex:rows.filter(r => r.sets && !/warm-up/i.test(r.e.base)).map(r => ({name:r.e.name, w:r.e.weighted ? 1 : 0, unit:r.e.unit || null,
+    deload:dl || undefined, id:logId(), ex:rows.filter(r => r.sets && !/warm-up/i.test(r.e.base)).map(r => ({name:r.e.name, w:r.e.weighted ? 1 : 0, unit:r.e.unit || null,
       sets:r.e.sets.filter(setDone).map(s => { const a = setActual(s); return [a.w, a.r]; })}))};
   S.log.unshift(entry); S.log = S.log.slice(0, 1000);
   const streakN = weekStreak(), sm = streakMult(streakN), streakXp = Math.round(base * (sm - 1));
   const quests = claimQuests(entry), questXp = quests.reduce((a, q) => a + q[1], 0);
   const ap = auraPerk(), auraXp = ap ? Math.round((base + streakXp) * ap.pct / 100) : 0;   // the aura you wear adds a little XP
-  const gain = base + streakXp + auraXp + (bossWon ? bossXp(p) : 0) + prs.length * 100 + questXp;
+  const recoveryXp = dl ? Math.round(base * .25) : 0;   // a deload is never a step back: a little Recovery XP on top
+  const gain = base + streakXp + auraXp + recoveryXp + (bossWon ? bossXp(p) : 0) + prs.length * 100 + questXp;
   entry.xp = gain;
   S.xp += gain; S.sets += n; S.prs += prs.length;
   const stats = statGain(p.statW || p.path, p.rank, n / total), statsBefore = Object.fromEntries(STAT_KEYS.map(([k]) => [k, statVal(k)])), ovrBefore = ovr(p.path);
@@ -5545,6 +5631,10 @@ function completeWorkout(){
   if (nd >= perWeek){ nd = 0; nw++; }
   if (nw >= p.weeks.length){ nw = 0; arcDone = true; }
   if (boss && !bossWon){ nd = d; nw = w; arcDone = false; }   // the boss waits for a rematch
+  // A deload session leaves the arc where it paused; the last one ends the deload
+  if (dl){ nd = S.pos.d; nw = S.pos.w; arcDone = false; S.deload.left--;
+    if (S.deload.left <= 0){ S.deload = null; S.deloadDone = true; S.lastDeload = todayIso(); } }
+  else deloadCheck(rows, boss, bossWon);
   S.arcJustDone = arcDone ? p.id : null;   // Today offers the next arc until you start one or train again
   if (arcDone) S.arcs++;
   // Finishing an arc (its boss beaten) steps up the working weight of every barbell lift it used:
@@ -5558,6 +5648,7 @@ function completeWorkout(){
   if (mult > 1) parts.push([`${p.rank}-Rank arc bonus (×${mult})`, base - (n * 10 + clear)]);
   if (streakXp) parts.push([`${streakN}-week streak (×${sm.toFixed(2)})`, streakXp]);
   if (auraXp) parts.push([`Aura: ${shopItem(shopEq().aura).name} (+${ap.pct}%)`, auraXp]);
+  if (recoveryXp) parts.push(['Recovery (deload session)', recoveryXp]);
   if (bossWon) parts.push([`Boss defeated: ${bossName(p)}`, bossXp(p)]);
   if (prs.length) parts.push([prs.length > 1 ? `${prs.length} new maxes` : 'New max', prs.length * 100]);
   parts.push(...quests);
@@ -5832,7 +5923,7 @@ document.addEventListener('click', e => {
   }
   else if (a === 'move') move(+t.dataset.dir);
   else if (a === 'finish') finish();
-  else if (a === 'startWk'){ const p = prog(); if (isBoss(p, S.pos.w, S.pos.d) && window.TA_BOSSES) openArcBoss(); else openWorkout(); }
+  else if (a === 'startWk'){ const p = prog(); if (bossDay(p, S.pos.w, S.pos.d) && window.TA_BOSSES) openArcBoss(); else openWorkout(); }
   else if (a === 'startWkPlain') openWorkout();
   else if (a === 'checkQuest'){   // daily check-ins are on your honor: tap when you've done it
     ensureQuests(); const id = t.dataset.v, c = CHECK_Q.find(x => x.id === id), k = `${S.q.day}:${id}`;
@@ -5855,6 +5946,12 @@ document.addEventListener('click', e => {
   else if (a === 'closeSettings') closeDialog('settings');
   else if (a === 'pref'){ S.prefs[t.dataset.k] = !S.prefs[t.dataset.k]; save(); if (t.dataset.k === 'restAuto' && !S.prefs.restAuto) stopRest(); render(); }
   else if (a === 'restScale'){ S.prefs.restScale = +t.dataset.v; save(); renderSettings(); }
+  else if (a === 'deloadEvery'){ S.prefs.deloadEvery = +t.dataset.v; save(); renderSettings(); }
+  else if (a === 'deloadStart'){ startDeload(t.dataset.manual ? 'manual' : (S.deloadAsk && S.deloadAsk.reason) || 'manual'); save(); render();
+    if (t.closest('#stIn')) renderSettings(); toast(`Deload week started: ${S.deload.total} lighter sessions. Your arc is paused until it's done.`); }
+  else if (a === 'deloadLater'){ S.deloadAsk = null; S.deloadSnooze = ymd(new Date(fromYmd(todayIso()).getTime() + 7 * 864e5)); save(); render(); toast('Okay. I\'ll check in again next week.'); }
+  else if (a === 'deloadEnd'){ S.deload = null; S.lastDeload = todayIso(); save(); render(); if (t.closest('#stIn')) renderSettings(); toast('Deload ended. Back to your arc.'); }
+  else if (a === 'deloadOk'){ S.deloadDone = false; save(); render(); }
   else if (a === 'stEditHero'){ closeDialog('settings'); document.querySelector('[data-act=openHero]')?.click(); }
   else if (a === 'stSetup'){ closeDialog('settings'); openWelcome(); }
   else if (a === 'showTitle'){ closeDialog('settings'); openTitle(S.prefs.title); }

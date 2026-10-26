@@ -1644,7 +1644,7 @@ const rewardsBetween = (a, b) => REWARDS.filter(r => r.lv > levelFor(a) && r.lv 
 const stageLv = name => (REWARDS.find(r => r.kind === 'stage' && r.name === name) || {lv:0}).lv;
 const colorLv = c => (REWARDS.find(r => r.color === c) || {lv:0}).lv;
 // The title under your name: a reward title you picked, or your rank's title
-const heroTitle = () => { const st = shopItem(shopEq().title); if (st) return st.text; const t = S.hero.title; return t && REWARDS.some(r => r.kind === 'title' && r.name === t && rewardOpen(r)) ? t : rankFor(S.xp).t; };
+const heroTitle = () => { const st = shopItem(shopEq().title); if (st) return st.text; const t = S.hero.title; return t && (REWARDS.some(r => r.kind === 'title' && r.name === t && rewardOpen(r)) || (S.eventTitles || []).includes(t)) ? t : rankFor(S.xp).t; };
 
 // Weekly streak: weeks in a row (Monday to Sunday) where you hit your goal of training days. This week
 // counts once you reach the goal and can't break the streak until it's over.
@@ -2013,14 +2013,98 @@ function shopLook(base, w, aura){
 }
 function wornLook(g){ return window.TA_SHOP ? shopLook(S.hero[g].look, TA_SHOP.look(), (shopItem(shopEq().aura) || {}).color) : S.hero[g].look; }
 const shopGlow = () => { const a = shopItem(shopEq().aura); return a ? ` style="filter:drop-shadow(0 0 2px ${a.color}) drop-shadow(0 0 7px ${a.color})"` : ''; };
-const shopPet = () => { const p = shopItem(shopEq().pet); return p ? `<img class="shop-pet" src="${p.icon}" alt="">` : ''; };
+// Pets that grow: the pet you have out earns a point for every set you log. It levels up to 30 and changes
+// form at levels 5, 15 and 25: bigger, glowing brighter, sparkling at Legendary, and a little better perk each time.
+const PET_FORMS = [[1, 'Hatchling'], [5, 'Young'], [15, 'Trained'], [25, 'Legendary']], PET_MAX = 30;
+const petPts = id => (S.petXp || {})[id] || 0;
+const petLv = id => Math.min(PET_MAX, 1 + Math.floor(Math.sqrt(petPts(id) / 1.15)));
+const petLvPts = L => Math.ceil((L - 1) * (L - 1) * 1.15);   // points needed to reach level L
+const petForm = id => PET_FORMS.reduce((f, [l], i) => petLv(id) >= l ? i : f, 0);
+// Pet art is drawn in code (the pet-art script): each pet's look for its form and mood, cached as an image
+const petArtCache = {};
+function petArt(id, form = 0, mood = 'happy'){ const k = `${id}|${form}|${mood}`; if (petArtCache[k]) return petArtCache[k];
+  const draw = window.PETART && PETART.PETS[id]; if (!draw) return null;
+  try { return petArtCache[k] = PETART.render(draw, {form, mood}).toDataURL(); } catch(e){ return null; } }
+// a locked form on the profile card: the shape only
+function petSil(id, form){ const k = `${id}|${form}|sil`; if (petArtCache[k]) return petArtCache[k];
+  const draw = window.PETART && PETART.PETS[id]; if (!draw) return '';
+  const c = PETART.render(draw, {form, mood:'happy'}), x = c.getContext('2d'); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#2a2438'; x.fillRect(0, 0, c.width, c.height);
+  return petArtCache[k] = c.toDataURL(); }
+const petIcon = id => petArt(id, petForm(id), petMood()) || (shopItem(id) || {}).icon;
+// Mood follows your training: hyped on a day you trained, happy for two days after, restless after that, then napping
+function petMood(){ const last = (S.log.find(l => l.iso) || {}).iso; if (!last) return 'happy'; const d = dayNum(todayIso()) - dayNum(last);
+  return d <= 0 ? 'hyped' : d <= 2 ? 'happy' : d <= 5 ? 'bored' : 'sleep'; }
+const PET_MOOD = {hyped:['Hyped', 'You trained today.'], happy:['Happy', 'Training keeps it happy.'], bored:['Restless', 'It misses training. A workout cheers it up.'], sleep:['Napping', 'It dozed off waiting. Train to wake it up.']};
+const petName = id => ((S.petNames || {})[id] || (shopItem(id) || {}).name || 'Pet');
+// What each pet does, true to what it is: happy, restless, asleep, after a PR, after a boss win
+const PET_VOICE = {
+  pet_crane:['unfolds its wings and glides a lap around you.', 'is flapping its paper wings, ready to fly to the gym.', 'folded itself flat and is resting on the shelf.', 'refolds itself into a tiny trophy.', 'circles overhead like a victory banner.'],
+  pet_ember_dragon:['puffs a happy little smoke ring.', 'is pacing and huffing sparks. It wants a workout.', 'is curled around its tail, embers barely glowing.', 'breathes a burst of flame straight up.', 'roars and spreads its wings wide.'],
+  pet_byte_jr:['beeps a happy tune and flashes its screen.', 'shows a loading bar: "WAITING FOR WORKOUT".', 'went into sleep mode. Its screen shows Zzz.', 'prints "NEW PR" across its screen.', 'plays a victory chiptune at full volume.'],
+  pet_pixel_slime:['wobbles back and forth happily.', 'is slowly melting into a flat puddle out of boredom.', 'is a quiet, round blob, napping.', 'bounces three times higher than usual.', 'jiggles so hard it almost splits in two.'],
+  pet_puff:['purrs and kneads your gym bag.', 'is batting at your shoelaces. It wants to go.', 'is curled into a fluffy ball, napping.', 'chases its tail in a happy circle.', 'puffs up its fur, proud as a lion.'],
+  pet_bluebird:['chirps a cheerful song.', 'is hopping by the door, chirping at it.', 'tucked its head under its wing.', 'sings a whole song just for you.', 'flies a victory loop and lands on your shoulder.'],
+  pet_drone_pup:['hovers in a happy figure eight.', 'is recording an empty gym. It wants footage of you.', 'landed on its charger and powered down.', 'replays your lift in slow motion.', 'zooms around filming the win from every angle.'],
+  pet_mascot:['wags its whole body and barks.', 'brought you your gym shoes. Hint, hint.', 'is snoozing in its little jersey.', 'barks once for every rep you did.', 'runs a lap around you, cheering like a crowd.'],
+  pet_ember_fox:['flicks its burning tail happily.', 'is pawing at the door, its tail flickering low.', 'is curled up, its tail glowing like a campfire.', 'flares its tail bright orange.', 'lets out a sharp yip and a burst of sparks.'],
+  pet_moon_slime:['glows softly and wobbles.', 'is dimming a little. It misses training.', 'is glowing faintly, fast asleep.', 'shines as bright as a full moon.', 'lights up the whole room in silver.'],
+  pet_shadow_owl:['blinks slowly. That is an owl smile.', 'is staring at you. Silently. It knows.', 'is perched with its eyes closed.', 'turns its head all the way around in approval.', 'spreads its wings without a sound.'],
+  pet_koi:['swishes its tail and blows bubbles.', 'is swimming slow circles in its bowl.', 'is hovering still at the bottom of its bowl.', 'leaps clean out of the water.', 'swims upstream and leaps the waterfall.'],
+  pet_ghost:['floats in a happy zigzag.', 'is chasing dots around the room out of boredom.', 'faded halfway into the wall for a nap.', 'flashes blue and white like a power-up.', 'does a full arcade victory spin.'],
+  pet_bunny:['does a happy little hop-twist in the air.', 'is thumping its foot. Time to train.', 'is asleep on its cloud, ears flopped.', 'box jumps onto your bench.', 'hops in circles so fast it leaves a cloud trail.'],
+  pet_data_cat:['purrs in binary: 01110000.', 'knocked your phone off the desk. Log a workout.', 'is curled on a warm laptop, asleep.', 'flashes its circuit stripes bright cyan.', 'meows one long, happy beep.'],
+  pet_turtle:['pokes its head out and smiles.', 'is walking slowly toward the gym without you.', 'pulled into its shell for a nap.', 'does a very slow, very proud victory lap.', 'stands as tall as a turtle can.'],
+  pet_wisp:['flickers warm and bright.', 'is drifting around the room, dim and restless.', 'shrank to a tiny sleeping spark.', 'flares into a bright blue flame.', 'splits into sparks that swirl around you.'],
+  pet_baby_phoenix:['chirps and its feathers flicker.', 'is smoldering. It needs a workout to reignite.', 'is nestled in warm ashes, asleep.', 'bursts into flame and chirps proudly.', 'rises in a burst of fire and sparks.'],
+  pet_mini_golem:['stomps happily. The floor shakes a little.', 'is stacking pebbles out of boredom.', 'sat down and is now just a rock.', 'lifts a boulder over its head too.', 'pounds its stone fists together.'],
+  pet_mini_shadow:['copies your pose and grins.', 'is stretching across the floor, waiting.', 'melted into the shadows for a nap.', 'flexes exactly like you.', 'throws its little arms up in a cheer.'],
+  pet_heart_bunny:['hops onto your bench and wiggles its nose.', 'is sitting on your gym bag, staring.', 'is asleep with its ears over its eyes.', 'leaves a trail of little hearts.', 'hops so high it nearly hits the ceiling.'],
+  pet_frog:['croaks happily.', 'is doing jump squats to show you how.', 'is dozing on a lily pad.', 'does a huge celebration leap.', 'puffs out its throat and croaks loud.'],
+  pet_sea_turtle:['paddles its flippers happily.', 'is swimming laps without you.', 'is floating, fast asleep.', 'does a slow barrel roll.', 'rides a wave all the way to you.'],
+  pet_bulldog:['snorts and wiggles its stubby tail.', 'dropped its leash at your feet.', 'is snoring. Loudly.', 'lets out one proud woof.', 'does zoomies around the gym.'],
+  pet_crow:['caws and hops sideways.', 'stole your gym key and is holding it hostage.', 'is perched with its feathers fluffed, asleep.', 'brings you a shiny bottle cap as a prize.', 'caws three times, loud and fearless.'],
+  pet_jack:['glows brighter through its carved grin.', 'has a candle flickering low. It wants a workout.', 'let its candle go out. It is napping.', 'glows so bright the room turns orange.', 'cackles and rolls in a happy circle.'],
+  pet_boo:['floats over for a ghostly high five.', 'is rattling the dumbbells. A spooky hint.', 'is snoozing, half see-through.', 'yells "BOO-YAH!"', 'spotted you from beyond, and cheers.'],
+  pet_gobbles:['fans out his tail feathers proudly.', 'is strutting back and forth, gobbling.', 'is roosting, fast asleep.', 'gobbles loudly and puffs up twice his size.', 'struts a full victory lap.'],
+  pet_penguin:['flaps its flippers and waddles in place.', 'waddled to the rack and is waiting there.', 'is standing up, fast asleep.', 'belly slides across the floor.', 'does a proud waddle dance.'],
+  pet_tiger:['lets out a tiny roar.', 'is pouncing on your shoelaces.', 'is sprawled out, napping in the sun.', 'roars as loud as a tiny tiger can.', 'stalks a victory lap, tail high.'],
+  pet_claw_crab:['clicks its claws happily.', 'is pinching at the air, restless.', 'is tucked into the sand, asleep.', 'waves both claws over its head.', 'does a sideways victory scuttle.'],
+  pet_sky_owl:['hoots softly and ruffles its feathers.', 'is watching the door from up high.', 'is perched with its eyes shut.', 'hoots twice in approval.', 'swoops a wide circle above you.'],
+  pet_neon_snake:['coils around your shaker and glows.', 'is tying itself in knots out of boredom.', 'is coiled up, its glow turned low.', 'flashes its stripes every color.', 'rears up and hisses in triumph.'],
+  pet_bear_cub:['rolls over for a belly rub.', 'woke up early and wants to train.', 'is hibernating. It must be a rest day.', 'stands on its hind legs and growls proudly.', 'gives you a big bear hug.'],
+  pet_moon_bat:['flutters around in a happy loop.', 'is hanging from the pull-up bar, waiting for you.', 'is hanging upside down, asleep.', 'flips all the way around the pull-up bar.', 'squeaks and flaps a victory loop.'],
+  pet_slimeling:['clinks happily.', 'is wobbling, heavy and restless.', 'is a still lump of iron, napping.', 'gets a little heavier with pride.', 'rings like a struck plate.'],
+  pet_hatchling:['floats a few inches off the ground.', 'is pulling small things toward the door. Hint.', 'is curled up, floating slowly in its sleep.', 'makes everything in the room float for a second.', 'lets out its first tiny roar.'],
+  pet_snow_owl:['fluffs up and hoots.', 'has been up since 5 am, waiting.', 'is a round fluffy ball, asleep.', 'hoots and flaps its white wings.', 'shakes off a little snowfall of feathers.'],
+  pet_duck:['quacks and waddles in a circle.', 'is splashing in a puddle, bored.', 'is asleep with its bill tucked in.', 'quacks once for the PR. Loudly.', 'quacks a whole victory song.'],
+  pet_sun_crab:['clicks its claws and glows warm.', 'is pinching at lazy reps that never happened.', 'is buried in warm sand, asleep.', 'shines like a little sun.', 'scuttles a happy circle in the sunlight.'],
+  pet_harvest_bear:['hugs its acorn and grins.', 'is stocking up snacks. Time to burn some.', 'is curled up in the leaves, napping.', 'shares its acorn with you.', 'does a heavy, happy bear stomp.'],
+  pet_count_bat:['swirls its cape. "Excellent form."', 'says "I vant to spot you." It is waiting.', 'is hanging upside down in its cape, asleep.', 'bows. "Magnificent."', 'raises its cape. "The night is ours."'],
+  pet_bulk_bear:['shakes its protein shaker.', 'finished its snack and wants to train.', 'is asleep after a big meal.', 'chugs its shake in celebration.', 'flexes its fluffy arms.'],
+  dr_couch_potato:['turned off the TV. Proud of itself.', 'is reaching for the remote again...', 'fell asleep on the couch. Classic.', 'drops the remote and cheers.', 'got up off the couch to celebrate.'],
+  dr_rust_slime:['wobbles with a squeaky creak.', 'is getting rustier. It needs movement.', 'is a quiet, rusty puddle.', 'shakes off a few flakes of rust.', 'clangs like an old dumbbell.'],
+  dr_plate_pup:['wags its tail. Its plate helmet clanks.', 'is pushing its plate toward the rack.', 'is napping with its helmet over its eyes.', 'barks and spins its plate.', 'clanks its helmet in a proud salute.'],
+  dr_thunderbird:['flaps once. A little thunder rumbles.', 'is crackling with static. It needs a storm of reps.', 'is roosting, quiet as a calm sky.', 'flaps once. THUNDER.', 'calls down a flash of lightning.'],
+  dr_boulder:['rolls in a happy little circle.', 'is stuck, like a plateau. Train to get it rolling.', 'is very still. It is a rock.', 'rolls right over the plateau.', 'rumbles with pride.'],
+  dr_shard:['shows your reflection, smiling.', 'is reflecting an empty gym.', 'has gone dark and dim.', 'reflects you, but stronger.', 'flashes bright and rings like glass.'],
+  dr_dragon_egg:['wobbles. Something inside kicked.', 'is cold to the touch. It needs your heat.', 'is still and quiet.', 'cracks a tiny bit more. It is getting stronger.', 'pulses with light from inside.'],
+  dr_spotter_angel:['coos and holds up two fingers.', 'is hovering by the bench, waiting to spot you.', 'is asleep under its halo.', 'smiles. "All you."', 'glows with a soft, proud light.']
+};
+// kind: 'mood' (what it's doing right now), 'pr' or 'boss'
+function petLine(id, kind = 'mood'){ const v = PET_VOICE[id], m = petMood(); if (!v) return `${petName(id)} ${m === 'sleep' ? 'is napping.' : m === 'bored' ? 'is waiting for your next workout.' : 'is happy to see you.'}`;
+  const i = kind === 'pr' ? 3 : kind === 'boss' ? 4 : m === 'bored' ? 1 : m === 'sleep' ? 2 : 0; return `${petName(id)} ${v[i]}`; }
+// Each form adds +1% Grind and unlocks its own bonus, on top of the pet's base perk
+const PET_FORM_PERK = ['', '+5 Grind on every training-day check-in', 'Weekly challenges pay 20% more Grind', '+5% XP from every workout'];
+const petBonus = need => { const id = shopEq().pet; return !!(id && shopItem(id) && petForm(id) >= need); };
+const shopPet = () => { const p = shopItem(shopEq().pet); if (!p) return ''; const f = petForm(p.id);
+  return `<span class="shop-pet pet-f${f}" data-act="petCard" data-id="${p.id}" role="button" tabindex="0" aria-label="${esc(petName(p.id))}, your pet"><img src="${petIcon(p.id)}" alt=""><b class="pet-lv num">Lv ${petLv(p.id)}</b></span>`; };
 const shopSlash = () => (shopItem(shopEq().fx) || {}).color;
 // Perks: the pet you have out adds a little Grind to every workout, the aura you wear a little XP.
 // Rarer means a bigger perk, and with one of each the most you can get is +5% Grind and +4% XP.
 const PET_PCT = {C:2, R:3, E:4, L:5}, AURA_PCT = {C:1, R:2, E:3, L:4};
 function perkOf(it){
   if (!it) return null;
-  if (it.type === 'pet'){ const pct = PET_PCT[it.r] || 2; return {kind:'grind', pct, text:`+${pct}% Grind`}; }
+  if (it.type === 'pet'){ const pct = (PET_PCT[it.r] || 2) + petForm(it.id); return {kind:'grind', pct, text:`+${pct}% Grind`}; }   // +1% per form it has grown into
   if (it.type === 'aura'){ const pct = AURA_PCT[it.r] || 1; return {kind:'xp', pct, text:`+${pct}% XP`}; }
   return null;
 }
@@ -2108,6 +2192,9 @@ function applyPetArt(){
   TA_SHOP.todayShop();   // merges the item packs into the catalog
   TA_SHOP_DATA.coinIcon = tokenArt('grind'); TA_SHOP_DATA.gemIcon = tokenArt('glory');   // Grind and Glory tokens
   for (const it of Object.values(TA_SHOP_DATA.items)){ const pk = perkOf(it); if (pk && !it.perk){ it.perk = pk.text; it.desc = `${it.desc} Perk: ${pk.text} from workouts.`; } }   // pets and auras say what they do
+  // pets drawn in code replace their pack art everywhere (shop, inventory, loot), drawn the first time they're shown
+  for (const it of Object.values(TA_SHOP_DATA.items)) if (it.type === 'pet' && window.PETART && PETART.PETS[it.id]){ const old = it.icon;
+    try { Object.defineProperty(it, 'icon', {get:() => petArt(it.id) || old, set:() => {}, configurable:true, enumerable:true}); } catch(e){} }
 }
 /* ---------- Your shop items, in the character editor ---------- */
 // Everything you've bought, by slot, right where you edit your character. Tap an item to put it on or take
@@ -2140,12 +2227,12 @@ function invEditorHTML(){
   const sel = invSel && item(invSel);
   const tile = id => { const it = item(id), on = eq[it.type] === id;
     return `<button type="button" class="inv-item${on ? ' on' : ''}" data-act="invItem" data-id="${id}" aria-pressed="${on}" style="--rc:${D.rarity[it.r]}">
-      <img src="${it.icon}" alt=""><b>${esc(it.name)}</b><span class="inv-r" style="color:${D.rarity[it.r]}">${D.rarityName[it.r]}</span>${(pk => pk ? `<span class="inv-perk">${pk.text}</span>` : '')(perkOf(it))}${on ? `<span class="inv-on">${invWord(it.type)}</span>` : ''}</button>`; };
+      <img src="${it.icon}" alt=""><b>${esc(it.name)}</b><span class="inv-r" style="color:${D.rarity[it.r]}">${D.rarityName[it.r]}</span>${(pk => pk ? `<span class="inv-perk">${pk.text}</span>` : '')(perkOf(it))}${it.type === 'pet' ? `<span class="inv-pet num">Lv ${petLv(id)} · ${PET_FORMS[petForm(id)][1]}${petLv(id) < PET_MAX ? ` · ${petLvPts(petLv(id) + 1) - petPts(id)} sets to Lv ${petLv(id) + 1}` : ''}</span>` : ''}${on ? `<span class="inv-on">${invWord(it.type)}</span>` : ''}</button>`; };
   return `<div class="he-group inv-group"><h4>Shop &amp; boss items <span class="he-note">bought with Grind or Glory, or dropped by bosses · ${owned.length} owned · tap to put on or take off</span></h4>
     <div class="opt-chips inv-tabs" role="group" aria-label="Show">${INV_SLOTS.filter(([k]) => k === 'all' || n(k)).map(([k, l]) =>
       `<button type="button" class="opt" data-act="invTab" data-v="${k}" aria-pressed="${invTab === k}">${l} <span class="num">${k === 'all' ? owned.length : n(k)}</span></button>`).join('')}</div>
     <div class="inv-grid">${list.map(tile).join('')}</div>
-    <p class="fine inv-info" aria-live="polite">${sel ? `<b>${esc(sel.name)}</b>: ${esc(sel.desc || '')}` : 'One item per slot. Your own colors come back when you take shop gear off.'}</p></div>${loot}`;
+    <p class="fine inv-info" aria-live="polite">${sel ? `<b>${esc(sel.name)}</b>: ${esc(sel.desc || '')}${sel.type === 'pet' ? ` <button type="button" class="wk-link" data-act="petCard" data-id="${sel.id}">Open its profile ›</button>` : ''}` : 'One item per slot. Your own colors come back when you take shop gear off.'}</p></div>${loot}`;
 }
 // The editor preview wears your aura and has your pet beside you
 function paintEditorExtras(){
@@ -2153,11 +2240,12 @@ function paintEditorExtras(){
   const a = shopItem(shopEq().aura), p = shopItem(shopEq().pet);
   img.style.filter = a ? `drop-shadow(0 0 2px ${a.color}) drop-shadow(0 0 7px ${a.color})` : '';
   let pe = st.querySelector('.he-pet');
-  if (p){ if (!pe){ pe = document.createElement('img'); pe.className = 'he-pet'; pe.alt = ''; st.appendChild(pe); } pe.src = p.icon; } else if (pe) pe.remove();
+  if (p){ if (!pe){ pe = document.createElement('img'); pe.alt = `${petName(p.id)}: open its profile`; pe.dataset.act = 'petCard'; st.appendChild(pe); } pe.dataset.id = p.id; pe.className = 'he-pet pet-f' + petForm(p.id); pe.src = petIcon(p.id); } else if (pe) pe.remove();
 }
 function invToggle(id){
   const it = TA_SHOP_DATA.items[id]; if (!it) return;
   const on = TA_SHOP.equip(id); invSel = id;
+  if (on && it.type === 'pet' && !(S.petSince || {})[id]){ S.petSince = {...(S.petSince || {}), [id]:todayIso()}; save(); }
   renderHeroEditor(); paintHeroes(); buzz(10);
   toast(on ? `${it.name} on` : `${it.name} off`);
 }
@@ -2205,7 +2293,7 @@ function normalize(s){
   for (const k of ['swaps', 'stats', 'items', 'ach', 'exLog', 'ramp', 'tmAdd']) if (!s[k] || typeof s[k] !== 'object' || Array.isArray(s[k])) s[k] = {};   // items: unlocked gear, ach: strength achievements; exLog: each exercise's recent sessions; ramp: warm-up progress; tmAdd: working-weight boosts
   if (typeof s.arcs !== 'number') s.arcs = 0;   // arcs finished, for the Hero scarf
   // Settings, with defaults for anything not set yet
-  s.prefs = Object.assign({vibrate:true, restAuto:true, restScale:1, ramp:true, quotes:true, title:"shuffle", allArcs:false, sound:true, deloadEvery:5}, s.prefs && typeof s.prefs === 'object' ? s.prefs : {});
+  s.prefs = Object.assign({vibrate:true, restAuto:true, restScale:1, ramp:true, quotes:true, title:"shuffle", allArcs:false, sound:true, deloadEvery:5, story:true}, s.prefs && typeof s.prefs === 'object' ? s.prefs : {});
   // The power clean joined the maxes later: start older saves at 55% of their deadlift, marked as an estimate
   if (!s.maxEst || typeof s.maxEst !== 'object') s.maxEst = {};
   if (!(s.maxes.clean > 0)){ const step = s.unit === 'kg' ? 2.5 : 5; s.maxes.clean = Math.round((s.maxes.deadlift || 0) * .55 / step) * step || DEFAULT.maxes.clean; if (!s.example) s.maxEst.clean = true; }
@@ -2717,6 +2805,188 @@ function bannerHTML(){
 }
 // Quests and your weekly streak, under today's workout
 const FLAME = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-6 1-9.5z"/></svg>';
+/* ---------- Story moments ---------- */
+// Short scenes that make each arc a chapter: when it starts, right before its boss, and after you win.
+// Each plays once per run of an arc. Your path decides which master speaks; Rival Daichi always has an opinion.
+const MASTER_FOR = {power:'Master Kaito', strong:'Master Kaito', cali:'Sensei Rin', pilates:'Sensei Rin', sculpt:'Sensei Rin', build:'Grandmaster Hoshi', glute:'Grandmaster Hoshi',
+  sprint:'Coach Tetsu', run:'Coach Tetsu', athlete:'Coach Tetsu', sport:'Coach Tetsu', fighter:'Champion Ryo'};
+const SPEAKER_LOOK = {'Master Kaito':['MK', '#f3c94a'], 'Sensei Rin':['SR', '#7fd1ff'], 'Grandmaster Hoshi':['GH', '#c79bff'], 'Coach Tetsu':['CT', '#ff9a5a'], 'Champion Ryo':['CR', '#ff5a6e'],
+  'Rival Daichi':['RD', '#e14b4b'], 'Spirit of the Dojo':['✦', '#9fe3c8'], 'Your Future Self':['YOU', '#ffffff'], 'Old Master Goro':['OG', '#d8b48a']};
+function storyLines(kind, p){
+  const m = MASTER_FOR[p.path] || 'Master Kaito', name = S.hero.name || 'Hero', arc = p.name, boss = bossName(p), weeks = p.weeks.length, v = seeded(kind + p.id + (S.arcs || 0), 2);
+  if (kind === 'start') return v ? [
+    [m, `${name}. You've chosen the ${arc}.`],
+    [m, `${weeks} weeks. Show up for every session and the path will do the rest.`],
+    ['Rival Daichi', `The ${arc}? I cleared that months ago. Try to keep up.`],
+    [m, 'Ignore him. Your arc, your pace. Begin.']] : [
+    ['Spirit of the Dojo', 'A new chapter opens. The dojo remembers every one.'],
+    [m, `The ${arc} starts today, ${name}. Light the first fire.`],
+    ['Rival Daichi', `I'll be watching your log. Don't embarrass yourself.`],
+    [m, `${weeks} weeks from now, ${boss} will be waiting. Get ready.`]];
+  if (kind === 'boss') return v ? [
+    ['Spirit of the Dojo', `The air is heavy today... ${boss} has come.`],
+    [m, 'Everything you built these weeks was for this. Clear every set.'],
+    ['Rival Daichi', "Don't you dare lose. I want to be the one who beats you."]] : [
+    [m, `${name}. ${boss} stands between you and the end of this arc.`],
+    ['Your Future Self', "I remember this fight. Breathe, brace, and don't stop."],
+    [m, 'Every set is a strike. Go.']];
+  return v ? [
+    [m, `${boss} has fallen. You're not the same person who started the ${arc}.`],
+    ['Rival Daichi', '...Fine. That was impressive. Next arc, I win.'],
+    ['Your Future Self', 'Remember this one. I still do.']] : [
+    ['Spirit of the Dojo', 'The walls shook. A new name is carved into the dojo.'],
+    [m, `The ${arc} is yours, ${name}. Rest well. A taller mountain waits.`],
+    ['Rival Daichi', "Don't get comfortable. I'm already training for the next one."]];
+}
+let story = null;   // {lines, i, done}
+function playStory(lines, done){
+  const dlg = document.getElementById('story'); story = {lines, i:0, done};
+  dlg.showModal(); storyShow();
+}
+function storyShow(){
+  const dlg = document.getElementById('story'), [who, text] = story.lines[story.i], [ini, col] = SPEAKER_LOOK[who] || ['?', '#ccc'], last = story.i === story.lines.length - 1;
+  dlg.innerHTML = `<div class="story-card" style="--sc:${col}"><div class="story-lines" aria-hidden="true"></div>
+    <div class="story-who"><span class="story-face">${ini}</span><b>${esc(who)}</b></div>
+    <p class="story-text" aria-live="polite">${esc(text)}</p>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="storySkip">Skip</button><span class="story-dots">${story.lines.map((_, k) => `<i class="${k === story.i ? 'on' : ''}"></i>`).join('')}</span>
+      <button type="button" class="btn btn-power btn-sm" data-act="storyNext" autofocus>${last ? "Let's go" : 'Next'}</button></div></div>`;
+  if (!reduceMotion){ const el = dlg.querySelector('.story-text'), full = el.textContent; el.textContent = ''; let k = 0;
+    const tick = () => { if (!story || !el.isConnected) return; el.textContent = full.slice(0, ++k); if (k < full.length) setTimeout(tick, 16); }; tick(); }
+}
+function storyEnd(){ const dlg = document.getElementById('story'); if (dlg.open) dlg.close(); const done = story && story.done; story = null; if (done) done(); }
+// Play a scene once (per arc run), then carry on with whatever was next
+function storyGate(kind, then, key){
+  const p = prog(); key = key || `${p.id}#${S.arcs || 0}:${kind}`;
+  if (!S.prefs.story || (S.storySeen || {})[key]) return then();
+  S.storySeen = {...(S.storySeen || {}), [key]:1}; save();
+  playStory(storyLines(kind, p), then);
+}
+// Escape skips the scene but still carries on to the workout
+document.getElementById('story')?.addEventListener('cancel', e => { e.preventDefault(); storyEnd(); });
+// The victory scene waits until the workout summary is closed
+function storyAfter(){ if (!(S.storyNext || S.petEvolve || S.petUp || S.petReact) || document.getElementById('wkDone')?.open || document.getElementById('story')?.open) return;
+  const k = S.storyNext, ev = S.petEvolve, up = S.petUp, re = S.petReact; S.storyNext = null; S.petEvolve = null; S.petUp = null; S.petReact = null; save();
+  const lines = k && S.prefs.story ? storyLines('win', allProgs().find(x => x.id === k.prog) || prog()) : [];
+  if (ev && shopItem(ev.id)){ const it = shopItem(ev.id), form = PET_FORMS[ev.form][1];
+    lines.push(['Spirit of the Dojo', `Wait... ${petName(it.id)} is glowing!`], ['Spirit of the Dojo', `It grew into its ${form} form: ${perkOf(it).text}, and a new bonus: ${PET_FORM_PERK[ev.form]}.`]); }
+  const said = re && shopItem(re.id) ? petLine(re.id, re.kind) : '';
+  if (lines.length) playStory(lines, said ? () => toast(said) : null);
+  else if (up && shopItem(up.id)) toast(`${petName(up.id)} reached Lv ${up.lv}!${said ? ' ' + said : ''}`);
+  else if (said) toast(said);
+}
+
+/* ---------- Pet profile ---------- */
+// Tap your pet to see it big: its name (yours to change), mood, level, every form it can grow into, what each
+// form unlocks, and your time together. "Pet" gets a reaction that fits what it is and how it feels.
+let petCardId = null, petSaid = '';
+function openPetCard(id){ const it = shopItem(id); if (!it) return; petCardId = id; petSaid = petLine(id); document.getElementById('petCard').showModal(); petCardShow(); }
+function petCardShow(){
+  const id = petCardId, it = shopItem(id), D = TA_SHOP_DATA, f = petForm(id), L = petLv(id), m = petMood(), [mw, mh] = PET_MOOD[m];
+  const a = petLvPts(L), b = petLvPts(L + 1), pct = L >= PET_MAX ? 100 : Math.round((petPts(id) - a) / (b - a) * 100);
+  const since = (S.petSince || {})[id], days = since ? dayNum(todayIso()) - dayNum(since) + 1 : 0, out = shopEq().pet === id;
+  const bio = (it.desc || '').replace(/\s*Perk:.*$/, '');
+  document.getElementById('petCard').innerHTML = `<div class="pc-card" style="--rc:${D.rarity[it.r]}"><div class="story-lines" aria-hidden="true"></div>
+    <div class="pc-top"><div class="pc-art${reduceMotion ? '' : ' bob'}"><img src="${petArt(id, f, m) || it.icon}" alt="${esc(petName(id))}"></div>
+      <div class="pc-id"><input class="pc-name" id="pcName" value="${esc(petName(id))}" maxlength="16" aria-label="Pet name" spellcheck="false">
+        <small>${esc(it.name)} · <span style="color:${D.rarity[it.r]}">${D.rarityName[it.r]}</span></small>
+        <span class="pc-mood m-${m}"><b>${mw}</b> ${mh}</span></div></div>
+    <p class="pc-say" aria-live="polite">${esc(petSaid)}</p>
+    <p class="pc-bio">${esc(bio)}</p>
+    <div class="pc-lv"><div class="row-between"><b class="num">Lv ${L} · ${PET_FORMS[f][1]}</b><span class="fine num">${L >= PET_MAX ? 'Max level' : `${b - petPts(id)} sets to Lv ${L + 1}`}</span></div><div class="lifebar"><i style="width:${pct}%"></i></div></div>
+    <div class="pc-forms">${PET_FORMS.map(([lv, name], k) => `<div class="pc-form${k === f ? ' cur' : k > f ? ' lock' : ''}"><img src="${k > f ? petSil(id, k) : petArt(id, k, 'happy')}" alt=""><b>${name}</b><small class="num">Lv ${lv}</small></div>`).join('')}</div>
+    <ul class="pc-perks">${PET_FORMS.map(([, name], k) => `<li class="${k > f ? 'lock' : ''}"><b>${name}</b> ${k ? `+1% Grind · ${PET_FORM_PERK[k]}` : `+${PET_PCT[it.r] || 2}% Grind from workouts`}</li>`).join('')}</ul>
+    <div class="pc-stats"><div><b class="num">${fmt(petPts(id))}</b><span>Sets together</span></div><div><b class="num">${fmt((S.petWk || {})[id] || 0)}</b><span>Workouts</span></div><div><b class="num">${days ? fmt(days) : '-'}</b><span>${days === 1 ? 'Day' : 'Days'} together</span></div></div>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="petClose">Close</button>${out ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-act="invItem" data-id="${id}">Take it out</button>`}<button type="button" class="btn btn-power btn-sm" data-act="petPoke">Pet ${esc(petName(id))}</button></div></div>`;
+  const nm = document.getElementById('pcName');
+  nm.addEventListener('change', () => { const v = nm.value.trim().slice(0, 16); S.petNames = {...(S.petNames || {})}; if (v && v !== it.name) S.petNames[id] = v; else delete S.petNames[id]; save(); render(); petCardShow(); toast(v && v !== it.name ? `Say hi to ${v}.` : `Back to ${it.name}.`); });
+}
+function petPoke(){ const id = petCardId; if (!id) return; const m = petMood();
+  // petting a restless or sleepy pet gets the happy line once in a while: it's still glad you came
+  petSaid = (m === 'bored' || m === 'sleep') && Math.random() < .35 ? `${petName(id)} ${(PET_VOICE[id] || ['perks up.'])[0]}` : petLine(id);
+  const el = document.querySelector('#petCard .pc-say'); if (el){ el.textContent = petSaid; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+  const art = document.querySelector('#petCard .pc-art'); if (art && !reduceMotion){ art.classList.remove('hop'); void art.offsetWidth; art.classList.add('hop'); }
+  buzz(8); }
+function petClose(){ const d = document.getElementById('petCard'); if (d.open) d.close(); petCardId = null; }
+
+/* ---------- Daily check-in ---------- */
+// On each training day, a little Grind for showing up. Every training-day check-in this week (Monday to Sunday)
+// adds 5 more, from 10 up to 40.
+function checkinState(){ const ws = weekStart(todayIso()); if (!S.checkin || S.checkin.wk !== ws) S.checkin = {wk:ws, n:0, last:null}; return S.checkin; }
+const checkinGrind = n => Math.min(40, 10 + 5 * n) + (petBonus(1) ? 5 : 0);   // a Young-or-older pet adds 5
+function checkinHTML(){
+  const t = todayIso(), c = checkinState(); if (!trainsOn(t) || c.last === t || !window.TA_SHOP) return '';
+  const g = checkinGrind(c.n);
+  return `<section class="panel checkin" aria-label="Daily check-in"><div class="ci-ico"><img src="${TA_SHOP_DATA.coinIcon}" alt=""></div>
+    <div class="ci-body"><b>Training day check-in</b><span class="fine">Day ${c.n + 1} this week · +${g} Grind. Grows every training day you check in.</span></div>
+    <button type="button" class="btn btn-power btn-sm" data-act="checkin">Claim</button></section>`;
+}
+function claimCheckin(){
+  const t = todayIso(), c = checkinState(); if (!trainsOn(t) || c.last === t) return;
+  const g = checkinGrind(c.n); c.n++; c.last = t; if (window.TA_SHOP) TA_SHOP.addCoins(g);
+  save(); render(); sfx('quest'); buzz(12); toast(`Checked in: +${g} Grind. Tomorrow's training day pays ${checkinGrind(c.n)}.`);
+}
+
+/* ---------- Weekly challenge ---------- */
+// One bigger goal each week (Monday to Sunday), picked to fit your arc and how much you train, with a special
+// reward. Every 8th week it's a season event: double rewards and a title you can only get that season.
+const SEASON_TITLE = {Winter:'Winter Warden', Spring:'Spring Forged', Summer:'Summer Siege', Autumn:'Autumn Ascendant'};
+const seasonOf = iso => { const m = fromYmd(iso).getMonth(); return m === 11 || m < 2 ? 'Winter' : m < 5 ? 'Spring' : m < 8 ? 'Summer' : 'Autumn'; };
+// dates n days apart, safe across daylight-saving changes
+const addDays = (iso, n) => { const d = fromYmd(iso); d.setDate(d.getDate() + n); return ymd(d); };
+const weekLogsFrom = ws => S.log.filter(l => l.iso && l.iso >= ws && l.iso <= addDays(ws, 6));
+const volOf = l => l.vol ? l.vol * (l.unit && l.unit !== S.unit ? (S.unit === 'kg' ? 1 / 2.20462 : 2.20462) : 1) : 0;
+function makeChallenge(ws){
+  const p = prog(), g = Math.max(1, weekGoal()), event = Math.floor(dayNum(ws) / 7) % 8 === 0, opts = [];
+  opts.push({id:'sets', goal:Math.max(15, Math.round(g * 17 / 5) * 5), text:n => `Log ${n} sets this week`});
+  opts.push({id:'full', goal:Math.min(g, 3), text:n => `Full-clear ${n} workout${n === 1 ? '' : 's'} this week`});
+  opts.push({id:'every', goal:0, text:() => 'Train on every planned day this week'});
+  // the reps of one bodyweight move from this week of your arc, a little past what the plan already asks
+  const moves = {}; for (const d of p.weeks[S.pos.w].days) for (const x of d.ex) if (!x.lift && !x.sets[0].pick && !x.sets[0].unit && !/warm-up/i.test(x.name))
+    moves[x.name] = (moves[x.name] || 0) + x.sets.reduce((a, s) => a + (s.reps || 0), 0);
+  const mv = Object.keys(moves); if (mv.length){ const name = mv[seeded('chalmv' + ws, mv.length)];
+    opts.push({id:'reps', move:name, goal:Math.max(20, Math.ceil(moves[name] * 1.15 / 10) * 10), text:n => `Do ${n} reps of ${name} this week`}); }
+  // a volume goal from the last four weeks, about 10% more
+  const past = [1, 2, 3, 4].map(k => weekLogsFrom(addDays(ws, -7 * k)).reduce((a, l) => a + volOf(l), 0)).filter(Boolean);
+  if (past.length >= 2){ const avg = past.reduce((a, b) => a + b, 0) / past.length; opts.push({id:'volume', goal:Math.ceil(avg * 1.1 / 1000) * 1000, text:n => `Move ${fmt(n)} ${S.unit} this week`}); }
+  const o = opts[seeded('chal' + ws, opts.length)];
+  return {wk:ws, id:o.id, goal:o.goal, move:o.move || null, event, season:event ? seasonOf(ws) : null, claimed:false};
+}
+function challenge(){ const ws = weekStart(todayIso()); if (!S.chal || S.chal.wk !== ws) S.chal = makeChallenge(ws); return S.chal; }
+function chalProgress(c){
+  const logs = weekLogsFrom(c.wk);
+  if (c.id === 'sets') return {val:logs.reduce((a, l) => a + (l.sets || 0), 0), goal:c.goal};
+  if (c.id === 'full') return {val:logs.filter(l => l.full).length, goal:c.goal};
+  if (c.id === 'volume') return {val:Math.round(logs.reduce((a, l) => a + volOf(l), 0)), goal:c.goal};
+  if (c.id === 'reps') return {val:logs.reduce((a, l) => a + (l.ex || []).filter(x => x.name === c.move || swapOf(c.move) === x.name).reduce((b, x) => b + x.sets.reduce((s2, s) => s2 + s[1], 0), 0), 0), goal:c.goal};
+  // every planned day: each day this week you were due to train, done
+  const days = Array.from({length:7}, (_, k) => addDays(c.wk, k)).filter(trainsOn), done = logsByDay();
+  return {val:days.filter(iso => done[iso]).length, goal:Math.max(1, days.length)};
+}
+function chalText(c){ const goal = chalProgress(c).goal;
+  return c.id === 'sets' ? `Log ${goal} sets this week` : c.id === 'full' ? `Full-clear ${goal} workout${goal === 1 ? '' : 's'} this week` : c.id === 'volume' ? `Move ${fmt(goal)} ${S.unit} this week`
+    : c.id === 'reps' ? `Do ${goal} reps of ${swapOf(c.move)} this week` : `Train on all ${goal} planned day${goal === 1 ? '' : 's'} this week`; }
+const chalReward = c => { const k = c.event ? 2 : 1; return {xp:Math.round(120 * XP_MULT[prog().rank] * k), grind:80 * k, glory:5 * k, title:c.event ? SEASON_TITLE[c.season] : null}; };
+function chalHTML(){
+  const c = challenge(), pr = chalProgress(c), rw = chalReward(c), done = pr.val >= pr.goal, pct = Math.min(100, pr.val / pr.goal * 100);
+  return `<div class="chal${c.event ? ' event' : ''}${c.claimed ? ' got' : ''}">
+    <div class="row-between"><span class="q-kind">${c.event ? `${c.season} season event` : 'Weekly challenge'}</span><span class="fine">Ends Sunday</span></div>
+    <b class="chal-text">${esc(chalText(c))}</b>
+    <div class="q-bar" role="img" aria-label="${fmt(pr.val)} of ${fmt(pr.goal)}"><i style="width:${pct}%"></i></div>
+    <div class="row-between"><span class="q-prog num">${fmt(Math.min(pr.val, pr.goal))} / ${fmt(pr.goal)}</span>
+      <span class="q-rw num"><b>+${fmt(rw.xp)} XP</b> · +${rw.grind} Grind · +${rw.glory} Glory${rw.title ? ` · title “${rw.title}”` : ''}</span></div>
+    ${c.claimed ? '<span class="q-got">Reward claimed</span>' : done ? '<button type="button" class="btn btn-power btn-sm" data-act="chalClaim">Claim reward</button>' : ''}
+  </div>`;
+}
+function claimChallenge(){
+  const c = challenge(); if (c.claimed || chalProgress(c).val < chalProgress(c).goal) return;
+  const rw = chalReward(c), old = S.xp; c.claimed = true; S.xp += rw.xp;
+  if (petBonus(2)) rw.grind = Math.round(rw.grind * 1.2);   // a Trained pet: +20% Grind
+  if (window.TA_SHOP){ TA_SHOP.addCoins(rw.grind); TA_SHOP.addGems(rw.glory); }
+  if (rw.title){ S.eventTitles = [...new Set([...(S.eventTitles || []), rw.title])]; }
+  save(); render(); sfx('quest'); buzz(25); rankCheck(old);
+  toast(`Challenge complete! +${fmt(rw.xp)} XP, +${rw.grind} Grind, +${rw.glory} Glory${rw.title ? `, and the title “${rw.title}”` : ''}.`);
+}
+
 function questsHTML(){
   const qs = questList(), n = weekStreak(), m = streakMult(n);
   const row = q => `<div class="quest${q.done ? ' done' : ''}">
@@ -2727,6 +2997,7 @@ function questsHTML(){
     ${q.check && !q.done ? `<button type="button" class="btn btn-ghost btn-sm q-claim" data-act="checkQuest" data-v="${q.check}" aria-label="Mark done: ${q.text}. Plus ${q.xp} XP and ${q.grind} Grind">Done</button>` : q.done ? '<span class="q-xp num">Done</span>' : ''}</div>`;
   return `<section class="panel quests">
     <div class="row-between"><h3>Quests</h3><span class="streak${n ? ' on' : ''}">${FLAME}${n ? `${n}-week streak${m > 1 ? ` · ×${m.toFixed(2)} XP` : ''}` : 'No streak yet'}</span></div>
+    ${chalHTML()}
     ${qs.map(row).join('')}
     <p class="fine">Hit ${weekGoal()} workout${weekGoal() === 1 ? '' : 's'} a week to keep your streak. Each week in a row adds +5% workout XP, up to +20%. Tap Done on a check-in when you do it. Daily quests reset at midnight, weekly quests on Monday.</p>
     <p class="fine shield-line">${shieldHTML(streakInfo(logsByDay(), todayIso()))} Rest days never break your session streak, and a shield covers one missed training day each week. It refills Monday.</p>
@@ -2737,7 +3008,7 @@ function viewToday(){
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
   const pips = Array.from({length:total}, (_, i) => `<span class="pip${i < idx ? ' on' : i === idx ? ' cur' : ''}"></span>`).join('');
   const n = sessionSets();
-  let h = gateCardHTML() + bannerHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  let h = gateCardHTML() + bannerHTML() + checkinHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -3618,6 +3889,81 @@ function backupNudge(){
   return `<button class="backup-warn backup-nudge" data-act="openSettings">${last ? `It has been ${days} days since your last backup.` : `You have ${S.log.length} workouts and no backup yet.`} <b>Back up now ›</b></button>`;
 }
 
+/* ---------- Year in review ---------- */
+// A recap of the calendar year as tap-through slides (counters roll up), ending on a summary you can share
+// as an image. Opened from the Progress tab.
+let yir = null;
+function yearStats(y){
+  const a = `${y}-01-01`, b = `${y}-12-31`, logs = S.log.filter(l => l.iso && l.iso >= a && l.iso <= b);
+  const toUnit = l => !l.vol ? 0 : l.unit && l.unit !== S.unit ? (S.unit === 'kg' ? l.vol / 2.20462 : l.vol * 2.20462) : l.vol;
+  const done = {}; logs.forEach(l => done[l.iso] = 1);
+  const best = Object.keys(done).reduce((m, iso) => Math.max(m, streak(done, iso)), 0);
+  const ex = {}; logs.forEach(l => (l.ex || []).forEach(e => { const n = (e.sets || []).length; if (n) ex[e.name] = (ex[e.name] || 0) + n; }));
+  if (!Object.keys(ex).length) logs.forEach(l => { if (l.day && !l.bossFight) ex[l.day] = (ex[l.day] || 0) + (l.sets || 0); });   // older logs kept no exercise list: use the workout instead
+  const fav = Object.entries(ex).sort((p, q) => q[1] - p[1])[0];
+  const prs = S.history.filter(h => h.src === 'PR' && h.iso && h.iso >= a && h.iso <= b), top = prs.slice().sort((p, q) => (q.delta || 0) - (p.delta || 0))[0];
+  return {y, workouts:logs.length, sets:logs.reduce((s, l) => s + (l.sets || 0), 0), vol:Math.round(logs.reduce((s, l) => s + toUnit(l), 0)),
+    prs:prs.length, topPr:top ? `${LIFTS[top.lift] || top.lift} +${fmt(top.delta || 0)} ${top.unit}` : '',
+    bosses:logs.filter(l => l.boss || l.bossFight).length, streak:best, fav:fav ? fav[0] : '', favSets:fav ? fav[1] : 0,
+    xp:logs.reduce((s, l) => s + (l.xp || 0), 0), full:logs.filter(l => l.full).length, rank:rankFor(S.xp)};
+}
+function yirSlides(s){
+  const cars = Math.floor(s.vol / (S.unit === 'kg' ? 1800 : 4000));
+  return [
+    {k:'Year in review', big:String(s.y), sub:`${S.hero.name || 'Hero'}, this was your training arc.`},
+    {k:'You showed up', n:s.workouts, unit:'workouts', sub:`${fmt(s.sets)} sets logged, ${s.full} full clears.`},
+    s.vol ? {k:'Total weight moved', n:s.vol, unit:S.unit, sub:cars ? `About ${fmt(cars)} car${cars === 1 ? '' : 's'} lifted.` : 'Every rep added up.'} : null,
+    {k:'New maxes', n:s.prs, unit:s.prs === 1 ? 'PR' : 'PRs', sub:s.topPr ? `Biggest jump: ${s.topPr}.` : 'Rep-out sets are where new maxes come from.'},
+    {k:'Bosses beaten', n:s.bosses, unit:s.bosses === 1 ? 'boss' : 'bosses', sub:s.bosses ? 'Arc after arc, they fell.' : 'Finish an arc to face its boss.'},
+    {k:'Longest streak', n:s.streak, unit:s.streak === 1 ? 'session' : 'sessions', sub:'Rest days never broke it.'},
+    s.fav ? {k:'Favorite exercise', big:s.fav, sub:`${fmt(s.favSets)} sets this year.`} : null,
+    {k:'Experience earned', n:s.xp, unit:'XP', sub:`Now ${s.rank.k}-Rank · ${s.rank.t}.`, rank:s.rank.k},
+    {k:'Your year', sum:true}
+  ].filter(Boolean);
+}
+function openYear(){
+  const s = yearStats(Number(todayIso().slice(0, 4)));
+  if (!s.workouts){ toast(`Clear a workout to start your ${s.y} recap.`); return; }
+  yir = {s, slides:yirSlides(s), i:0}; document.getElementById('yir').showModal(); yirShow();
+}
+function yirShow(){
+  const dlg = document.getElementById('yir'), {s, slides, i} = yir, sl = slides[i], last = i === slides.length - 1;
+  const body = sl.sum
+    ? `<div class="yir-sum">${[['Workouts', fmt(s.workouts)], ['Sets', fmt(s.sets)], s.vol ? ['Moved', `${fmt(s.vol)} ${S.unit}`] : null, ['PRs', s.prs], ['Bosses', s.bosses], ['Best streak', s.streak], ['XP', fmt(s.xp)], ['Rank', `${s.rank.k}-Rank`]].filter(Boolean).map(([l, v]) => `<div><b class="num">${v}</b><span>${l}</span></div>`).join('')}</div>${s.fav ? `<p class="yir-sub">Favorite: ${esc(s.fav)}</p>` : ''}`
+    : `${sl.rank ? `<div class="yir-emb">${emblem(sl.rank, 'sm')}</div>` : ''}<div class="yir-big${sl.big && sl.big.length > 12 ? ' long' : ''}">${sl.big != null ? esc(sl.big) : `<span class="num" data-to="${sl.n}">${reduceMotion ? fmt(sl.n) : '0'}</span>`}</div>${sl.unit ? `<div class="yir-unit">${esc(sl.unit)}</div>` : ''}<p class="yir-sub">${esc(sl.sub)}</p>`;
+  dlg.innerHTML = `<div class="yir-card" data-act="yirNext"><div class="story-lines" aria-hidden="true"></div>
+    <div class="yir-bars">${slides.map((_, k) => `<i class="${k < i ? 'on' : k === i ? 'cur' : ''}"></i>`).join('')}</div>
+    <div class="yir-k">${esc(sl.k)}</div><div class="yir-body" aria-live="polite">${body}</div>
+    <div class="yir-foot"><button type="button" class="wk-link" data-act="yirClose">Close</button>${last ? `<button type="button" class="btn btn-power btn-sm" data-act="yirShare">Share card</button>` : `<span class="yir-tap">Tap to continue ›</span>`}</div></div>`;
+  const el = dlg.querySelector('[data-to]');
+  if (el && !reduceMotion){ const to = +el.dataset.to, t0 = performance.now(), dur = 900;
+    const tick = t => { if (!el.isConnected) return; const k = Math.min(1, (t - t0) / dur); el.textContent = fmt(Math.round(to * (1 - Math.pow(1 - k, 3)))); if (k < 1) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
+}
+function yirNext(){ if (!yir) return; if (yir.i < yir.slides.length - 1){ yir.i++; yirShow(); } }
+function yirClose(){ const d = document.getElementById('yir'); if (d.open) d.close(); yir = null; }
+async function drawYearCard(s){
+  const W = 1080, H = 1350, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), g = S.hero.gender; try { await document.fonts.ready; } catch(e){}
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const rc = css(`--rank-${s.rank.k.toLowerCase()}`) || '#ffd23f', power = css('--power') || '#ffd23f';
+  let bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#1b1230'); bg.addColorStop(1, '#0d0a15'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
+  x.save(); x.globalAlpha = .05; x.strokeStyle = '#fff'; x.lineWidth = 10; for (let i = -H; i < W + H; i += 70){ x.beginPath(); x.moveTo(i, H); x.lineTo(i + H * .5, 0); x.stroke(); } x.restore();
+  x.strokeStyle = rc; x.lineWidth = 14; x.strokeRect(28, 28, W - 56, H - 56);
+  x.textBaseline = 'top'; x.fillStyle = power; x.font = '700 34px "Barlow Condensed", sans-serif'; x.fillText('TRAINING ARC · YEAR IN REVIEW', 80, 78);
+  x.fillStyle = '#f3effb'; x.font = '200px Anton, Impact, sans-serif'; x.fillText(String(s.y), 74, 150);
+  x.fillStyle = '#a197b8'; x.font = '600 40px "Barlow Condensed", sans-serif'; x.fillText(`${(S.hero.name || 'Hero').toUpperCase()} · ${s.rank.k}-RANK ${s.rank.t.toUpperCase()}`, 82, 400);
+  const fr = await spriteFrames(g, s.rank.k, wornLook(g), S.hero[g].style, S.hero[g].acc);
+  const glow = x.createRadialGradient(830, 900, 30, 830, 900, 380); glow.addColorStop(0, 'rgba(155,107,255,.4)'); glow.addColorStop(1, 'rgba(155,107,255,0)'); x.fillStyle = glow; x.fillRect(0, 0, W, H);
+  x.imageSmoothingEnabled = false; const sc = 2.9; x.drawImage(fr[0].bmp, 1000 - 128 * sc, 1230 - 208 * sc, 128 * sc, 208 * sc);
+  const rows = [['WORKOUTS', fmt(s.workouts)], ['SETS', fmt(s.sets)], s.vol ? ['WEIGHT MOVED', `${fmt(s.vol)} ${S.unit.toUpperCase()}`] : null, ['NEW PRS', String(s.prs)], ['BOSSES BEATEN', String(s.bosses)], ['BEST STREAK', String(s.streak)], ['XP EARNED', fmt(s.xp)]].filter(Boolean);
+  rows.forEach(([l, v], i) => { const y = 490 + i * 100;
+    x.fillStyle = '#a197b8'; x.font = '700 30px "Barlow Condensed", sans-serif'; x.fillText(l, 82, y);
+    x.fillStyle = i % 2 ? '#f3effb' : power; x.font = '56px Anton, Impact, sans-serif'; x.fillText(v, 80, y + 40); });
+  if (s.fav){ x.fillStyle = '#a197b8'; x.font = '600 32px "Barlow Condensed", sans-serif'; x.fillText(`FAVORITE: ${s.fav.toUpperCase()}`, 82, 1236); }
+  return c;
+}
+async function shareYear(){ if (!yir) return; const s = yir.s; await shareBlob(await drawYearCard(s), `training-arc-${s.y}.png`, `My ${s.y} training arc`); }
+
 /* ---------- Share card ---------- */
 // A 1080x1350 image (the portrait size social apps use) of your player card or a rank-up: your character on
 // your stage, name, title, rank, level, OVR and stats, with the app's name. Shared through the phone's share
@@ -3662,11 +4008,13 @@ async function drawShareCard(kind){
   return c;
 }
 async function shareCard(kind){
-  const c = await drawShareCard(kind), blob = await new Promise(res => c.toBlob(res, 'image/png'));
-  const filename = kind === 'rank' ? `training-arc-rank-up.png` : `training-arc-card.png`;
+  await shareBlob(await drawShareCard(kind), kind === 'rank' ? `training-arc-rank-up.png` : `training-arc-card.png`, 'My training arc');
+}
+async function shareBlob(c, filename, text){
+  const blob = await new Promise(res => c.toBlob(res, 'image/png'));
   // 1) the phone's share sheet, when it takes images
   try { const file = new File([blob], filename, {type:'image/png'});
-    if (navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'Training Arc', text:'My training arc'}); return; } } catch(e){ if (e && e.name === 'AbortError') return; }
+    if (navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'Training Arc', text}); return; } } catch(e){ if (e && e.name === 'AbortError') return; }
   // 2) inside Claude: the download prompt
   let dl = null; try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch(e){}
   if (dl){ try { await dl.save({filename, data:blob}); toast('Card saved. Post it anywhere.'); } catch(err){ if (err && err.code !== 'declined') toast('Saving images is not available here.'); } return; }
@@ -4524,6 +4872,7 @@ function renderSettings(){
       ${sw('sound', 'Sound effects', '8-bit sounds for sets, PRs, level-ups and rank-ups')}
       ${sw('vibrate', 'Vibration', 'A buzz when you log a set or rest is over, and a big one for PRs')}
       ${sw('quotes', 'Quotes', 'Words from the masters on Today and between sets')}
+      ${sw('story', 'Story scenes', 'Short scenes when an arc starts, before its boss and after you win')}
     </div>
     <h4 class="st-h">Units</h4>
     <div class="st-group"><div class="st-row"><div><b>Weight</b><span>Your maxes convert automatically</span></div>
@@ -4872,6 +5221,7 @@ function viewProgress(){
     <div class="stat"><b class="num">${fmt(S.sets)}</b><span>Sets done</span></div>
     <div class="stat"><b class="num">${S.prs}</b><span>PRs</span></div>
   </div>
+  ${S.log.some(l => l.iso && l.iso.startsWith(todayIso().slice(0, 4))) ? `<button class="yir-btn" data-act="openYear"><span><small>Year in review</small><b>Your ${todayIso().slice(0, 4)}</b></span><span aria-hidden="true">›</span></button>` : ''}
   ${rewardsHTML()}
   ${gatesHTML()}
   ${achHTML()}
@@ -5619,7 +5969,8 @@ function completeWorkout(){
   const quests = claimQuests(entry), questXp = quests.reduce((a, q) => a + q[1], 0);
   const ap = auraPerk(), auraXp = ap ? Math.round((base + streakXp) * ap.pct / 100) : 0;   // the aura you wear adds a little XP
   const recoveryXp = dl ? Math.round(base * .25) : 0;   // a deload is never a step back: a little Recovery XP on top
-  const gain = base + streakXp + auraXp + recoveryXp + (bossWon ? bossXp(p) : 0) + prs.length * 100 + questXp;
+  const petXpB = petBonus(3) ? Math.round((base + streakXp) * .05) : 0;   // a Legendary pet: +5% XP
+  const gain = base + streakXp + auraXp + recoveryXp + petXpB + (bossWon ? bossXp(p) : 0) + prs.length * 100 + questXp;
   entry.xp = gain;
   S.xp += gain; S.sets += n; S.prs += prs.length;
   const stats = statGain(p.statW || p.path, p.rank, n / total), statsBefore = Object.fromEntries(STAT_KEYS.map(([k]) => [k, statVal(k)])), ovrBefore = ovr(p.path);
@@ -5631,6 +5982,13 @@ function completeWorkout(){
   if (nd >= perWeek){ nd = 0; nw++; }
   if (nw >= p.weeks.length){ nw = 0; arcDone = true; }
   if (boss && !bossWon){ nd = d; nw = w; arcDone = false; }   // the boss waits for a rematch
+  if (bossWon) S.storyNext = {prog:p.id};   // the victory scene plays once the summary is closed
+  // the pet you have out grows with every set; a new form gets its own little scene
+  { const pid = shopEq().pet; if (pid && shopItem(pid)){ const f0 = petForm(pid), l0 = petLv(pid);
+    S.petXp = {...(S.petXp || {}), [pid]:petPts(pid) + n};
+    S.petWk = {...(S.petWk || {}), [pid]:((S.petWk || {})[pid] || 0) + 1}; if (!(S.petSince || {})[pid]) S.petSince = {...(S.petSince || {}), [pid]:todayIso()};
+    if (petForm(pid) > f0) S.petEvolve = {id:pid, form:petForm(pid)}; else if (petLv(pid) > l0) S.petUp = {id:pid, lv:petLv(pid)};
+    if (bossWon || prs.length) S.petReact = {id:pid, kind:bossWon ? 'boss' : 'pr'}; } }
   // A deload session leaves the arc where it paused; the last one ends the deload
   if (dl){ nd = S.pos.d; nw = S.pos.w; arcDone = false; S.deload.left--;
     if (S.deload.left <= 0){ S.deload = null; S.deloadDone = true; S.lastDeload = todayIso(); } }
@@ -5765,6 +6123,7 @@ document.getElementById('wkDone').addEventListener('cancel', e => e.preventDefau
 let tab = 'today';
 function render(animate){
   renderHeader();
+  if (S.storyNext || S.petEvolve || S.petUp || S.petReact) setTimeout(storyAfter, 500);
   const v = document.getElementById('view');
   v.classList.toggle('view-enter', !!animate);
   document.querySelector('.hud').hidden = tab === 'today' || tab === 'progress';   // the banner and the card carry the character there
@@ -5923,7 +6282,13 @@ document.addEventListener('click', e => {
   }
   else if (a === 'move') move(+t.dataset.dir);
   else if (a === 'finish') finish();
-  else if (a === 'startWk'){ const p = prog(); if (bossDay(p, S.pos.w, S.pos.d) && window.TA_BOSSES) openArcBoss(); else openWorkout(); }
+  else if (a === 'startWk'){ const p = prog(), boss = bossDay(p, S.pos.w, S.pos.d), go = () => boss && window.TA_BOSSES ? openArcBoss() : openWorkout();
+    // a scene when an arc begins, and before its boss
+    if (boss) storyGate('boss', go); else if (!deloadOn() && !S.pos.w && !S.pos.d && !sessionSets()) storyGate('start', go); else go(); }
+  else if (a === 'storyNext'){ if (!story) return; if (story.i < story.lines.length - 1){ story.i++; storyShow(); } else storyEnd(); }
+  else if (a === 'storySkip') storyEnd();
+  else if (a === 'petCard'){ e.stopPropagation(); openPetCard(t.dataset.id); } else if (a === 'petPoke') petPoke(); else if (a === 'petClose') petClose();
+  else if (a === 'openYear') openYear(); else if (a === 'yirNext') yirNext(); else if (a === 'yirClose') yirClose(); else if (a === 'yirShare') shareYear();
   else if (a === 'startWkPlain') openWorkout();
   else if (a === 'checkQuest'){   // daily check-ins are on your honor: tap when you've done it
     ensureQuests(); const id = t.dataset.v, c = CHECK_Q.find(x => x.id === id), k = `${S.q.day}:${id}`;
@@ -5946,6 +6311,8 @@ document.addEventListener('click', e => {
   else if (a === 'closeSettings') closeDialog('settings');
   else if (a === 'pref'){ S.prefs[t.dataset.k] = !S.prefs[t.dataset.k]; save(); if (t.dataset.k === 'restAuto' && !S.prefs.restAuto) stopRest(); render(); }
   else if (a === 'restScale'){ S.prefs.restScale = +t.dataset.v; save(); renderSettings(); }
+  else if (a === 'chalClaim') claimChallenge();
+  else if (a === 'checkin') claimCheckin();
   else if (a === 'deloadEvery'){ S.prefs.deloadEvery = +t.dataset.v; save(); renderSettings(); }
   else if (a === 'deloadStart'){ startDeload(t.dataset.manual ? 'manual' : (S.deloadAsk && S.deloadAsk.reason) || 'manual'); save(); render();
     if (t.closest('#stIn')) renderSettings(); toast(`Deload week started: ${S.deload.total} lighter sessions. Your arc is paused until it's done.`); }
@@ -6246,7 +6613,8 @@ function renderHeroEditor(){
     style: `<div class="he-group"><h4>Hair style</h4><div class="opt-chips">${G.styles.map(h => `<button class="opt" data-act="heroStyle" data-v="${h.id}" aria-pressed="${pr.style === h.id}">${h.name}</button>`).join('')}</div></div>`
       + `<div class="he-group"><h4>Title <span class="he-note">shown under your name</span></h4>${shopItem(shopEq().title) ? `<p class="fine">Your shop title "${esc(shopItem(shopEq().title).text)}" is showing. Take it off under Items to use one of these.</p>` : ''}<div class="opt-chips">
         <button class="opt" data-act="heroTitle" data-v="" aria-pressed="${heroTitle() === rankFor(S.xp).t}">${rankFor(S.xp).t} (rank)</button>
-        ${REWARDS.filter(r => r.kind === 'title' && rewardOpen(r)).map(r => `<button class="opt" data-act="heroTitle" data-v="${r.name}" aria-pressed="${S.hero.title === r.name}">${r.name}</button>`).join('')}</div>
+        ${REWARDS.filter(r => r.kind === 'title' && rewardOpen(r)).map(r => `<button class="opt" data-act="heroTitle" data-v="${r.name}" aria-pressed="${S.hero.title === r.name}">${r.name}</button>`).join('')}
+        ${(S.eventTitles || []).map(t => `<button class="opt ev-title" data-act="heroTitle" data-v="${esc(t)}" aria-pressed="${S.hero.title === t}">${esc(t)} ★</button>`).join('')}</div>
         ${nextReward() ? `<p class="fine">${(t => t ? `Next title: "${t.name}" at Lv ${t.lv}.` : '')(REWARDS.find(r => r.kind === 'title' && !rewardOpen(r)))}</p>` : ''}</div>`,
     // one tidy row per part: the label on the left, its swatches in a single scrolling line
     colors: (shopOn.length ? `<p class="fine he-shopnote">Shop gear on: ${shopOn.join(', ')}. It covers those colors until you take it off under Items.</p>` : '')

@@ -59,6 +59,9 @@
 <!-- Workout complete pop-up: opens after Finish workout or Clear stage; only Continue closes it -->
 <dialog class="wk-done" id="wkDone" aria-labelledby="wkDoneTitle"></dialog>
 <dialog class="log-edit" id="logEdit" aria-labelledby="logEditTitle"></dialog>
+<dialog class="story" id="story" aria-label="Story scene"></dialog>
+<dialog class="story yir" id="yir" aria-label="Year in review"></dialog>
+<dialog class="story petc" id="petCard" aria-label="Pet profile"></dialog>
 
 <div class="overlay" id="rankup" hidden role="dialog" aria-modal="true" aria-labelledby="ruTitle">
   <div class="burst"></div>
@@ -101,6 +104,640 @@
 
 <script src="js/bosses.js"></script>
 <script src="js/shop.js"></script>
+<script id="pet-art">
+/* Pet art: every pet is drawn in code on a 96x96 pixel grid. Shapes are lit from the upper left with
+   hue-shifted 5-tone ramps, textured by material (fur, feather, scale, stone, metal), outlined in their own
+   darkest tone, then eyes and small details go on top. Each form adds gear (scarf, headband, crown, aura)
+   and the mood changes the eyes. */
+window.PETART = (() => {
+const N = 96;
+const L0 = [-0.55, -0.65, 0.52], LN = Math.hypot(...L0), LD = L0.map(v => v / LN);
+const hash = (x, y, s = 0) => { let h = (x * 374761393 + y * 668265263 + s * 1442695041) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+/* ---------- color ---------- */
+function hexRgb(h){ h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function rgbHsl([r, g, b]){ r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let h = 0, s = 0;
+  if (mx !== mn){ const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; }
+  return [h, s, l]; }
+function hslRgb(h, s, l){ h = ((h % 360) + 360) % 360 / 360; if (!s) return [l, l, l].map(v => Math.round(v * 255));
+  const q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q, f = t => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  return [f(h + 1 / 3), f(h), f(h - 1 / 3)].map(v => Math.round(v * 255)); }
+const toward = (h, t, amt) => { const d = ((t - h + 540) % 360) - 180; return h + Math.sign(d) * Math.min(Math.abs(d), amt); };
+// k < 0 darker and cooler (toward violet), k > 0 lighter and warmer (toward yellow)
+function shade(hex, k){ let [h, s, l] = rgbHsl(hexRgb(hex));
+  if (s < .08){ h = k < 0 ? 250 : 50; s = Math.max(s, Math.abs(k) * .22); }
+  if (k < 0){ h = toward(h, 255, -k * 34); s = clamp(s * (1 - k * .25), 0, 1); l = l * (1 + k * 1.45); }
+  else { h = toward(h, 52, k * 30); s = clamp(s * (1 - k * .15), 0, 1); l = l + (1 - l) * k * 1.05; }
+  return hslRgb(h, s, clamp(l, .03, .97)); }
+const rampCache = {};
+const ramp = hex => rampCache[hex] || (rampCache[hex] = [shade(hex, -.6), shade(hex, -.4), shade(hex, -.2), hexRgb(hex), shade(hex, .16), shade(hex, .32)]);
+
+/* ---------- painter ---------- */
+function Painter(o){
+  this.o = o; this.shapes = []; this.decals = []; this.anchors = {}; this.ground = null;
+  this.mood = o.mood || 'happy';
+}
+const P = Painter.prototype;
+P.mat = function(m){ return typeof m === 'string' ? {c:m, tex:''} : {c:m[0], tex:m[1] || ''}; };
+P.add = function(kind, geo, m, o){ this.shapes.push({kind, geo, m:this.mat(m), o:o || {}}); return this; };
+P.ell = function(cx, cy, rx, ry, m, o){ return this.add('ell', {cx, cy, rx, ry}, m, o); };
+P.poly = function(pts, m, o){ return this.add('poly', {pts}, m, o); };
+P.cap = function(x1, y1, x2, y2, r1, r2, m, o){ return this.add('cap', {x1, y1, x2, y2, r1, r2}, m, o); };
+P.anchor = function(k, x, y, w){ this.anchors[k] = {x, y, w}; return this; };
+P.shadow = function(cx, cy, rx){ this.ground = {cx, cy, rx}; return this; };
+P.dec = function(f){ this.decals.push(f); return this; };
+P.px = function(x, y, c, a){ return this.dec(D => D.set(x, y, c, a)); };
+P.line = function(x1, y1, x2, y2, c, a){ return this.dec(D => D.line(x1, y1, x2, y2, c, a)); };
+P.disc = function(cx, cy, rx, ry, c, a){ return this.dec(D => D.disc(cx, cy, rx, ry, c, a)); };
+// anime eye: dark lens, two-tone iris, catchlights; mood swaps it for a closed or happy eye
+P.eye = function(x, y, s, iris, o = {}){
+  const mood = o.mood || this.mood, ink = o.ink || '#1b1226';
+  return this.dec(D => {
+    if (mood === 'sleep'){ D.line(x - s * .7, y + 1, x + s * .7, y + 1, ink); D.set(Math.round(x + s * .7), y, ink); return; }
+    if (mood === 'hyped' || mood === 'happy' && o.happyArc){ // ^ ^
+      const w = Math.max(2, Math.round(s * .7)); for (let i = -w; i <= w; i++){ const yy = Math.round(y + Math.abs(i) * .7 - 1); D.set(x + i, yy, ink); if (Math.abs(i) < w) D.set(x + i, yy + 1, ink, .35); } return; }
+    if (o.glow){ D.disc(x, y, s * .55, s * .75, iris); D.disc(x - s * .15, y - s * .25, Math.max(.6, s * .2), Math.max(.6, s * .25), '#ffffff'); return; }
+    const rx = s * .58, ry = s * .78;
+    D.disc(x, y, rx, ry, ink);
+    D.discClip(x, y + ry * .25, rx * .8, ry * .7, iris, x, y, rx - .6, ry - .6);
+    D.discClip(x, y - ry * .35, rx * .8, ry * .35, shade(iris, -.35), x, y, rx - .6, ry - .6);
+    if (s >= 4) D.disc(x, y + ry * .1, rx * .35, ry * .35, ink);
+    const hs = s >= 6 ? 1.2 : .8; D.disc(x - rx * .35, y - ry * .38, hs, hs, '#ffffff');
+    if (s >= 4) D.set(Math.round(x + rx * .35), Math.round(y + ry * .45), '#ffffff', .85);
+    if (mood === 'bored') D.line(x - rx - .5, y - ry * .35, x + rx + .5, y - ry * .35, ink);   // heavy lids
+  });
+};
+P.blush = function(x, y, c = '#ff7a9a'){ return this.dec(D => { D.set(x, y, c, .55); D.set(x + 1, y, c, .55); D.set(x + 2, y, c, .4); }); };
+P.sparkle = function(x, y, c = '#fff6c8', r = 2){ return this.dec(D => { for (let i = -r; i <= r; i++){ D.set(x + i, y, c, 1 - Math.abs(i) / (r + 1)); D.set(x, y + i, c, 1 - Math.abs(i) / (r + 1)); } D.set(x, y, '#ffffff'); }); };
+
+/* ---------- raster ---------- */
+function shapeHit(s, x, y){
+  const g = s.geo, px = x + .5, py = y + .5;
+  if (s.kind === 'ell'){
+    let dx = px - g.cx, dy = py - g.cy; if (s.o.rot){ const c = Math.cos(s.o.rot), sn = Math.sin(s.o.rot); [dx, dy] = [dx * c + dy * sn, -dx * sn + dy * c]; }
+    const u = dx / g.rx, v = dy / g.ry, r2 = u * u + v * v, lim = s.m.tex === 'fur' ? 1 + (hash(x, y, 7) - .5) * .2 : 1;
+    if (r2 > lim) return null;
+    let nx = u, ny = v; if (s.o.rot){ const c = Math.cos(-s.o.rot), sn = Math.sin(-s.o.rot); [nx, ny] = [nx * c + ny * sn, -nx * sn + ny * c]; }
+    return [nx, ny, Math.sqrt(Math.max(0, 1 - Math.min(1, r2)))];
+  }
+  if (s.kind === 'cap'){
+    const vx = g.x2 - g.x1, vy = g.y2 - g.y1, l2 = vx * vx + vy * vy || 1, t = clamp(((px - g.x1) * vx + (py - g.y1) * vy) / l2, 0, 1);
+    const cx = g.x1 + vx * t, cy = g.y1 + vy * t, r = g.r1 + (g.r2 - g.r1) * t, dx = px - cx, dy = py - cy, d = Math.hypot(dx, dy);
+    if (d > r) return null; const k = d / r; return [dx / (r || 1), dy / (r || 1), Math.sqrt(Math.max(0, 1 - k * k))];
+  }
+  const pts = g.pts; let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++){ const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside; }
+  if (!inside) return null;
+  if (!g.box){ const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]); g.box = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, (Math.max(...xs) - Math.min(...xs)) / 2 || 1, (Math.max(...ys) - Math.min(...ys)) / 2 || 1]; }
+  const [cx, cy, hw, hh] = g.box, u = (px - cx) / hw, v = (py - cy) / hh, r2 = Math.min(.92, u * u + v * v);
+  return [u, v, Math.sqrt(1 - r2)];
+}
+// small tone nudges that read as fur strands, feather scallops, scales and so on
+function texDelta(tex, x, y, t){
+  if (tex === 'fur'){ const col = hash(x, 0, 3), k = hash(x, Math.floor((y + col * 4) / 3.2), 5); return k < .16 ? -1 : k > .9 && t >= 3 ? 1 : 0; }
+  if (tex === 'feather'){ const row = Math.floor(y / 5), lx = (x + (row % 2) * 4) % 8, ly = y % 5, d = ly - 3.6 + (lx - 3.5) * (lx - 3.5) / 4.5; return d > -.5 && d < .6 ? -1 : d < -2.4 && t >= 3 && lx > 1 && lx < 6 ? 1 : 0; }
+  if (tex === 'scale'){ const row = Math.floor(y / 3), lx = (x + (row % 2) * 2) % 4, ly = y % 3; return ly === 2 && lx !== 0 ? -1 : ly === 0 && lx === 2 && t >= 3 ? 1 : 0; }
+  if (tex === 'stone'){ const k = hash(x, y, 11), b = hash(Math.floor(x / 3), Math.floor(y / 3), 12); return k < .07 ? -1 : k > .95 ? 1 : b < .12 ? -1 : 0; }
+  if (tex === 'speck'){ const k = hash(x, y, 13); return k < .05 ? -2 : 0; }
+  return 0;
+}
+function toneOf(L){ return L > .6 ? 5 : L > .3 ? 4 : L > -.04 ? 3 : L > -.4 ? 2 : 1; }
+
+function Buf(){ this.rgba = new Uint8ClampedArray(N * N * 4); }
+Buf.prototype.set = function(x, y, c, a = 1){ x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= N || y >= N) return;
+  const rgb = typeof c === 'string' ? hexRgb(c) : c, i = (y * N + x) * 4, d = this.rgba, ba = d[i + 3] / 255, oa = a + ba * (1 - a);
+  for (let k = 0; k < 3; k++) d[i + k] = oa ? (rgb[k] * a + d[i + k] * ba * (1 - a)) / oa : 0; d[i + 3] = oa * 255; };
+Buf.prototype.line = function(x1, y1, x2, y2, c, a){ const n = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1), 1); for (let i = 0; i <= n; i++) this.set(x1 + (x2 - x1) * i / n, y1 + (y2 - y1) * i / n, c, a); };
+Buf.prototype.disc = function(cx, cy, rx, ry, c, a){ for (let y = Math.floor(cy - ry - 1); y <= cy + ry + 1; y++) for (let x = Math.floor(cx - rx - 1); x <= cx + rx + 1; x++){ const u = (x + .5 - cx) / rx, v = (y + .5 - cy) / ry; if (u * u + v * v <= 1) this.set(x, y, c, a); } };
+Buf.prototype.discClip = function(cx, cy, rx, ry, c, kx, ky, krx, kry){ for (let y = Math.floor(cy - ry - 1); y <= cy + ry + 1; y++) for (let x = Math.floor(cx - rx - 1); x <= cx + rx + 1; x++){ const u = (x + .5 - cx) / rx, v = (y + .5 - cy) / ry, a = (x + .5 - kx) / krx, b = (y + .5 - ky) / kry; if (u * u + v * v <= 1 && a * a + b * b <= 1) this.set(x, y, c); } };
+
+/* ---------- form gear ---------- */
+const GEAR = {
+  scarf:['#d8443a', '#f2d9a0'], scarfGold:['#e8b43a', '#fff0b8'], band:['#f4f1ea', '#d8443a'], crown:'#f2c230'
+};
+function addGear(Pn, f){
+  const nk = Pn.anchors.neck, br = Pn.anchors.brow, tp = Pn.anchors.top || br;
+  if (f >= 1 && nk && !Pn.o.noScarf){ const [c] = f >= 3 ? GEAR.scarfGold : GEAR.scarf, hw = nk.w / 2;
+    Pn.ell(nk.x, nk.y, hw, Math.max(2.5, nk.w * .13), [c, 'cloth']);
+    Pn.poly([[nk.x + hw * .35, nk.y], [nk.x + hw * .8, nk.y + 1], [nk.x + hw * .95, nk.y + 9], [nk.x + hw * .6, nk.y + 10], [nk.x + hw * .45, nk.y + 3]], c);
+    if (f >= 3) Pn.line(nk.x - hw + 2, nk.y + 1, nk.x + hw - 2, nk.y + 1, GEAR.scarfGold[1], .7); }
+  if (f === 2 && br){ const hw = br.w / 2 + 1, c = GEAR.band[1];   // a red sweatband with a white stripe and tied tails
+    Pn.poly([[br.x - hw, br.y - 2], [br.x + hw, br.y - 2], [br.x + hw - 1, br.y + 4], [br.x - hw + 1, br.y + 4]], c, {line:1});
+    Pn.line(br.x - hw + 2, br.y + 1, br.x + hw - 2, br.y + 1, GEAR.band[0]);
+    Pn.poly([[br.x + hw - 1, br.y - 1], [br.x + hw + 8, br.y - 5], [br.x + hw + 7, br.y + 1]], c);
+    Pn.poly([[br.x + hw - 1, br.y + 2], [br.x + hw + 7, br.y + 4], [br.x + hw + 4, br.y + 8]], c); }
+  if (f >= 3 && tp){ const x = tp.x, y = tp.y + 1, c = GEAR.crown;
+    Pn.poly([[x - 10, y], [x - 11, y - 11], [x - 5, y - 5], [x, y - 14], [x + 5, y - 5], [x + 11, y - 11], [x + 10, y]], [c, 'metal'], {flatN:[-.2, -.4, .9]});
+    Pn.line(x - 9, y - 1, x + 9, y - 1, '#b8860b');
+    Pn.disc(x, y - 4, 1.6, 1.6, '#e0405a'); Pn.px(x - 6, y - 3, '#4ab0ff'); Pn.px(x + 6, y - 3, '#4ab0ff'); Pn.px(x - 1, y - 12, '#fff6c8'); Pn.px(x - 10, y - 10, '#fff6c8'); }
+}
+
+/* ---------- render ---------- */
+function render(draw, o = {}){
+  const Pn = new Painter(o); draw(Pn, o); addGear(Pn, o.form || 0);
+  const part = new Int16Array(N * N).fill(-1), tone = new Int8Array(N * N), Ls = new Float32Array(N * N), nzs = new Float32Array(N * N);
+  Pn.shapes.forEach((s, si) => {
+    const b = bounds(s);
+    for (let y = b[1]; y <= b[3]; y++) for (let x = b[0]; x <= b[2]; x++){
+      if (x < 0 || y < 0 || x >= N || y >= N) continue; const i = y * N + x;
+      if (s.o.clip && part[i] < 0) continue;
+      const n = shapeHit(s, x, y); if (!n) continue;
+      let L, nz = n[2];
+      if (s.o.flatN){ const f = s.o.flatN; L = f[0] * LD[0] + f[1] * LD[1] + f[2] * LD[2]; nz = 1; }
+      else if (s.o.base && part[i] >= 0){ L = Ls[i]; nz = nzs[i]; }
+      else { const ln = Math.hypot(n[0], n[1], n[2]) || 1; L = (n[0] * LD[0] + n[1] * LD[1] + n[2] * LD[2]) / ln; }
+      let t = toneOf(L + (s.o.lift || 0));
+      if (t === 1 && nz < .3 && !s.o.flatN) t = 2;           // reflected light along the shadow edge
+      if (s.m.tex === 'metal' && !s.o.flatN){ t = L > .45 ? 5 : L > .1 ? 3 : L > -.25 ? 4 : L > -.5 ? 2 : 1; }
+      t = clamp(t + texDelta(s.m.tex, x, y, t), 1, 5);
+      if (s.o.tone) t = s.o.tone;
+      part[i] = si; tone[i] = t; Ls[i] = L; nzs[i] = nz;
+    }
+  });
+  // outlines: the outer edge in each part's darkest tone (a step lighter on the lit side), and a contour where a part sits over another
+  const out = new Int8Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){ const i = y * N + x, p = part[i]; if (p < 0) continue; const s = Pn.shapes[p];
+    if (s.o.noLine) continue;
+    const nb = [[0, -1], [-1, 0], [1, 0], [0, 1]].map(([dx, dy]) => { const xx = x + dx, yy = y + dy; return xx < 0 || yy < 0 || xx >= N || yy >= N ? -1 : part[yy * N + xx]; });
+    if (nb.some(q => q < 0)){ out[i] = (nb[2] < 0 || nb[3] < 0) ? 1 : 2; continue; }
+    if (s.o.edge === false || s.o.clip && !s.o.line) continue;
+    if (nb.some(q => q < p && Pn.shapes[q].m.c !== s.m.c || q < p && s.o.line)) out[i] = 3; }
+  const B = new Buf(), d = B.rgba;
+  if (Pn.ground){ const g = Pn.ground; B.disc(g.cx, g.cy, g.rx, Math.max(2, g.rx * .18), '#000000', .22); B.disc(g.cx, g.cy, g.rx * .7, Math.max(1.5, g.rx * .12), '#000000', .12); }
+  for (let i = 0; i < N * N; i++){ const p = part[i]; if (p < 0) continue; const r = ramp(Pn.shapes[p].m.c);
+    const c = out[i] === 1 ? r[0] : out[i] === 2 ? r[1] : out[i] === 3 ? r[Math.max(1, tone[i] - 2)] : r[tone[i]];
+    d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
+  Pn.decals.forEach(f => f(B));
+  if ((o.form || 0) >= 3){   // legendary aura: a warm glow hugging the outline, plus a few sparkles
+    const a = new Float32Array(N * N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){ if (d[(y * N + x) * 4 + 3] > 200) continue; let m = 9;
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++){ const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < N && yy < N && d[(yy * N + xx) * 4 + 3] > 200 && !(Pn.ground && yy >= Pn.ground.cy - 3)) m = Math.min(m, Math.hypot(dx, dy)); }
+      if (m < 3.6) a[y * N + x] = m < 1.5 ? .85 : m < 2.5 ? .45 : .2; }
+    for (let i = 0; i < N * N; i++) if (a[i]) B.set(i % N, Math.floor(i / N), i % 3 ? '#ffd84a' : '#ffb02e', a[i]);
+    [[12, 20], [84, 14], [86, 50], [10, 58]].forEach(([x, y]) => sparkleOn(B, x, y));
+  }
+  if (o.mood === 'sleep' && Pn.anchors.top){ const t = Pn.anchors.top; zzz(B, t.x + 10, t.y - 2); }
+  const c = document.createElement('canvas'); c.width = c.height = N; c.getContext('2d').putImageData(new ImageData(d, N, N), 0, 0);
+  return c;
+}
+function sparkleOn(B, x, y){ for (let i = -2; i <= 2; i++){ B.set(x + i, y, '#fff6c8', 1 - Math.abs(i) / 3); B.set(x, y + i, '#fff6c8', 1 - Math.abs(i) / 3); } B.set(x, y, '#ffffff'); }
+function zzz(B, x, y){ const z = (x0, y0, s) => { for (let i = 0; i < s; i++){ B.set(x0 + i, y0, '#e8e4ff'); B.set(x0 + i, y0 + s - 1, '#e8e4ff'); B.set(x0 + s - 1 - i, y0 + i, '#e8e4ff'); } }; z(x, y, 4); z(x + 5, y - 6, 3); }
+function bounds(s){ const g = s.geo;
+  if (s.kind === 'ell'){ const r = Math.max(g.rx, g.ry) + 1; return [Math.floor(g.cx - r), Math.floor(g.cy - r), Math.ceil(g.cx + r), Math.ceil(g.cy + r)]; }
+  if (s.kind === 'cap'){ const r = Math.max(g.r1, g.r2) + 1; return [Math.floor(Math.min(g.x1, g.x2) - r), Math.floor(Math.min(g.y1, g.y2) - r), Math.ceil(Math.max(g.x1, g.x2) + r), Math.ceil(Math.max(g.y1, g.y2) + r)]; }
+  const xs = g.pts.map(p => p[0]), ys = g.pts.map(p => p[1]); return [Math.floor(Math.min(...xs)), Math.floor(Math.min(...ys)), Math.ceil(Math.max(...xs)), Math.ceil(Math.max(...ys))];
+}
+
+return {N, render, shade, ramp, hash, PETS:{}};
+})();
+
+/* Birds and owls. They face left (3/4 view): beak on the left, wing and tail on the right. */
+(() => {
+const A = PETART.PETS;
+// toes: three short forward lines per foot
+const feet = (P, xs, y, c) => xs.forEach(x => { P.line(x - 3, y, x + 1, y, c); P.px(x - 3, y - 1, c); P.px(x - 4, y + 1, c); P.px(x + 2, y + 1, c); });
+
+// A round songbird sitting on its feet. c = {body, belly, wing, tail, beak, leg, iris, head?, crest?}
+function songbird(P, c){
+  P.shadow(48, 87, 22);
+  P.poly([[60, 58], [86, 70], [88, 79], [80, 80], [60, 72]], [c.tail || c.wing, 'feather']);                     // tail
+  P.cap(41, 72, 40, 84, 2.2, 1.6, c.leg); P.cap(53, 72, 54, 84, 2.2, 1.6, c.leg);                                 // legs
+  P.ell(50, 60, 23, 19, [c.body, 'feather'], {rot:-.2});                                                          // body
+  P.ell(42, 66, 14, 12, [c.belly, 'feather'], {clip:1, base:1, lift:.15});                                         // belly
+  P.ell(40, 36, 16, 15, c.head || c.body);                                                                         // head
+  if (c.cap) P.ell(42, 26, 13, 7, c.cap, {clip:1, base:1});                                                        // a darker cap on the head
+  if (c.cheek) P.ell(34, 44, 7, 5, c.cheek, {clip:1, base:1, lift:.2});
+  P.poly([[50, 50], [68, 50], [79, 63], [74, 73], [56, 70], [49, 60]], [c.wing, 'feather']);                      // wing
+  P.line(58, 56, 72, 66, PETART.shade(c.wing, -.45), .55); P.line(55, 61, 69, 70, PETART.shade(c.wing, -.45), .45); // flight feather lines
+  P.poly([[25, 33], c.beakLong ? [9, 38] : [14, 38], [25, 43]], c.beak);                                          // beak
+  P.line(15, 38, 24, 38, PETART.shade(c.beak, -.5), .7);
+  feet(P, [40, 54], 85, PETART.shade(c.leg, -.2));
+  P.eye(34, 34, 6, c.iris || '#3a2a1a');
+  P.anchor('neck', 41, 50, 24).anchor('brow', 40, 28, 24).anchor('top', 41, 21);
+}
+
+A.pet_bluebird = P => { songbird(P, {body:'#3d7fe0', belly:'#f3a35a', wing:'#2f5fc4', tail:'#284f9e', beak:'#f2c14a', leg:'#e09a3a', iris:'#26364f', cheek:'#5a9af0'}); P.blush(30, 41); };
+A.pet_crow = P => { songbird(P, {body:'#2b2838', belly:'#3a3650', wing:'#22202e', tail:'#1d1b28', beak:'#5a5866', leg:'#45424f', iris:'#c9a227', beakLong:1});
+  P.line(52, 52, 66, 60, '#5b6bd0', .5); P.line(34, 26, 44, 24, '#5b6bd0', .55); };   // blue sheen on black feathers
+A.dr_thunderbird = P => { songbird(P, {body:'#3550c8', belly:'#f2d24a', wing:'#283b9c', tail:'#f2c230', beak:'#f5d76a', leg:'#e0a43a', iris:'#ffe066', cap:'#f2c230'});
+  // a lightning crest and sparks
+  P.poly([[44, 22], [50, 10], [48, 18], [56, 8], [52, 22]], '#ffe14a');
+  P.line(80, 42, 84, 48, '#ffe14a'); P.line(84, 48, 81, 50, '#ffe14a'); P.line(81, 50, 86, 56, '#ffe14a'); };
+A.dr_spotter_angel = P => { songbird(P, {body:'#f4f2ee', belly:'#ffffff', wing:'#e4e2ec', tail:'#d6d4e0', beak:'#f2b35a', leg:'#f0a0a0', iris:'#3a4a7a'});
+  P.disc(41, 13, 11, 3, '#ffe27a'); P.disc(41, 13, 8, 1.6, '#000000', 0); P.dec(B => { for (let x = -8; x <= 8; x++){ const y = 13 + Math.round(Math.sqrt(Math.max(0, 1 - x * x / 81)) * 2.2); B.set(41 + x, y, '#fff3b0'); B.set(41 + x, 26 - y, '#ffd84a'); } });
+  P.blush(29, 41); };
+A.pet_duck = P => { const c = {body:'#f5d44a', belly:'#fbe68a', wing:'#e8bf35', tail:'#dcae2c', beak:'#f08a2a', leg:'#f08a2a', iris:'#2a2416'};
+  P.shadow(48, 87, 22);
+  P.poly([[62, 56], [82, 50], [86, 58], [70, 70]], [c.tail, 'feather']);
+  P.cap(42, 74, 41, 84, 2.2, 1.6, c.leg); P.cap(54, 74, 55, 84, 2.2, 1.6, c.leg);
+  P.ell(50, 62, 24, 17, [c.body, 'feather']); P.ell(44, 68, 15, 10, [c.belly, 'feather'], {clip:1, base:1, lift:.15});
+  P.ell(38, 34, 15, 15, c.body);
+  P.poly([[54, 54], [72, 54], [78, 64], [70, 72], [54, 68]], [c.wing, 'feather']);
+  P.poly([[25, 37], [10, 38], [9, 42], [12, 44], [26, 43]], c.beak); P.line(11, 41, 25, 41, PETART.shade(c.beak, -.5));   // flat bill
+  feet(P, [41, 55], 85, '#d06a1a'); P.eye(32, 32, 6, '#2a2416'); P.blush(28, 39, '#ff8a5a');
+  P.anchor('neck', 41, 48, 24).anchor('brow', 38, 26, 24).anchor('top', 39, 19); };
+A.pet_penguin = P => { const blk = '#26283a';
+  P.shadow(48, 88, 20);
+  P.ell(36, 86, 7, 3, '#f09a2a'); P.ell(58, 86, 7, 3, '#f09a2a');                                                // feet
+  P.ell(48, 56, 22, 30, blk); P.ell(48, 62, 15, 24, '#f4f2ee', {clip:1, base:1, lift:.15});                        // body, white front
+  P.ell(48, 34, 16, 13, '#f4f2ee', {clip:1, base:1, lift:.2});                                                     // face mask
+  P.poly([[28, 46], [22, 66], [26, 70], [32, 56]], blk); P.poly([[68, 46], [74, 66], [70, 70], [64, 56]], blk);      // flippers
+  P.poly([[44, 40], [52, 40], [48, 46]], '#f09a2a');
+  P.eye(41, 34, 5, '#2a3a5a'); P.eye(55, 34, 5, '#2a3a5a'); P.blush(37, 39); P.blush(56, 39);
+  P.anchor('neck', 48, 48, 30).anchor('brow', 48, 25, 26).anchor('top', 48, 26); };
+A.pet_gobbles = P => { P.shadow(48, 87, 26);
+  const fan = ['#8a3a22', '#c4622a', '#e8a33a', '#c4622a', '#8a3a22', '#c4622a', '#e8a33a'];
+  fan.forEach((c, i) => { const a = -2.6 + i * .37, x = 56 + Math.cos(a) * 30, y = 52 + Math.sin(a) * 30; P.cap(56, 52, x, y, 4, 8, [c, 'feather']); });
+  P.cap(42, 74, 41, 84, 2.2, 1.6, '#c4842a'); P.cap(54, 74, 55, 84, 2.2, 1.6, '#c4842a');
+  P.ell(50, 62, 20, 18, ['#6a3a22', 'feather']); P.ell(46, 66, 12, 11, ['#8a5032', 'feather'], {clip:1, base:1, lift:.15});
+  P.ell(38, 40, 11, 12, '#c9a07a');
+  P.poly([[28, 40], [20, 42], [28, 45]], '#f2b84a');
+  P.cap(29, 45, 31, 54, 2.4, 3, '#d8323a');                                                                         // wattle
+  feet(P, [41, 55], 85, '#a86a22'); P.eye(34, 38, 5, '#2a1a10');
+  P.anchor('neck', 40, 52, 20).anchor('brow', 38, 32, 18).anchor('top', 39, 28); };
+
+// The paper crane: flat folded facets, no texture, each facet lit by its own fixed normal
+A.pet_crane = P => { P.shadow(48, 86, 26); const w = '#f6f2ea', cr = '#e2d9c6', f = (pts, n, c = w) => P.poly(pts, c, {flatN:n, line:1});
+  f([[50, 56], [74, 8], [66, 54]], [.5, -.5, .7], cr);             // far wing, folded up
+  f([[60, 64], [90, 34], [70, 68]], [.6, -.3, .7], cr);            // tail point
+  f([[26, 66], [48, 52], [72, 66], [48, 78]], [0, -.6, .8]);       // body diamond, top face
+  f([[26, 66], [48, 78], [72, 66], [48, 84]], [0, .6, .8], cr);    // body, under face
+  f([[36, 62], [6, 30], [52, 58]], [-.6, -.6, .5]);                // near wing
+  f([[30, 66], [16, 30], [22, 30], [38, 62]], [-.5, -.1, .8]);     // neck
+  f([[16, 30], [8, 40], [22, 30]], [-.3, .5, .8], cr);             // head, folded down
+  P.line(48, 52, 48, 78, '#c9bea8', .8); P.line(30, 60, 48, 70, '#c9bea8', .5);
+  P.eye(17, 32, 3, '#2a2a3a');
+  P.anchor('neck', 30, 58, 14).anchor('brow', 18, 28, 10).anchor('top', 19, 28); };
+
+// Owls: big round body, facial disc, ear tufts, chest feathers, perched on a branch
+function owl(P, c){
+  P.shadow(48, 89, 24);
+  P.cap(18, 84, 80, 84, 3.5, 3, ['#7a5434', 'stone']);                                                             // branch
+  P.ell(48, 56, 25, 28, [c.body, 'feather']);
+  P.ell(48, 64, 16, 18, [c.chest, 'feather'], {clip:1, base:1, lift:.18});
+  P.poly([[25, 38], [24, 16], [32, 26], [40, 32]], [c.body, 'feather']); P.poly([[71, 38], [72, 16], [64, 26], [56, 32]], [c.body, 'feather']);   // ear tufts
+  P.ell(38, 40, 11, 10, c.face, {clip:1, base:1, lift:.25, line:1}); P.ell(58, 40, 11, 10, c.face, {clip:1, base:1, lift:.25, line:1});
+  P.poly([[24, 50], [18, 70], [26, 78], [32, 62]], [c.wing, 'feather']); P.poly([[72, 50], [78, 70], [70, 78], [64, 62]], [c.wing, 'feather']);
+  P.poly([[45, 45], [51, 45], [48, 52]], c.beak);
+  [40, 46, 52, 58].forEach(x => { P.line(x - 1, 83, x - 1, 86, '#e0a03a'); P.line(x + 1, 83, x + 1, 86, '#e0a03a'); });   // talons on the branch
+  if (c.glow){ P.eye(38, 40, 7, c.iris, {glow:1}); P.eye(58, 40, 7, c.iris, {glow:1}); }
+  else { P.eye(38, 40, 7, c.iris); P.eye(58, 40, 7, c.iris); }
+  P.anchor('neck', 48, 54, 34).anchor('brow', 48, 28, 30).anchor('top', 48, 28);
+}
+A.pet_snow_owl = P => { owl(P, {body:'#eeeef4', chest:'#ffffff', face:'#ffffff', wing:'#dcdce8', beak:'#3a3440', iris:'#f2c230'});
+  for (let i = 0; i < 26; i++){ const x = 28 + Math.floor(PETART.hash(i, 1, 9) * 40), y = 50 + Math.floor(PETART.hash(i, 2, 9) * 30); P.px(x, y, '#5a5870'); P.px(x + 1, y, '#5a5870', .5); } };
+A.pet_sky_owl = P => owl(P, {body:'#6f8fc4', chest:'#c9d8f0', face:'#e4ecf8', wing:'#5a76aa', beak:'#f2c14a', iris:'#ffb02e'});
+A.pet_shadow_owl = P => owl(P, {body:'#3a2f5c', chest:'#4e4078', face:'#2a2244', wing:'#2c2448', beak:'#8a7aa8', iris:'#c690ff', glow:1});
+
+// Phoenix chick: a red-orange songbird with a flame crest and a burning tail
+A.pet_baby_phoenix = P => { songbird(P, {body:'#e8532a', belly:'#f8c44a', wing:'#c8361e', tail:'#f08a2a', beak:'#f8d86a', leg:'#e0a03a', iris:'#5a1a0a'});
+  [[60, 64, 88, 50, '#ffb02e'], [62, 68, 90, 64, '#ffd84a'], [60, 72, 84, 80, '#ff7a2a']].forEach(([a, b, x, y, col]) => P.cap(a, b, x, y, 4, 1, col, {noLine:0}));
+  [[40, 22, 52, 6, '#ffb02e'], [44, 23, 60, 12, '#ffd84a'], [46, 26, 62, 22, '#ff8a2a']].forEach(([a, b, x, y, col]) => P.cap(a, b, x, y, 3.4, .8, col));   // flame crest swept back
+  P.blush(30, 41); };
+})();
+
+/* Furry pets: cats, foxes, dogs, bears, bunnies. Sitting, facing the viewer, head a little big (chibi). */
+(() => {
+const A = PETART.PETS, sh = PETART.shade;
+const EARS = {
+  cat:(P, c) => { P.poly([[29, 32], [26, 10], [44, 24]], [c.body, 'fur']); P.poly([[67, 32], [70, 10], [52, 24]], [c.body, 'fur']);
+    P.poly([[31, 28], [29, 15], [40, 24]], c.inner, {clip:1, edge:false}); P.poly([[65, 28], [67, 15], [56, 24]], c.inner, {clip:1, edge:false}); },
+  fox:(P, c) => { P.poly([[28, 34], [22, 4], [46, 24]], [c.body, 'fur']); P.poly([[68, 34], [74, 4], [50, 24]], [c.body, 'fur']);
+    P.poly([[31, 28], [26, 11], [40, 24]], c.inner, {clip:1, edge:false}); P.poly([[65, 28], [70, 11], [56, 24]], c.inner, {clip:1, edge:false});
+    P.poly([[24, 12], [22, 4], [28, 10]], '#2a1a1a', {clip:1}); P.poly([[72, 12], [74, 4], [68, 10]], '#2a1a1a', {clip:1}); },
+  bear:(P, c) => { P.ell(29, 23, 8, 8, [c.body, 'fur']); P.ell(67, 23, 8, 8, [c.body, 'fur']); P.ell(29, 24, 4.5, 4.5, c.inner, {clip:1, edge:false}); P.ell(67, 24, 4.5, 4.5, c.inner, {clip:1, edge:false}); },
+  bunny:(P, c) => { P.ell(38, 14, 5.5, 16, [c.body, 'fur'], {rot:-.15}); P.ell(58, 14, 5.5, 16, [c.body, 'fur'], {rot:.15});
+    P.ell(38, 15, 2.6, 12, c.inner, {clip:1, edge:false, rot:-.15}); P.ell(58, 15, 2.6, 12, c.inner, {clip:1, edge:false, rot:.15}); },
+  rose:(P, c) => { P.poly([[28, 26], [22, 22], [26, 34]], c.ear || c.body); P.poly([[68, 26], [74, 22], [70, 34]], c.ear || c.body); }
+};
+const FLOPS = (P, c) => { P.ell(25, 42, 7, 14, [c.ear || c.body, 'fur'], {rot:.35}); P.ell(71, 42, 7, 14, [c.ear || c.body, 'fur'], {rot:-.35}); };   // floppy ears go in front of the head
+const TAILS = {
+  cat:(P, c) => { P.cap(64, 78, 80, 70, 3.5, 3.2, [c.tailC || c.body, 'fur']); P.cap(80, 70, 82, 54, 3.2, 3, [c.tailC || c.body, 'fur']); P.cap(82, 54, 76, 46, 3, 2.8, [c.tip || c.tailC || c.body, 'fur']); },
+  fox:(P, c) => { P.ell(74, 64, 12, 20, [c.tailC || c.body, 'fur'], {rot:.5}); P.ell(80, 50, 6, 8, [c.tip || '#f4f0ea', 'fur'], {rot:.5, clip:1, base:1}); },
+  bear:(P, c) => P.ell(68, 80, 5, 5, [c.body, 'fur']),
+  dog:(P, c) => P.cap(64, 78, 78, 62, 3.6, 2.4, [c.tailC || c.body, 'fur']),
+  bunny:(P, c) => P.ell(70, 80, 7, 7, ['#ffffff', 'fur'])
+};
+// c = {body, belly, muzzle, inner, iris, nose, ears, tail, wide?}
+function critter(P, c){
+  const w = c.wide || 0;
+  P.shadow(48, 88, 25 + w);
+  (TAILS[c.tail] || TAILS.cat)(P, c);
+  P.ell(48, 70, 20 + w, 16, [c.body, 'fur']);                                                      // body
+  P.ell(48, 73, 12 + w * .6, 11, [c.belly || c.body, 'fur'], {clip:1, base:1, lift:.18});          // belly
+  P.ell(32 - w, 84, 8, 4, [c.body, 'fur']); P.ell(64 + w, 84, 8, 4, [c.body, 'fur']);              // hind feet
+  if (c.ears !== 'flop') (EARS[c.ears] || EARS.cat)(P, c);
+  P.ell(48, 42, 24 + w * .5, 20, [c.body, 'fur']);                                                 // head
+  if (c.ears === 'flop') FLOPS(P, c);
+  if (c.muzzle) P.ell(48, 51, 10 + w * .4, 7, [c.muzzle, 'fur'], {clip:1, base:1, lift:.22});
+  P.cap(40, 70, 40, 82, 4.2, 4, [c.paw || c.body, 'fur']); P.cap(56, 70, 56, 82, 4.2, 4, [c.paw || c.body, 'fur']);   // front paws
+  const toe = sh(c.paw || c.body, -.45); [38, 41, 54, 57].forEach(x => P.line(x, 83, x, 85, toe, .8));
+  // face
+  const nose = c.nose || '#3a2230';
+  P.disc(48, 48, 2.6, 1.8, nose); P.px(47, 47, '#ffffff', .6);
+  if (c.mouth !== 'none'){ P.line(48, 50, 48, 51, nose); P.px(47, 52, nose); P.px(46, 52, nose, .6); P.px(49, 52, nose); P.px(50, 52, nose, .6); }
+  P.eye(38, 41, 7, c.iris || '#4a7a3a'); P.eye(58, 41, 7, c.iris || '#4a7a3a');
+  if (c.blush !== false){ P.blush(31, 48); P.blush(63, 48); }
+  P.anchor('neck', 48, 58, 32 + w).anchor('brow', 48, 28, 34).anchor('top', 48, 22);
+}
+const whiskers = (P, c = '#ffffff', a = .7) => { P.line(30, 49, 22, 47, c, a); P.line(30, 51, 22, 52, c, a); P.line(66, 49, 74, 47, c, a); P.line(66, 51, 74, 52, c, a); };
+
+A.pet_puff = P => { critter(P, {body:'#f1edf4', belly:'#ffffff', muzzle:'#ffffff', inner:'#f6a8c0', iris:'#4a8ad8', nose:'#e8708a', ears:'cat', tail:'fox', tip:'#ffffff'});
+  // extra fluff around the cheeks and chest
+  P.ell(26, 48, 5, 6, ['#f1edf4', 'fur']); P.ell(70, 48, 5, 6, ['#f1edf4', 'fur']); whiskers(P, '#b8b0c8'); };
+A.pet_data_cat = P => { critter(P, {body:'#2a2a3c', belly:'#34344a', inner:'#3e3e58', iris:'#3af0ff', nose:'#5a5a78', ears:'cat', tail:'cat', blush:false});
+  // glowing circuit traces in the fur
+  const cy = '#3af0ff'; [[34, 66, 34, 74, 40, 74], [62, 64, 62, 70, 56, 70], [44, 30, 44, 26, 50, 26]].forEach(([a, b, c, d, e, f]) => { P.line(a, b, c, d, cy, .8); P.line(c, d, e, f, cy, .8); P.px(e, f, '#ffffff'); });
+  P.line(36, 59, 60, 59, '#4a4a6a'); P.px(48, 60, cy); whiskers(P, '#6a6a8a'); };
+A.pet_tiger = P => { critter(P, {body:'#f0882a', belly:'#fbf0dc', muzzle:'#fbf0dc', inner:'#f8c8a8', iris:'#8ac040', ears:'bear', tail:'cat', tip:'#2a1a14'});
+  const st = '#2e1a16', s = (pts) => P.poly(pts, st, {clip:1, edge:false});
+  s([[45, 22], [51, 22], [50, 32], [46, 32]]); s([[37, 23], [42, 23], [42, 31]]); s([[59, 23], [54, 23], [54, 31]]);         // forehead
+  s([[23, 38], [34, 41], [23, 45]]); s([[73, 38], [62, 41], [73, 45]]); s([[24, 47], [32, 48], [25, 52]]); s([[72, 47], [64, 48], [71, 52]]);
+  s([[27, 61], [38, 64], [27, 68]]); s([[69, 61], [58, 64], [69, 68]]); s([[28, 71], [36, 73], [29, 78]]); s([[68, 71], [60, 73], [67, 78]]);
+  whiskers(P); };
+A.pet_ember_fox = P => { critter(P, {body:'#e8642a', belly:'#fbf0e4', muzzle:'#fbf0e4', inner:'#f8c8a8', iris:'#f2b02e', ears:'fox', tail:'fox', tip:'#ffd84a', paw:'#3a2420'});
+  // the tail tip burns
+  P.cap(84, 44, 90, 30, 3, 1, '#ffd84a'); P.cap(80, 42, 82, 30, 2.5, 1, '#ff9a2a'); P.cap(86, 50, 93, 42, 2.2, 1, '#ffb02e');
+  P.sparkle(88, 24, '#ffe68a', 1); };
+A.pet_mascot = P => { critter(P, {body:'#d9a464', belly:'#f4e0c0', muzzle:'#f4e0c0', ear:'#9a6234', iris:'#5a3a1a', ears:'flop', tail:'dog', nose:'#2a1a1a'});
+  // a little team jersey with a number
+  P.ell(48, 70, 20, 16, '#c83a3a', {clip:1, base:1}); P.ell(48, 58, 9, 3, '#f4f0ea', {clip:1, base:1});
+  P.dec(B => { const c = '#f4f0ea'; for (let y = 66; y <= 74; y++) B.set(48, y, c); B.set(47, 67, c); B.set(46, 68, c); for (let x = 46; x <= 50; x++) B.set(x, 74, c); });
+  P.line(46, 52, 50, 52, '#c84a5a'); P.px(48, 53, '#e8607a'); };   // tongue
+A.pet_bulldog = P => { critter(P, {body:'#d4ad84', belly:'#f6eee2', muzzle:'#f6eee2', ear:'#9a7452', iris:'#4a2a1a', ears:'rose', tail:'bear', nose:'#2a1a1a', wide:4, mouth:'none'});
+  P.ell(40, 53, 8, 6, ['#f6eee2', 'fur'], {lift:.15}); P.ell(56, 53, 8, 6, ['#f6eee2', 'fur'], {lift:.15});   // jowls
+  P.dec(B => { B.line(36, 30, 42, 29, '#9a7452', .7); B.line(54, 29, 60, 30, '#9a7452', .7); B.line(44, 33, 52, 33, '#9a7452', .6);   // brow wrinkles
+    B.line(42, 57, 54, 57, '#3a2420'); B.set(43, 56, '#ffffff'); B.set(53, 56, '#ffffff'); });                                       // underbite teeth
+  P.ell(48, 56, 34, 4, '#c8444a', {clip:1, base:1}); P.px(48, 57, '#f2c230'); };                                                     // collar with a tag
+A.dr_plate_pup = P => { critter(P, {body:'#ecebf2', belly:'#ffffff', muzzle:'#ffffff', ear:'#8a8a9a', iris:'#3a4a6a', ears:'flop', tail:'dog', nose:'#2a2a3a'});
+  P.ell(40, 40, 7, 6, '#b8b8c8', {clip:1, base:1, edge:false});   // a gray patch over one eye
+  // the 2.5 lb plate it wears as a helmet
+  P.ell(48, 22, 18, 7, ['#7a7e8e', 'metal']); P.ell(48, 21, 13, 4.5, ['#9a9eae', 'metal'], {clip:1}); P.ell(48, 20, 4, 2, '#2a2a36', {clip:1});
+  P.line(36, 23, 40, 25, '#d8dce8', .7); P.eye(40, 41, 7, '#3a4a6a'); };
+A.pet_bear_cub = P => critter(P, {body:'#8a5a38', belly:'#c99a6a', muzzle:'#d8b08a', inner:'#c99a6a', iris:'#3a2210', ears:'bear', tail:'bear', nose:'#2a1810'});
+A.pet_harvest_bear = P => { critter(P, {body:'#9a6232', belly:'#d8a46a', muzzle:'#e0b88a', inner:'#d8a46a', iris:'#3a2210', ears:'bear', tail:'bear', nose:'#2a1810'});
+  // hugging a big acorn, a maple leaf behind one ear
+  P.ell(48, 74, 7, 8, '#a8622a'); P.ell(48, 68, 8, 4, ['#6a4a2a', 'scale']); P.cap(48, 64, 50, 61, 1.2, 1, '#5a3a1a');
+  P.poly([[66, 18], [72, 12], [74, 18], [80, 16], [76, 22], [80, 26], [72, 24], [68, 28]], '#e0642a'); };
+A.pet_bulk_bear = P => { critter(P, {body:'#efe6d6', belly:'#fbf6ee', muzzle:'#fbf6ee', inner:'#d8c8b0', iris:'#2a2a3a', ears:'bear', tail:'bear', nose:'#2a2430', wide:3});
+  // a protein shaker in its paws
+  P.cap(48, 66, 48, 80, 5, 5, ['#4a8ad8', 'metal']); P.ell(48, 64, 5.5, 2.4, '#2a2a3a'); P.cap(48, 61, 48, 63, 2, 2, '#2a2a3a');
+  P.line(45, 70, 51, 70, '#ffffff', .7); };
+A.pet_bunny = P => { critter(P, {body:'#f6f6fc', belly:'#ffffff', muzzle:'#ffffff', inner:'#f6b0c8', iris:'#5a7ad8', ears:'bunny', tail:'bunny', nose:'#e8708a'});
+  // standing on a little cloud
+  [[30, 88, 10], [48, 90, 12], [66, 88, 10]].forEach(([x, y, r]) => P.ell(x, y, r, 5, '#e8eefc')); };
+A.pet_heart_bunny = P => { critter(P, {body:'#f6b2cc', belly:'#ffe4ee', muzzle:'#ffe4ee', inner:'#ff7aa2', iris:'#a83a6a', ears:'bunny', tail:'bunny', nose:'#d84a7a'});
+  P.dec(B => { const h = (x, y, c) => { [[0, 0], [1, 0], [3, 0], [4, 0], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [1, 3], [2, 3], [3, 3], [2, 4]].forEach(([a, b]) => B.set(x + a, y + b, c)); };
+    h(46, 70, '#ff4a7a'); B.set(46, 71, '#ffb0c8'); h(78, 28, '#ff6a94'); }); };
+})();
+
+/* Everything else: slimes, ghosts, dragons, bats, crabs, turtles, robots, golems and one-offs. */
+(() => {
+const A = PETART.PETS, sh = PETART.shade, H = PETART.hash;
+
+// Slimes: a glossy dome with a bright rim and a big specular
+function slime(P, c){
+  P.shadow(48, 86, 30);
+  P.poly([[16, 84], [18, 60], [28, 42], [40, 34], [56, 34], [68, 42], [78, 60], [80, 84]], [c.body, c.tex || '']);
+  P.ell(48, 78, 30, 9, c.body, {clip:1, base:1, lift:.12, edge:false});
+  P.ell(36, 46, 7, 4, '#ffffff', {clip:1, tone:5, edge:false, rot:-.5});
+  P.disc(33, 56, 1.3, 1.3, '#ffffff', .9);
+  P.eye(39, 62, 6, c.iris || '#1b1226', {ink:c.ink}); P.eye(57, 62, 6, c.iris || '#1b1226', {ink:c.ink});
+  P.dec(B => { B.line(45, 69, 51, 69, c.ink || '#1b1226'); B.set(44, 68, c.ink || '#1b1226'); B.set(52, 68, c.ink || '#1b1226'); });
+  P.blush(31, 67); P.blush(61, 67);
+  P.anchor('neck', 48, 80, 52).anchor('brow', 48, 42, 30).anchor('top', 48, 35);
+}
+A.pet_pixel_slime = P => { slime(P, {body:'#5ad86a'}); P.dec(B => { [[60, 44], [64, 50], [26, 72]].forEach(([x, y]) => { B.set(x, y, '#b8ffb8', .8); B.set(x + 1, y, '#b8ffb8', .5); }); }); };
+A.pet_moon_slime = P => { slime(P, {body:'#a99af0'});
+  P.poly([[52, 40], [58, 38], [62, 44], [58, 48], [54, 46], [56, 42]], '#fff3b0', {clip:1, edge:false, tone:5});           // crescent
+  [[24, 40], [74, 30], [80, 52]].forEach(([x, y]) => P.sparkle(x, y, '#e8e4ff', 1)); };
+A.pet_slimeling = P => { slime(P, {body:'#8a90a4', tex:'metal'});
+  [[26, 70], [70, 70], [48, 40]].forEach(([x, y]) => { P.disc(x, y, 1.6, 1.6, '#5a5e70'); P.px(x - 1, y - 1, '#e0e4f0'); }); };
+A.dr_rust_slime = P => { slime(P, {body:'#b0643a', tex:'stone'});
+  [[30, 58, 5], [64, 52, 4], [58, 76, 6]].forEach(([x, y, r]) => P.ell(x, y, r, r * .7, '#7a3a20', {clip:1, edge:false})); };
+
+// Ghosts: a dome with a wavy hem, floating over its shadow
+function ghost(P, c){
+  P.shadow(48, 88, 18);
+  const hem = []; for (let i = 0; i <= 8; i++) hem.push([72 - i * 6, 78 + (i % 2 ? 6 : 0)]);
+  P.poly([[24, 78], [24, 44], [32, 24], [48, 16], [64, 24], [72, 44], ...hem], [c.body, c.tex || ''], {lift:c.lift || 0});
+  if (c.arms !== false){ P.ell(20, 56, 6, 4, c.body, {rot:-.6}); P.ell(76, 56, 6, 4, c.body, {rot:.6}); }
+  P.anchor('neck', 48, 60, 46).anchor('brow', 48, 28, 30).anchor('top', 48, 18);
+}
+A.pet_ghost = P => { ghost(P, {body:'#f28ac8'}); P.eye(40, 42, 8, '#3a5af0', {ink:'#ffffff'}); P.eye(58, 42, 8, '#3a5af0', {ink:'#ffffff'});
+  P.dec(B => { B.line(42, 56, 54, 56, '#a83a7a'); }); };
+A.pet_boo = P => { ghost(P, {body:'#f4f4fc', lift:.1}); P.eye(40, 40, 7, '#2a2a4a'); P.eye(57, 40, 7, '#2a2a4a');
+  P.dec(B => { B.disc(48, 52, 3, 3.5, '#3a2a4a'); B.disc(48, 54, 2, 1.5, '#e8607a'); }); P.blush(32, 47); P.blush(61, 47);
+  // spotting: a small dumbbell held in front
+  P.cap(36, 66, 60, 66, 1.4, 1.4, ['#7a7e8e', 'metal']); P.ell(34, 66, 3, 6, '#3a3a48'); P.ell(62, 66, 3, 6, '#3a3a48'); };
+A.pet_wisp = P => { P.shadow(48, 88, 14);
+  P.poly([[30, 70], [28, 50], [36, 30], [44, 10], [50, 26], [58, 16], [62, 34], [68, 52], [66, 70], [48, 80]], '#6ab0ff', {lift:.2});
+  P.poly([[38, 66], [38, 52], [44, 36], [50, 46], [56, 40], [60, 56], [58, 68], [48, 74]], '#c8e8ff', {clip:1, edge:false, tone:5});
+  P.eye(42, 56, 5, '#1a3a8a'); P.eye(54, 56, 5, '#1a3a8a');
+  [[20, 30], [78, 22], [76, 70]].forEach(([x, y]) => P.sparkle(x, y, '#bfe4ff', 1));
+  P.anchor('neck', 48, 72, 30).anchor('brow', 48, 44, 22).anchor('top', 47, 26); };
+A.pet_mini_shadow = P => { ghost(P, {body:'#2c2240', arms:true}); P.eye(40, 42, 7, '#ff4a5a', {glow:1}); P.eye(57, 42, 7, '#ff4a5a', {glow:1});
+  [[22, 30], [74, 26], [18, 66], [80, 70]].forEach(([x, y], i) => P.cap(x, y, x + (i % 2 ? 4 : -4), y - 8, 2.4, .6, '#3a2c58')); };   // smoke wisps
+
+// Dragons: chubby sitting wyrm with horns, wings and a belly of plates
+function dragon(P, c){
+  P.shadow(48, 88, 26);
+  P.cap(62, 80, 82, 74, 5, 2.5, [c.body, 'scale']); P.poly([[80, 70], [90, 66], [86, 78]], c.horn);                     // tail with a spade
+  P.poly([[56, 50], [86, 22], [84, 40], [90, 44], [74, 62]], c.wing, {flatN:[.2, -.4, .9]});                            // far wing
+  P.line(58, 50, 84, 26, sh(c.wing, -.4)); P.line(64, 54, 86, 42, sh(c.wing, -.4));
+  P.ell(48, 70, 19, 16, [c.body, 'scale']);
+  P.ell(48, 73, 11, 12, [c.belly, ''], {clip:1, base:1, lift:.15});
+  [66, 70, 74, 78].forEach(y => P.line(40, y, 56, y, sh(c.belly, -.35), .8));                                           // belly plates
+  P.ell(33, 84, 8, 4, c.body); P.ell(63, 84, 8, 4, c.body);
+  P.poly([[34, 26], [26, 8], [40, 22]], c.horn); P.poly([[62, 26], [70, 8], [56, 22]], c.horn);
+  P.ell(48, 40, 22, 18, [c.body, 'scale']);
+  P.ell(48, 50, 11, 7, c.belly, {clip:1, base:1, lift:.15});
+  P.poly([[40, 54], [30, 44], [34, 56]], c.wing, {flatN:[-.3, -.4, .9]});                                                 // near wing nub
+  P.cap(40, 70, 40, 80, 4, 3.8, c.body); P.cap(56, 70, 56, 80, 4, 3.8, c.body);
+  [38, 41, 54, 57].forEach(x => P.px(x, 82, '#f4f0e8'));                                                                 // claws
+  P.px(44, 49, sh(c.body, -.6)); P.px(52, 49, sh(c.body, -.6));
+  P.eye(38, 38, 7, c.iris); P.eye(58, 38, 7, c.iris);
+  P.anchor('neck', 48, 57, 30).anchor('brow', 48, 26, 30).anchor('top', 48, 23);
+}
+A.pet_ember_dragon = P => { dragon(P, {body:'#c8362a', belly:'#f4c48a', wing:'#8a2420', horn:'#f2e0b8', iris:'#ffb02e'});
+  P.dec(B => { [[44, 56, '#ffb02e'], [46, 58, '#ffd84a'], [50, 57, '#ff8a2a']].forEach(([x, y, c]) => B.set(x, y, c, .9)); }); };
+A.pet_hatchling = P => { dragon(P, {body:'#7a4ac8', belly:'#c8b0f0', wing:'#4e2c8a', horn:'#e8e0ff', iris:'#7af0ff'});
+  // shell pieces still stuck on, and a little float
+  P.poly([[30, 86], [34, 78], [40, 84], [46, 78], [52, 84], [58, 78], [64, 84], [66, 88], [30, 90]], '#efe6d6', {flatN:[0, -.3, .9]});
+  [[16, 40], [82, 70]].forEach(([x, y]) => P.ell(x, y, 3, 2, '#9a7ae0')); };
+
+// Bats: round body, big spread wings, pointed ears
+function bat(P, c){
+  P.shadow(48, 88, 16);
+  const wing = s => P.poly([[48 + s * 12, 46], [48 + s * 44, 30], [48 + s * 40, 44], [48 + s * 44, 58], [48 + s * 32, 54], [48 + s * 26, 64], [48 + s * 14, 58]], c.wing, {flatN:[-.2 * s, -.4, .9]});
+  wing(-1); wing(1);
+  [-1, 1].forEach(s => { P.line(48 + s * 14, 48, 48 + s * 40, 44, sh(c.wing, -.45)); P.line(48 + s * 14, 50, 48 + s * 32, 54, sh(c.wing, -.45)); });
+  P.poly([[36, 34], [32, 16], [44, 28]], c.body); P.poly([[60, 34], [64, 16], [52, 28]], c.body);
+  P.poly([[36, 30], [34, 21], [41, 28]], c.inner, {clip:1, edge:false}); P.poly([[60, 30], [62, 21], [55, 28]], c.inner, {clip:1, edge:false});
+  P.ell(48, 52, 17, 18, [c.body, 'fur']);
+  P.ell(48, 58, 10, 10, [c.belly || c.body, 'fur'], {clip:1, base:1, lift:.15});
+  P.cap(42, 68, 41, 76, 1.6, 1.2, c.body); P.cap(54, 68, 55, 76, 1.6, 1.2, c.body);
+  P.eye(41, 46, 6, c.iris); P.eye(55, 46, 6, c.iris);
+  P.dec(B => { B.set(45, 54, '#ffffff'); B.set(45, 55, '#ffffff'); B.set(51, 54, '#ffffff'); B.set(51, 55, '#ffffff'); B.line(44, 53, 52, 53, '#2a1a2a'); });   // fangs
+  P.anchor('neck', 48, 60, 26).anchor('brow', 48, 38, 26).anchor('top', 48, 35);
+}
+A.pet_moon_bat = P => { bat(P, {body:'#6a4ab0', belly:'#9a80d8', wing:'#4a3290', inner:'#d8a8f0', iris:'#ffe06a'});
+  P.poly([[70, 14], [76, 10], [82, 14], [80, 20], [76, 18], [77, 14]], '#fff3b0', {tone:4}); [[22, 20], [86, 32], [12, 46]].forEach(([x, y]) => P.sparkle(x, y, '#f4eeff', 1)); };
+A.pet_count_bat = P => { bat(P, {body:'#2a2434', belly:'#3a3248', wing:'#8a1e2a', inner:'#c8404a', iris:'#ff4a5a'});
+  P.poly([[34, 56], [30, 44], [40, 54]], '#c8202e'); P.poly([[62, 56], [66, 44], [56, 54]], '#c8202e');      // a high vampire collar
+  P.px(48, 62, '#f2c230'); P.px(48, 63, '#d8a020'); };
+
+// Crabs: wide shell, claws raised, eyes on stalks
+function crab(P, c){
+  P.shadow(48, 88, 30);
+  [[-1, 0], [-1, 1], [-1, 2], [1, 0], [1, 1], [1, 2]].forEach(([s, i]) => { const x = 48 + s * (20 + i * 2), y = 72 + i * 2; P.cap(x, y, x + s * 10, y + 10, 2.2, 1.4, c.leg || c.body); });
+  P.cap(36, 56, 18, 40, 3, 3, c.body); P.cap(60, 56, 78, 40, 3, 3, c.body);                                            // arms
+  P.ell(16, 32, 9, 8, c.body, {rot:-.4}); P.ell(80, 32, 9, 8, c.body, {rot:.4});                                        // claws
+  P.poly([[10, 24], [14, 34], [20, 26]], '#000000', {clip:1, tone:1, edge:false}); P.poly([[86, 24], [82, 34], [76, 26]], '#000000', {clip:1, tone:1, edge:false});
+  P.cap(40, 56, 38, 42, 1.6, 1.6, c.body); P.cap(56, 56, 58, 42, 1.6, 1.6, c.body);                                    // eye stalks
+  P.ell(48, 66, 28, 16, [c.body, c.tex || '']);
+  P.ell(48, 72, 18, 7, c.belly || c.body, {clip:1, base:1, lift:.18, edge:false});
+  P.ell(38, 40, 5, 5, '#ffffff'); P.ell(58, 40, 5, 5, '#ffffff');
+  P.eye(38, 40, 5, '#1b1226'); P.eye(58, 40, 5, '#1b1226');
+  P.dec(B => { B.line(44, 70, 52, 70, sh(c.body, -.6)); B.set(43, 69, sh(c.body, -.6)); B.set(53, 69, sh(c.body, -.6)); });
+  P.anchor('neck', 48, 76, 40).anchor('brow', 48, 54, 30).anchor('top', 48, 52);
+}
+A.pet_claw_crab = P => { crab(P, {body:'#e04a3a', belly:'#f4a07a'});
+  P.ell(18, 31, 3, 2, '#ffffff', {clip:1, tone:5, edge:false}); };
+A.pet_sun_crab = P => { crab(P, {body:'#f08a2a', belly:'#ffd27a'});
+  P.ell(48, 62, 7, 6, '#ffd84a', {clip:1, edge:false, tone:5}); for (let i = 0; i < 8; i++){ const a = i * Math.PI / 4; P.line(48 + Math.cos(a) * 8, 62 + Math.sin(a) * 6.5, 48 + Math.cos(a) * 11, 62 + Math.sin(a) * 9, '#ffe68a', .8); } };
+
+// Turtles: domed shell with scutes, head out to the left
+function turtle(P, c){
+  P.shadow(48, 88, 32);
+  const leg = (x, y) => c.flip ? P.ell(x, y, 9, 4, c.skin, {rot:x < 48 ? -.3 : .3}) : P.cap(x, y - 6, x, y, 5, 5, c.skin);
+  leg(28, 84); leg(66, 84);
+  P.cap(18, 56, 22, 70, 9, 7, c.skin); P.ell(16, 52, 12, 11, c.skin);                                                   // neck and head
+  P.cap(80, 76, 88, 80, 3, 1.5, c.skin);
+  P.ell(52, 64, 32, 22, [c.shell, ''], {rot:-.05});
+  P.ell(52, 80, 33, 6, c.rim, {clip:1, base:1, edge:false});
+  // hexagonal scutes
+  const sc = sh(c.shell, -.45);
+  [[52, 52], [36, 60], [68, 60], [44, 70], [60, 70]].forEach(([x, y]) => { P.ell(x, y, 7, 5.5, c.scute || c.shell, {clip:1, base:1, lift:.1, line:1}); });
+  P.line(22, 78, 84, 78, sc, .8);
+  leg(40, 88); leg(76, 86);
+  P.eye(12, 50, 6, '#1b1226'); P.dec(B => { B.line(8, 57, 14, 58, sh(c.skin, -.6)); }); P.blush(6, 54);
+  P.anchor('neck', 20, 62, 18).anchor('brow', 16, 44, 18).anchor('top', 16, 41);
+}
+A.pet_turtle = P => turtle(P, {skin:'#8ac46a', shell:'#4a8a3a', scute:'#5a9a48', rim:'#d8c87a'});
+A.pet_sea_turtle = P => { turtle(P, {skin:'#7ad0c0', shell:'#2a8a8a', scute:'#3aa0a0', rim:'#e8dca8', flip:1});
+  [[70, 30], [78, 22], [84, 30]].forEach(([x, y], i) => P.disc(x, y, 2 - i * .4, 2 - i * .4, '#bfeaff', .7)); };
+
+// Robots
+A.pet_byte_jr = P => { P.shadow(48, 88, 22);
+  P.cap(48, 16, 48, 8, 1.2, 1.2, '#7a7e8e'); P.ell(48, 7, 3, 3, '#ff4a5a');
+  P.cap(36, 74, 36, 84, 4, 4, ['#9aa0b4', 'metal']); P.cap(60, 74, 60, 84, 4, 4, ['#9aa0b4', 'metal']);
+  P.poly([[30, 58], [66, 58], [64, 78], [32, 78]], ['#c8ccd8', 'metal']); P.ell(48, 68, 5, 5, '#3af0ff', {clip:1, tone:4});
+  P.cap(26, 62, 22, 74, 3.5, 3, ['#9aa0b4', 'metal']); P.cap(70, 62, 74, 74, 3.5, 3, ['#9aa0b4', 'metal']);
+  P.poly([[22, 18], [74, 18], [76, 54], [20, 54]], ['#e4e6ee', 'metal']);
+  P.poly([[28, 24], [68, 24], [68, 48], [28, 48]], '#1a1e2c', {flatN:[0, 0, 1], edge:false});
+  P.eye(39, 35, 7, '#3af0ff', {glow:1}); P.eye(57, 35, 7, '#3af0ff', {glow:1});
+  P.dec(B => { B.line(42, 44, 54, 44, '#3af0ff'); B.line(30, 26, 40, 26, '#4a5068'); });
+  P.anchor('neck', 48, 57, 34).anchor('brow', 48, 18, 54).anchor('top', 48, 18); };
+A.pet_drone_pup = P => { P.shadow(48, 90, 14);
+  [[20, 22], [76, 22]].forEach(([x, y]) => { P.cap(x, y + 2, x, y + 12, 1.6, 1.6, '#5a5e70'); P.ell(x, y, 13, 2.2, '#aab0c4', {tone:4}); });
+  P.cap(26, 34, 70, 34, 1.6, 1.6, '#5a5e70');
+  P.poly([[28, 30], [20, 22], [34, 26]], '#3a3e50'); P.poly([[68, 30], [76, 22], [62, 26]], '#3a3e50');                 // dog ears
+  P.ell(48, 50, 24, 18, ['#3a3e50', 'metal']);
+  P.ell(48, 50, 17, 11, '#141824', {clip:1, edge:false, flatN:[0, 0, 1]});
+  P.eye(40, 49, 6, '#7af0ff', {glow:1}); P.eye(56, 49, 6, '#7af0ff', {glow:1});
+  P.disc(70, 60, 2.4, 2.4, '#ff4a5a'); P.px(69, 59, '#ffd0d0');                                                          // recording light
+  P.cap(48, 68, 48, 76, 2.6, 1, '#5a5e70');
+  P.anchor('neck', 48, 64, 30).anchor('brow', 48, 36, 30).anchor('top', 48, 33); };
+
+// Golems: stacked stone with moss
+A.pet_mini_golem = P => { P.shadow(48, 88, 26);
+  const st = ['#9a96a0', 'stone'];
+  P.poly([[30, 74], [44, 72], [44, 86], [30, 86]], st); P.poly([[52, 72], [66, 74], [66, 86], [52, 86]], st);
+  P.poly([[16, 50], [26, 46], [28, 70], [16, 72]], st); P.poly([[80, 50], [70, 46], [68, 70], [80, 72]], st);
+  P.poly([[26, 44], [70, 44], [72, 76], [24, 76]], st);
+  P.poly([[30, 16], [66, 16], [68, 44], [28, 44]], st);
+  P.poly([[30, 16], [66, 16], [66, 22], [54, 24], [44, 20], [30, 24]], '#5a9a48', {clip:1, edge:false});                 // moss cap
+  P.dec(B => { B.line(34, 52, 42, 60, '#5a5660'); B.line(42, 60, 40, 66, '#5a5660'); B.line(60, 50, 56, 56, '#5a5660'); });
+  P.eye(40, 32, 6, '#ffb02e', {glow:1}); P.eye(56, 32, 6, '#ffb02e', {glow:1});
+  P.anchor('neck', 48, 45, 46).anchor('brow', 48, 24, 36).anchor('top', 48, 16); };
+A.dr_boulder = P => { P.shadow(48, 88, 30);
+  P.ell(48, 60, 32, 27, ['#8a8478', 'stone']);
+  P.ell(40, 36, 18, 8, ['#5a9a48', 'fur'], {clip:1, edge:false}); P.ell(70, 44, 6, 4, '#5a9a48', {clip:1, edge:false});
+  P.dec(B => { B.line(64, 66, 72, 74, '#5a564c'); B.line(72, 74, 70, 80, '#5a564c'); B.line(24, 60, 28, 66, '#5a564c'); });
+  P.eye(39, 58, 6, '#2a2418'); P.eye(57, 58, 6, '#2a2418');
+  P.dec(B => { B.line(44, 67, 52, 67, '#3a3428'); B.set(43, 66, '#3a3428'); B.set(53, 66, '#3a3428'); }); P.blush(31, 64); P.blush(61, 64);
+  P.anchor('neck', 48, 78, 54).anchor('brow', 48, 40, 34).anchor('top', 48, 34); };
+
+// One-offs
+A.pet_koi = P => { P.shadow(48, 88, 24);
+  P.poly([[70, 52], [90, 36], [86, 54], [90, 70]], ['#f4f0ea', ''], {flatN:[.2, -.3, .9]});                              // tail fin
+  P.poly([[46, 40], [58, 26], [62, 42]], '#f08a3a');                                                                      // dorsal fin
+  P.ell(44, 54, 28, 15, ['#f4f0ea', 'scale']);
+  [[36, 48, 9, 7], [56, 52, 8, 8], [66, 58, 5, 4]].forEach(([x, y, a, b]) => P.ell(x, y, a, b, ['#f06a2a', 'scale'], {clip:1, base:1, edge:false}));
+  P.poly([[38, 62], [46, 74], [50, 62]], '#f4b08a', {flatN:[0, .2, .9]});
+  P.dec(B => { B.line(16, 58, 20, 58, '#c8603a'); B.line(18, 58, 12, 62, '#c8a080', .7); B.line(18, 58, 12, 56, '#c8a080', .7); });   // mouth and whiskers
+  P.eye(24, 50, 5, '#1b1226');
+  [[10, 36, 2], [16, 28, 1.5]].forEach(([x, y, r]) => P.disc(x, y, r, r, '#bfeaff', .8));
+  P.anchor('neck', 34, 54, 6).anchor('brow', 26, 44, 14).anchor('top', 30, 40); };
+A.pet_frog = P => { P.shadow(48, 88, 30);
+  P.ell(26, 82, 11, 6, '#4ab04a'); P.ell(70, 82, 11, 6, '#4ab04a');                                                    // big back legs
+  P.ell(48, 64, 26, 20, ['#5ac45a', 'speck']);
+  P.ell(48, 70, 17, 13, '#f4e48a', {clip:1, base:1, lift:.1});
+  P.ell(34, 36, 10, 10, '#5ac45a'); P.ell(62, 36, 10, 10, '#5ac45a');
+  P.cap(36, 72, 34, 84, 3.5, 3, '#5ac45a'); P.cap(60, 72, 62, 84, 3.5, 3, '#5ac45a');
+  [30, 34, 38, 58, 62, 66].forEach(x => P.disc(x, 85, 1.6, 1.4, '#7ad87a'));                                             // toe pads
+  P.eye(34, 36, 9, '#3a2a1a'); P.eye(62, 36, 9, '#3a2a1a');
+  P.dec(B => { for (let x = 36; x <= 60; x++) B.set(x, 58 + Math.round(Math.pow((x - 48) / 12, 2) * -2), '#2a5a2a'); }); P.blush(28, 54); P.blush(64, 54);
+  P.anchor('neck', 48, 60, 40).anchor('brow', 48, 28, 50).anchor('top', 48, 30); };
+A.pet_jack = P => { P.shadow(48, 88, 30);
+  [[30, 62, 14], [66, 62, 14], [48, 62, 18]].forEach(([x, y, r]) => P.ell(x, y, r, 24, ['#f08a2a', '']));
+  [38, 58].forEach(x => P.line(x, 42, x, 84, '#b0541a', .7));
+  P.cap(48, 40, 52, 30, 3, 2.6, '#5a7a2a'); P.poly([[54, 32], [66, 28], [60, 36]], '#6aa03a');
+  // carved face glowing from inside
+  const g = '#ffe06a';
+  if (P.mood === 'sleep') { P.line(32, 56, 42, 56, '#5a2a0a'); P.line(54, 56, 64, 56, '#5a2a0a'); }
+  else { P.poly([[30, 60], [37, 50], [43, 60]], g, {tone:5, edge:false}); P.poly([[53, 60], [59, 50], [66, 60]], g, {tone:5, edge:false}); }
+  P.poly([[30, 68], [36, 70], [40, 66], [44, 70], [48, 66], [52, 70], [56, 66], [60, 70], [66, 68], [60, 78], [36, 78]], g, {tone:5, edge:false});
+  P.anchor('neck', 48, 82, 40).anchor('brow', 48, 42, 36).anchor('top', 48, 39); };
+A.pet_neon_snake = P => { P.shadow(48, 88, 28);
+  P.ell(48, 76, 28, 10, ['#f04aa8', 'scale']); P.ell(48, 76, 16, 5, '#2a1a2a', {clip:1, edge:false});
+  P.ell(48, 64, 20, 8, ['#f04aa8', 'scale']);
+  P.cap(52, 60, 62, 40, 6, 5, ['#f04aa8', 'scale']);
+  P.ell(58, 32, 12, 10, '#f04aa8');
+  [[30, 78], [44, 82], [60, 80], [36, 66], [56, 64], [60, 50]].forEach(([x, y]) => P.ell(x, y, 3, 1.5, '#3af0ff', {clip:1, edge:false, tone:5}));
+  P.eye(53, 30, 5, '#ffe06a'); P.eye(64, 30, 5, '#ffe06a');
+  P.dec(B => { B.line(48, 38, 44, 40, '#ff3a5a'); B.set(43, 39, '#ff3a5a'); B.set(43, 41, '#ff3a5a'); });   // forked tongue
+  P.anchor('neck', 60, 46, 14).anchor('brow', 58, 22, 22).anchor('top', 58, 22); };
+A.dr_couch_potato = P => { P.shadow(48, 88, 28);
+  P.cap(34, 76, 32, 84, 3, 3, '#b07a42'); P.cap(60, 76, 62, 84, 3, 3, '#b07a42');
+  P.ell(48, 56, 26, 28, ['#c08a50', 'speck'], {rot:.15});
+  [[36, 40], [60, 70], [30, 66]].forEach(([x, y]) => P.ell(x, y, 2, 1.5, '#8a5a2a', {clip:1, edge:false}));            // eyes of the potato
+  P.eye(40, 50, 6, '#2a1a10'); P.eye(56, 50, 6, '#2a1a10');
+  P.dec(B => { B.line(44, 60, 52, 60, '#5a3a1a'); });
+  P.poly([[66, 58], [76, 52], [80, 60], [70, 66]], '#2a2a36', {flatN:[-.2, -.3, .9]});                                  // the remote
+  P.px(72, 57, '#ff4a5a'); P.px(74, 58, '#6ad86a'); P.px(73, 60, '#cfd4e0');
+  P.cap(66, 62, 70, 62, 2.5, 2.5, '#c08a50');
+  P.anchor('neck', 48, 66, 44).anchor('brow', 48, 36, 36).anchor('top', 46, 29); };
+A.dr_shard = P => { P.shadow(48, 88, 18);
+  const f = (pts, n, c) => P.poly(pts, c, {flatN:n, line:1});
+  f([[48, 6], [30, 40], [48, 84]], [-.6, -.4, .7], '#dcdcf0'); f([[48, 6], [66, 40], [48, 84]], [.4, -.2, .8], '#b8b8d8');
+  f([[48, 6], [38, 30], [48, 46], [58, 30]], [0, -.7, .7], '#f4f4ff');
+  P.line(36, 26, 42, 18, '#ffffff'); P.line(54, 58, 58, 52, '#ffffff', .6);
+  P.eye(42, 46, 5, '#c8404a', {glow:1}); P.eye(54, 46, 5, '#c8404a', {glow:1});
+  P.anchor('neck', 48, 62, 26).anchor('brow', 48, 30, 18).anchor('top', 48, 9); };
+A.dr_dragon_egg = P => { P.shadow(48, 90, 22);
+  [[18, 76], [80, 70], [74, 24]].forEach(([x, y]) => P.poly([[x - 3, y], [x, y - 4], [x + 4, y - 1], [x + 1, y + 3]], ['#7a7488', 'stone']));
+  P.ell(48, 50, 24, 32, ['#5a3aa8', 'speck']);
+  P.dec(B => { const c = '#b8f0ff'; [[40, 30, 46, 40], [46, 40, 42, 50], [42, 50, 50, 58], [56, 24, 60, 34], [60, 34, 56, 44]].forEach(([a, b, x, y]) => B.line(a, b, x, y, c)); });
+  if (P.mood !== 'sleep') { P.eye(42, 46, 4, '#b8f0ff', {glow:1}); P.eye(54, 46, 4, '#b8f0ff', {glow:1}); }
+  P.anchor('neck', 48, 70, 38).anchor('brow', 48, 26, 30).anchor('top', 48, 18); };
+})();
+
+</script>
 <script src="js/app.js"></script>
 
 </body></html>

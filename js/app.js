@@ -2095,6 +2095,7 @@ function normalize(s){
     s.beaten = [...new Set((s.log || []).filter(l => l.gate).map(l => ids[l.gate]).filter(Boolean))]; }
   if (s.bank){ s.xp = (s.xp || 0) + s.bank; s.bank = 0; } delete s.gates;
   if (!Array.isArray(s.schedHist) || !s.schedHist.length) s.schedHist = [{from:s.startedOn, days:clone(s.schedule || [])}];
+  for (const k of ['dayMoves', 'dayPins']) if (!s[k] || typeof s[k] !== 'object' || Array.isArray(s[k])) s[k] = {};   // days moved by hand on the Calendar
   if (!s.arcSaves || typeof s.arcSaves !== 'object' || Array.isArray(s.arcSaves)) s.arcSaves = {};   // each arc's saved place
   // Saves from before levels used flat XP thresholds per rank. Nobody drops a rank in the switch:
   // if the new curve would put you below the rank you'd reached, you start at the bottom of it.
@@ -3220,22 +3221,44 @@ let calView = (() => { const n = new Date(); return {y:n.getFullYear(), m:n.getM
 let calSel = todayIso();
 
 function logsByDay(){ const m = {}; for (const l of S.log) if (l.iso) (m[l.iso] = m[l.iso] || []).push(l); return m; }
-// Walk forward from today and lay the arc's next workouts onto the chosen training days.
+// Days you moved by hand. dayMoves: a date turned into a training day ('on') or a rest day ('off'), whatever its
+// weekday says. dayPins: a date holding one particular workout of the arc (its place in the arc, n).
+const trainsOn = iso => { const mv = (S.dayMoves || {})[iso]; return mv ? mv === 'on' : schedOn(iso).includes(fromYmd(iso).getDay()); };
+function livePins(){ const t = todayIso(), name = prog().name, out = {}; S.dayPins = S.dayPins || {}; S.dayMoves = S.dayMoves || {};
+  for (const iso in S.dayPins){ const pin = S.dayPins[iso]; if (iso >= t && pin.prog === name) out[iso] = pin.n; else delete S.dayPins[iso]; }
+  return out; }
+// Walk forward from today and lay the arc's next workouts onto the training days. A workout you pinned to a
+// date stays there; the rest fill the other training days in order.
 function projectPlan(untilIso){
-  const out = {}, p = prog(), sched = S.schedule;
-  if (!sched.length) return out;
-  const perWeek = p.weeks[0].days.length, total = p.weeks.length * perWeek, done = logsByDay();
-  let idx = S.pos.w * perWeek + S.pos.d;
+  const out = {}, p = prog(), pins = livePins(), done = logsByDay();
+  const perWeek = p.weeks[0].days.length, total = p.weeks.length * perWeek, slots = [];
   const end = fromYmd(untilIso), d = fromYmd(todayIso());
   for (let i = 0; d <= end && i < 400; d.setDate(d.getDate() + 1), i++){
-    if (!sched.includes(d.getDay())) continue;
     const iso = ymd(d);
+    if (!trainsOn(iso) && pins[iso] == null) continue;
     if (i === 0 && done[iso]) continue;              // today's session already cleared
-    const w = Math.floor(idx / perWeek), dd = idx % perWeek;
-    out[iso] = {w, d:dd, name:p.weeks[w].days[dd].name, prog:p.name};
-    idx = (idx + 1) % total;
+    slots.push(iso);
   }
+  const start = S.pos.w * perWeek + S.pos.d, free = slots.map((_, k) => (start + k) % total), pinned = {};
+  for (const iso of slots){ const j = pins[iso] == null ? -1 : free.indexOf(pins[iso]); if (j >= 0){ pinned[iso] = free[j]; free.splice(j, 1); } }
+  for (const iso of slots){ const n = iso in pinned ? pinned[iso] : free.shift(); if (n == null) continue;
+    const w = Math.floor(n / perWeek), dd = n % perWeek; out[iso] = {w, d:dd, n, name:p.weeks[w].days[dd].name, prog:p.name}; }
   return out;
+}
+// Drag a planned workout to another day. Onto a free day it moves there and leaves a rest day behind;
+// onto a day with a workout the two swap.
+function moveWorkout(from, to){
+  const p = prog(), plan = projectPlan(from > to ? from : to), a = plan[from], b = plan[to];
+  if (!a || from === to) return null;
+  const onBySched = iso => schedOn(iso).includes(fromYmd(iso).getDay());
+  for (const iso in S.dayPins) if (S.dayPins[iso].n === a.n || (b && S.dayPins[iso].n === b.n)) delete S.dayPins[iso];
+  S.dayPins[to] = {prog:p.name, n:a.n};
+  if (b) S.dayPins[from] = {prog:p.name, n:b.n};
+  else {
+    if (onBySched(from)) S.dayMoves[from] = 'off'; else delete S.dayMoves[from];
+    if (onBySched(to)) delete S.dayMoves[to]; else S.dayMoves[to] = 'on';
+  }
+  return {name:a.name, swapped:b && b.name};
 }
 // Training days change when you switch arcs or edit your week. Each change is remembered from the day it
 // happened, so past days are judged by the schedule you had then and switching never breaks a streak.
@@ -3244,7 +3267,7 @@ const schedOn = iso => { const h = S.schedHist; if (!h || !h.length) return S.sc
 function dayStatus(iso, tIso, done, plan){
   if (done[iso]) return 'done';
   if (plan[iso]) return 'plan';
-  if (schedOn(iso).includes(fromYmd(iso).getDay()) && iso < tIso && iso >= S.startedOn) return 'missed';
+  if (trainsOn(iso) && iso < tIso && iso >= S.startedOn) return 'missed';
   return 'rest';
 }
 // Session streak: rest days never break it, and a streak shield forgives one missed training day each week
@@ -3255,7 +3278,7 @@ function streakInfo(done, tIso){
     const iso = ymd(d);
     if (done[iso]) { n++; continue; }
     if (iso < S.startedOn) break;
-    if (i > 0 && schedOn(iso).includes(d.getDay())){   // a missed training day (by the schedule you had then); today still counts as open
+    if (i > 0 && trainsOn(iso)){   // a missed training day (by the schedule you had then, and any day you moved); today still counts as open
       const wk = weekStart(iso); if (shielded.has(wk)) break; shielded.add(wk);
     }
   }
@@ -3270,7 +3293,7 @@ function missMap(done, tIso, fromIso, toIso){
   const out = {}, used = new Set(), d = fromYmd(weekStart(fromIso)), last = toIso < tIso ? toIso : tIso;
   for (let i = 0; i < 400; i++, d.setDate(d.getDate() + 1)){
     const iso = ymd(d); if (iso >= last) break;
-    if (done[iso] || iso < S.startedOn || !schedOn(iso).includes(d.getDay())) continue;
+    if (done[iso] || iso < S.startedOn || !trainsOn(iso)) continue;
     const wk = weekStart(iso); out[iso] = used.has(wk) ? 'missed' : (used.add(wk), 'shield');
   }
   return out;
@@ -3327,7 +3350,7 @@ function viewCalendar(){
   for (let i = 0; i < lead; i++) cells += '<span class="cal-cell blank" aria-hidden="true"></span>';
   for (let day = 1; day <= daysIn; day++){
     const iso = ymd(new Date(y, m, day)), k = calKind(iso, tIso, done, plan, miss);
-    cells += `<button class="cal-cell k-${k}${iso === tIso ? ' is-today' : ''}${iso === calSel ? ' is-sel' : ''}" data-act="calSel" data-iso="${iso}" aria-pressed="${iso === calSel}" aria-label="${fromYmd(iso).toLocaleDateString(undefined, {month:'long', day:'numeric'})}, ${CAL_WORD[k]}"><span class="cd num">${day}</span><span class="mk" aria-hidden="true">${calGlyph(k)}</span></button>`;
+    cells += `<button class="cal-cell k-${k}${iso === tIso ? ' is-today' : ''}${iso === calSel ? ' is-sel' : ''}" data-act="calSel" data-iso="${iso}"${dragAttr(iso, k, tIso)} aria-pressed="${iso === calSel}" aria-label="${fromYmd(iso).toLocaleDateString(undefined, {month:'long', day:'numeric'})}, ${CAL_WORD[k]}"><span class="cd num">${day}</span><span class="mk" aria-hidden="true">${calGlyph(k)}</span></button>`;
   }
   const trail = (7 - (lead + daysIn) % 7) % 7;
   for (let i = 0; i < trail; i++) cells += '<span class="cal-cell blank" aria-hidden="true"></span>';
@@ -3349,7 +3372,7 @@ function viewCalendar(){
   <section class="panel cal-week" aria-label="This week">
     <div class="row-between"><h3>This week</h3><span class="cal-goal num${wkDone >= goal ? ' met' : ''}">${wkDone} of ${goal} workouts</span></div>
     <div class="cal-wk">${weekDays.map(iso => { const k = calKind(iso, tIso, done, plan, miss);
-      return `<button class="wk-d k-${k}${iso === tIso ? ' is-today' : ''}" data-act="calSel" data-iso="${iso}" aria-label="${longDate(iso)}, ${CAL_WORD[k]}"><span>${fromYmd(iso).toLocaleDateString(undefined, {weekday:'narrow'})}</span><i aria-hidden="true">${calGlyph(k)}</i></button>`; }).join('')}</div>
+      return `<button class="wk-d k-${k}${iso === tIso ? ' is-today' : ''}" data-act="calSel" data-iso="${iso}"${dragAttr(iso, k, tIso)} aria-label="${longDate(iso)}, ${CAL_WORD[k]}"><span>${fromYmd(iso).toLocaleDateString(undefined, {weekday:'narrow'})}</span><i aria-hidden="true">${calGlyph(k)}</i></button>`; }).join('')}</div>
     <div class="cal-streaks"><span>${FLAME}<b class="num">${wks}</b> week${wks === 1 ? '' : 's'} in a row</span><span><b class="num">${si.n}</b> session streak</span>${shieldHTML(si)}</div>
   </section>
   <section class="cal" aria-label="${monthName}">
@@ -3377,8 +3400,12 @@ function viewCalendar(){
     <div class="row-between"><h3>Training days</h3><span class="fine">${n} day${n === 1 ? '' : 's'}/week</span></div>
     <div class="dow-pick">${[1,2,3,4,5,6,0].map(i => `<button class="dow" data-act="sched" data-dow="${i}" aria-pressed="${S.schedule.includes(i)}">${DOW[i]}</button>`).join('')}</div>
     <p class="fine">${msg} Planned workouts shift forward if you miss a day.</p>
+    <p class="fine cal-drag-tip">Press and hold a planned workout on the calendar, then drag it to the day you want. Drop it on another workout to swap them.</p>
+    ${Object.keys(S.dayMoves).some(iso => iso >= tIso) || Object.keys(S.dayPins).length ? '<button class="btn btn-ghost btn-sm" data-act="calUnmove">Undo moved days</button>' : ''}
   </section>`;
 }
+// Planned workouts from today on can be picked up and moved
+const dragAttr = (iso, k, tIso) => (k === 'plan' || k === 'boss') && iso >= tIso ? ' data-drag="1"' : '';
 // Swipe the month grid left or right to change months
 let calTouch = null;
 document.addEventListener('touchstart', e => { const g = e.target.closest && e.target.closest('.cal-swipe'); calTouch = g && e.touches.length === 1 ? {x:e.touches[0].clientX, y:e.touches[0].clientY} : null; }, {passive:true});
@@ -3386,6 +3413,45 @@ document.addEventListener('touchend', e => {
   if (!calTouch || tab !== 'calendar') return; const t = e.changedTouches[0], dx = t.clientX - calTouch.x, dy = t.clientY - calTouch.y; calTouch = null;
   if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) document.querySelector(`[data-act=calMove][data-dir="${dx < 0 ? 1 : -1}"]`)?.click();
 }, {passive:true});
+// Press and hold a planned workout, then drag it onto another day. Moving the finger before the hold
+// finishes leaves the page free to scroll or swipe months as usual.
+let calDrag = null, calNoClick = false;
+const dropDay = (x, y, from) => { const el = document.elementFromPoint(x, y)?.closest('[data-iso]');
+  return el && el.dataset.iso >= todayIso() && !el.classList.contains('k-done') && !el.classList.contains('k-full') && el.dataset.iso !== from ? el : null; };
+function calDragEnd(drop){
+  const dr = calDrag; calDrag = null; clearTimeout(dr?.timer);
+  if (!dr || !dr.on) return;
+  dr.ghost.remove(); document.getElementById('view')?.classList.remove('cal-dragging');
+  calNoClick = true; setTimeout(() => calNoClick = false, 400);   // the finger lifting isn't a tap on the day
+  const to = drop && dropDay(dr.x, dr.y, dr.iso); if (!to) return;
+  const r = moveWorkout(dr.iso, to.dataset.iso); if (!r) return;
+  calSel = to.dataset.iso; save(); render(); buzz(20);
+  toast(r.swapped ? `Swapped ${r.name} and ${r.swapped}.` : `Moved ${r.name} to ${shortDate(to.dataset.iso)}.`);
+}
+document.addEventListener('pointerdown', e => {
+  const c = tab === 'calendar' && e.target.closest?.('[data-drag]'); if (!c || calDrag) return;
+  const dr = calDrag = {iso:c.dataset.iso, el:c, x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, on:false};
+  dr.timer = setTimeout(() => {
+    if (calDrag !== dr) return;
+    dr.on = true; calTouch = null; buzz(15);
+    const plan = projectPlan(ymd(new Date(fromYmd(dr.iso).getTime() + 864e5)));
+    dr.ghost = document.createElement('div'); dr.ghost.className = 'cal-ghost'; dr.ghost.textContent = plan[dr.iso]?.name || 'Workout';
+    dr.ghost.style.left = dr.x + 'px'; dr.ghost.style.top = dr.y + 'px'; document.body.appendChild(dr.ghost);
+    document.getElementById('view')?.classList.add('cal-dragging'); c.classList.add('is-src');
+  }, 380);
+});
+document.addEventListener('pointermove', e => {
+  const dr = calDrag; if (!dr) return; dr.x = e.clientX; dr.y = e.clientY;
+  if (!dr.on){ if (Math.hypot(dr.x - dr.sx, dr.y - dr.sy) > 10) calDragEnd(false); return; }
+  dr.ghost.style.left = dr.x + 'px'; dr.ghost.style.top = dr.y + 'px';
+  const t = dropDay(dr.x, dr.y, dr.iso); if (t !== dr.over){ dr.over?.classList.remove('drop-ok'); t?.classList.add('drop-ok'); dr.over = t; }
+});
+document.addEventListener('pointerup', () => calDragEnd(true));
+document.addEventListener('pointercancel', () => calDragEnd(false));
+// While dragging, the page mustn't scroll under the finger, and the phone mustn't open its press-and-hold menu
+document.addEventListener('touchmove', e => { if (calDrag?.on) e.preventDefault(); }, {passive:false});
+document.addEventListener('contextmenu', e => { if (calDrag || e.target.closest?.('[data-drag]')) e.preventDefault(); });
+document.addEventListener('click', e => { if (calNoClick){ e.stopPropagation(); e.preventDefault(); calNoClick = false; } }, true);
 
 /* ---------- Progress ---------- */
 let resetArmed = false;
@@ -5602,6 +5668,9 @@ document.addEventListener('click', e => {
     render();
   }
   else if (a === 'calToday'){ const n = new Date(); calView = {y:n.getFullYear(), m:n.getMonth()}; calSel = todayIso(); render(); }
+  else if (a === 'calUnmove'){   // past days keep how they were moved, so streaks and misses don't change
+    const tIso = todayIso(); for (const iso in S.dayMoves) if (iso >= tIso) delete S.dayMoves[iso]; S.dayPins = {};
+    save(); render(); toast('Moved days undone. Workouts follow your training days again.'); }
   else if (a === 'calSel'){ calSel = t.dataset.iso; const dt = fromYmd(calSel); calView = {y:dt.getFullYear(), m:dt.getMonth()}; render(); document.querySelector('.cal-day')?.scrollIntoView({block:'nearest', behavior:reduceMotion ? 'auto' : 'smooth'}); }
   else if (a === 'nextQuote'){ showQuote(1); startQuotes(); }
   else if (a === 'chartLift'){ chartLift = t.dataset.v; render(); }

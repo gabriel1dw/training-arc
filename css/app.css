@@ -652,6 +652,13 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .wk-d{display:flex;flex-direction:column;align-items:center;gap:5px;min-height:56px;padding:6px 0;border:1px solid transparent;border-radius:12px;background:transparent;color:var(--muted);font:inherit;font-family:var(--label);font-weight:700;font-size:12px;cursor:pointer}
 .wk-d i{display:grid;place-items:center;width:26px;height:26px;padding:6px;box-sizing:border-box;border-radius:50%;background:var(--surface-2);font-style:normal}
 .wk-d.k-rest i{opacity:.4}
+/* Moving a workout: press and hold a planned day, drag it, drop it on another day */
+[data-drag]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.cal-dragging [data-iso]{transition:transform .12s}
+.cal-dragging [data-drag].is-src{opacity:.35}
+.cal-dragging .drop-ok{outline:2px dashed var(--power);outline-offset:1px;transform:scale(1.06)}
+.cal-ghost{position:fixed;z-index:99;pointer-events:none;transform:translate(-50%,-170%);padding:6px 10px;border-radius:10px;background:var(--power);color:#141019;font:800 12px/1.2 var(--label);letter-spacing:.02em;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+.cal-drag-tip{margin-top:6px}
 .wk-d.is-today{border-color:var(--power);color:var(--fg)}
 .cal-goal{font-family:var(--label);font-weight:700;font-size:13px;color:var(--muted)}
 .cal-goal.met{color:var(--good)}

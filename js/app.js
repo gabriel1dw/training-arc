@@ -2251,6 +2251,7 @@ function invToggle(id){
 }
 let S = normalize(load());
 applyPetArt();
+takeLinkCode();
 if (window.TA_SHOP){ TA_SHOP.bind(); TA_SHOP.onChange(() => paintCoins()); }
 function load(){
   // A save from before the welcome flow existed belongs to someone already training: they never see it
@@ -3008,7 +3009,7 @@ function viewToday(){
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
   const pips = Array.from({length:total}, (_, i) => `<span class="pip${i < idx ? ' on' : i === idx ? ' cur' : ''}"></span>`).join('');
   const n = sessionSets();
-  let h = gateCardHTML() + bannerHTML() + checkinHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  let h = gateCardHTML() + bannerHTML() + checkinHTML() + rivalChalsHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -3887,6 +3888,184 @@ function backupNudge(){
   const last = S.lastBackup, days = last ? dayNum(todayIso()) - dayNum(last) : null;
   if (!(S.log.length >= 3 && (days === null || days >= 14))) return '';
   return `<button class="backup-warn backup-nudge" data-act="openSettings">${last ? `It has been ${days} days since your last backup.` : `You have ${S.log.length} workouts and no backup yet.`} <b>Back up now ›</b></button>`;
+}
+
+/* ---------- Rivals and challenges (no account needed) ---------- */
+// Friends swap codes: your card (hero, rank, maxes, medals, pet) to compare side by side, or a challenge to beat
+// one of your lifts or train N times in a week. A code is the data itself, written into a link to the live app,
+// so nothing goes to a server. Codes from others are untrusted: every field is checked against what the app
+// knows before it's kept, and names are escaped wherever they're shown.
+const LIVE_URL = 'https://gabriel1dw.github.io/training-arc/';
+const socialId = () => { if (!S.socialId){ S.socialId = Math.random().toString(36).slice(2, 12).padEnd(10, '0'); save(); } return S.socialId; };
+const toCode = o => 'TA1.' + btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const codeLink = code => `${LIVE_URL}#ta=${code}`;
+function fromCode(text){
+  const m = String(text || '').match(/TA1\.([A-Za-z0-9_-]{8,4000})/); if (!m) return null;
+  let o; try { o = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))))); } catch(e){ return null; }
+  if (!o || typeof o !== 'object') return null;
+  const str = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, '').trim().slice(0, n);
+  const int = (v, a, b) => { const n = Math.round(+v); return Number.isFinite(n) ? Math.min(b, Math.max(a, n)) : a; };
+  const id = /^[a-z0-9]{6,16}$/.test(o.id) ? o.id : null; if (!id) return null;
+  const base = {id, n:str(o.n, 20) || 'Rival', u:o.u === 'kg' ? 'kg' : 'lb'};
+  const own = (obj, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(obj, k);   // so "constructor" and friends never pass
+  const tn = o.tn == null ? null : int(o.tn, 0, TAUNTS.length - 1);
+  if (o.t === 'c' || o.t === 't'){
+    const cid = /^[a-z0-9]{6,16}$/.test(o.cid) ? o.cid : null; if (!cid) return null;
+    if (o.t === 't') return tn == null ? null : {...base, t:'t', cid, tn};
+    if (o.k === 'lift' && own(LIFTS, o.lift)) return {...base, t:'c', cid, k:'lift', lift:o.lift, val:int(o.val, 1, 2000), tn};
+    if (o.k !== 'lift' && own(RL_KINDS, o.k)){ const K = RL_KINDS[o.k]; return {...base, t:'c', cid, k:o.k, need:int(o.need, K.min, K.max), tn}; }
+    return null;
+  }
+  if (o.t !== 'f') return null;
+  const g = own(GENDERS, o.g) ? o.g : 'male', look = {};
+  for (const p of PART_IDS) if (/^#[0-9a-f]{6}$/i.test((o.look || {})[p] || '')) look[p] = o.look[p];
+  const acc = {}; for (const s of SLOT_ORDER){ const a = (o.acc || {})[s]; if (ACCESSORIES.some(x => x.id === a && x.slot === s)) acc[s] = a; }
+  const pet = o.pet && typeof o.pet.id === 'string' && own(TA_SHOP_DATA.items, o.pet.id) && shopItem(o.pet.id).type === 'pet' ? {id:o.pet.id, f:int(o.pet.f, 0, 3)} : null;
+  return {...base, t:'f', g, ri:int(o.ri, 0, RANKS.length - 1), lv:int(o.lv, 1, MAX_LEVEL), title:str(o.title, 28),
+    m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, int((o.m || {})[l], 0, 2000)])), md:int(o.md, 0, 999), st:int(o.st, 0, 999), wk:int(o.wk, 0, 99999),
+    look, style:styleById(o.style) ? o.style : (g === 'male' ? 'spiky' : (FEMALE_HAIR_STYLES[0] || {}).id), acc, pet, d:/^\d{4}-\d\d-\d\d$/.test(o.d) ? o.d : todayIso()};
+}
+function myCard(){ const g = S.hero.gender, h = S.hero[g], pid = shopEq().pet;
+  return {t:'f', id:socialId(), n:S.hero.name || 'Hero', g, ri:rankIdx(), lv:levelInfo(S.xp).L, title:heroTitle(), u:S.unit,
+    m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, Math.round(bestMax(l))])), md:Object.keys(S.ach).length, st:weekStreak(), wk:S.log.length,
+    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso()}; }
+const inMyUnit = (v, u) => u === S.unit ? v : S.unit === 'kg' ? v / 2.20462 : v * 2.20462;
+// Opening a code: a card adds or updates a rival, a challenge goes on Today
+function takeCode(text, quiet){
+  const o = fromCode(text); if (!o){ if (!quiet) toast('That code didn\'t work. Copy the whole link or code and try again.'); return false; }
+  if (o.id === S.socialId){ toast('That\'s your own code. Send it to a friend.'); return false; }
+  if (o.t === 'f'){ const had = (S.rivals || {})[o.id]; S.rivals = {...(S.rivals || {}), [o.id]:{...o, got:todayIso()}}; save(); render();
+    toast(had ? `${o.n}'s card is updated.` : `${o.n} is now your rival. Compare on the Progress tab.`); return true; }
+  if (o.t === 't'){ const tl = S.tauntIn || [];
+    if (tl.some(x => x.cid === o.cid)){ toast('You already got that one.'); return false; }
+    S.tauntIn = [{cid:o.cid, from:o.id, n:o.n, tn:o.tn, d:todayIso()}, ...tl].slice(0, 3); save(); render(); toast(`${o.n}: “${TAUNTS[o.tn]}”`); return true; }
+  const list = S.chals || [];
+  if (list.some(c => c.cid === o.cid)){ toast('You already have that challenge.'); return false; }
+  if (list.filter(c => !c.claimed && !c.gone).length >= 5){ toast('You have 5 open challenges. Finish or drop one first.'); return false; }
+  // at: only workouts logged after you accept count
+  const c = {cid:o.cid, from:o.id, n:o.n, k:o.k, start:todayIso(), at:Date.now(), tn:o.tn};
+  if (o.k === 'lift'){ c.lift = o.lift; c.val = roundW(inMyUnit(o.val, o.u)); c.base = bestMax(o.lift);
+    if (c.base >= c.val){ toast(`You already lift ${fmt(c.base)} ${S.unit} on ${LIFTS[o.lift]}. Send ${o.n} one back!`); return false; } }
+  else c.need = o.need;
+  S.chals = [c, ...list].slice(0, 20); save(); render(); toast(`${o.n} challenged you! It's on your Today tab.`); return true;
+}
+// Preset taunts: trash talk with no free text, so there's nothing to moderate. Attach one to a challenge or send it alone.
+const TAUNTS = ['Is that all you\'ve got?', 'My warm-up is your max.', 'The bar misses you.', 'I didn\'t skip today. Did you?', 'Come take your crown back.', 'I trained while you slept.',
+  'Your rival has surpassed you.', 'This is my final form. Probably.', 'Plates don\'t lift themselves.', 'You call that a rep?', 'Catch me if you can.', 'My pet could lift that.',
+  'No excuses. Only reps.', 'The dojo remembers who showed up.', 'Friendly reminder: I\'m ahead.', 'Proud of you. Now beat me.', 'See you at the top.', 'Rematch. Anytime.'];
+// Challenges besides lifts: what counts, the honest range a code may ask for, how many days they get, the choices offered
+const volShow = lb => S.unit === 'kg' ? Math.round(lb / 2.20462 / 500) * 500 : lb;
+const RL_KINDS = {
+  wk:{min:2, max:7, days:7, opts:[2, 3, 4, 5], label:n => `Train ${n} times`},
+  sets:{min:10, max:300, days:7, opts:[40, 80, 120], label:n => `Log ${n} sets`},
+  full:{min:1, max:7, days:7, opts:[2, 3], label:n => `Full-clear ${n} workouts`},
+  vol:{min:1000, max:500000, days:7, opts:[20000, 50000, 100000], label:n => `Move ${fmt(volShow(n))} ${S.unit}`},
+  beat:{min:1, max:5, days:7, opts:[1, 2], label:n => `Beat ${n} rep-out target${n > 1 ? 's' : ''}`},
+  boss:{min:1, max:1, days:14, opts:[1], label:() => 'Beat a boss'}
+};
+// A link opened in the app (Training Arc's own #ta= link)
+// It waits until you're past the title screen and in your profile, then lands there.
+var pendingCode;   // var with no value: takeLinkCode runs at startup, before this line, and must not be reset by it
+function takeLinkCode(){ const m = location.hash.match(/#ta=(TA1\.[A-Za-z0-9_-]+)/); if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+  pendingCode = m[1]; }
+function landPendingCode(){ const ts = document.getElementById('title'); if (!pendingCode || !S.onboarded || ts && !ts.hidden) return; const c = pendingCode; pendingCode = null; setTimeout(() => takeCode(c), 500); }
+const volLb = l => !l.vol ? 0 : l.unit === 'kg' ? l.vol * 2.20462 : l.vol;
+function chalState(c){
+  if (c.k === 'lift'){ const b = bestMax(c.lift); return {have:b, goal:c.val, done:b >= c.val, gone:false}; }
+  const K = RL_KINDS[c.k] || RL_KINDS.wk, end = addDays(c.start, K.days - 1);
+  const logs = S.log.filter(l => l.iso && l.iso >= c.start && l.iso <= end && (!c.at || l.id && parseInt(l.id.slice(1, 9), 36) >= c.at)), reg = logs.filter(l => !l.bossFight);
+  const have = c.k === 'sets' ? reg.reduce((a, l) => a + (l.sets || 0), 0) : c.k === 'full' ? reg.filter(l => l.full).length : c.k === 'vol' ? Math.round(logs.reduce((a, l) => a + volLb(l), 0))
+    : c.k === 'beat' ? reg.filter(l => l.beat).length : c.k === 'boss' ? logs.filter(l => l.boss || l.bossFight && l.xp > 0).length : reg.length;
+  return {have, goal:c.need, done:have >= c.need, gone:have < c.need && todayIso() > end, end};
+}
+function rivalReward(c){ const n = c.need;
+  return c.k === 'lift' ? {xp:250, grind:200, glory:5} : c.k === 'sets' ? {xp:2 * n, grind:n, glory:0} : c.k === 'full' ? {xp:80 * n, grind:40 * n, glory:0}
+    : c.k === 'vol' ? {xp:Math.round(n / 250), grind:Math.round(n / 500), glory:n >= 100000 ? 5 : 0} : c.k === 'beat' ? {xp:100 * n, grind:60 * n, glory:0}
+    : c.k === 'boss' ? {xp:300, grind:200, glory:5} : {xp:40 * n, grind:30 * n, glory:0}; }
+function rivalChalsHTML(){
+  const taunts = (S.tauntIn || []).map(x => `<section class="panel rl-taunt"><div class="row-between"><span class="eyebrow">${esc(x.n)} says</span><button type="button" class="icon-btn rl-x" data-act="rvTauntX" data-id="${x.cid}" aria-label="Dismiss">×</button></div>
+    <b class="rl-quote">“${esc(TAUNTS[x.tn] || '')}”</b><div><button type="button" class="btn btn-power btn-sm" data-act="rvNew">Fire back</button></div></section>`).join('');
+  const open = (S.chals || []).filter(c => !c.claimed && !c.gone); if (!open.length) return taunts;
+  return taunts + open.map(c => { const s = chalState(c), rw = rivalReward(c), pct = Math.min(100, Math.round(s.have / s.goal * 100));
+    const by = s.end ? ` by ${fromYmd(s.end).toLocaleDateString(undefined, c.k === 'boss' ? {month:'short', day:'numeric'} : {weekday:'short'})}` : '';
+    const what = c.k === 'lift' ? `Beat ${fmt(c.val)} ${S.unit} on ${LIFTS[c.lift]}` : `${(RL_KINDS[c.k] || RL_KINDS.wk).label(c.need)}${by}`;
+    const prog = c.k === 'lift' ? `Your best: ${s.have ? `${fmt(s.have)} ${S.unit}` : 'none yet'}` : c.k === 'vol' ? `${fmt(volShow(s.have))} of ${fmt(volShow(s.goal))} ${S.unit}` : `${s.have} of ${s.goal} done`;
+    return `<section class="panel rl-chal${s.done ? ' done' : ''}${s.gone ? ' gone' : ''}"><div class="row-between"><span class="eyebrow">Challenge from ${esc(c.n)}</span><button type="button" class="icon-btn rl-x" data-act="rvDrop" data-id="${c.cid}" aria-label="Drop this challenge">×</button></div>
+      <b class="rl-what">${what}</b>${c.tn != null && TAUNTS[c.tn] ? `<p class="rl-quote sm">“${esc(TAUNTS[c.tn])}”</p>` : ''}<div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="row-between"><span class="fine">${s.gone ? 'Time ran out. Drop it, or ask for a rematch.' : prog} · +${fmt(rw.xp)} XP, +${rw.grind} Grind${rw.glory ? `, +${rw.glory} Glory` : ''}</span>${s.done ? `<button type="button" class="btn btn-power btn-sm" data-act="rvClaim" data-id="${c.cid}">Claim</button>` : ''}</div></section>`; }).join('');
+}
+function claimRivalChal(cid){ const c = (S.chals || []).find(x => x.cid === cid); if (!c || c.claimed || !chalState(c).done) return;
+  const rw = rivalReward(c), old = S.xp; c.claimed = todayIso(); S.xp += rw.xp; if (window.TA_SHOP){ TA_SHOP.addCoins(rw.grind); if (rw.glory) TA_SHOP.addGems(rw.glory); }
+  save(); render(); sfx('quest'); buzz(25); rankCheck(old); toast(`You beat ${c.n}'s challenge! +${fmt(rw.xp)} XP, +${rw.grind} Grind${rw.glory ? `, +${rw.glory} Glory` : ''}. Send one back?`); }
+function dropRivalChal(cid){ S.chals = (S.chals || []).filter(c => c.cid !== cid); save(); render(); }
+// Progress tab: your rivals, sharing your card, sending challenges, and a box to paste a code
+function rivalsHTML(){
+  const rv = Object.values(S.rivals || {}).sort((a, b) => b.ri - a.ri || b.lv - a.lv);
+  return `<section class="panel rivals"><div class="row-between"><h3>Rivals</h3><span class="fine">Share codes with friends. No account needed.</span></div>
+    <div class="rl-actions"><button type="button" class="btn btn-power btn-sm" data-act="rvShare">Share my card</button><button type="button" class="btn btn-ghost btn-sm" data-act="rvNew">Challenge a friend</button></div>
+    ${rv.length ? `<div class="rl-list">${rv.map(r => `<button type="button" class="rl-row" data-act="rvOpen" data-id="${r.id}"><canvas class="rl-hero" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas>
+      <span class="rl-who"><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}${r.title ? ` · ${esc(r.title)}` : ''}</small><small class="fine">Card from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</small></span><span class="rl-go" aria-hidden="true">›</span></button>`).join('')}</div>`
+      : '<p class="fine">Send your card to a friend and add theirs to compare heroes and lifts side by side. When they get stronger, they send you a new card.</p>'}
+    <div class="rl-add"><input id="rvCode" type="text" placeholder="Paste a friend's code or link" aria-label="Friend's code or link" autocomplete="off" spellcheck="false"><button type="button" class="btn btn-ghost btn-sm" data-act="rvAdd">Add</button></div></section>`;
+}
+async function drawRival(cv, r){ try { const fr = await spriteFrames(r.g, RANKS[r.ri].k, r.look, r.style, r.acc); if (!cv.isConnected) return;
+  cv.width = fr[0].bmp.width; cv.height = fr[0].bmp.height; const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(fr[0].bmp, 0, 0); } catch(e){} }
+const paintRivals = () => document.querySelectorAll('canvas[data-rv]').forEach(cv => { const r = (S.rivals || {})[cv.dataset.rv]; if (r && !cv.dataset.done){ cv.dataset.done = 1; drawRival(cv, r); } });
+// One dialog for sharing a code, writing a challenge, and comparing with a rival
+function rvDlg(html){ const d = document.getElementById('rvDlg'); d.innerHTML = `<div class="pc-card rl-card" style="--rc:var(--power)">${html}</div>`; if (!d.open) d.showModal(); paintRivals(); }
+function rvShareBox(title, sub, text, code){
+  rvDlg(`<b class="rl-h">${title}</b><p class="fine">${sub}</p>
+    <textarea class="rl-code" readonly rows="3" aria-label="Your code">${esc(codeLink(code))}</textarea>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button><button type="button" class="btn btn-ghost btn-sm" data-act="rvCopy">Copy</button>${navigator.share ? '<button type="button" class="btn btn-power btn-sm" data-act="rvSend">Send</button>' : ''}</div>`);
+  rvShareBox.cur = {text, url:codeLink(code)};
+}
+function rvShareCard(){ rvShareBox('Your rival card', 'Your hero, rank, maxes, medals and pet. Send it to a friend; they open the link or paste it under Rivals.', `Add me as a rival in Training Arc: ${S.hero.name || 'Hero'}, ${rankFor(S.xp).k}-Rank, Lv ${levelInfo(S.xp).L}.`, toCode(myCard())); }
+let rlTn = null;   // the taunt picked in the challenge composer
+function rvNewChal(){
+  const lifts = Object.keys(LIFTS).filter(l => bestMax(l)), K = RL_KINDS;
+  const opt = (k, n) => `<button type="button" class="opt" data-act="rvMake" data-k="${k}" data-v="${n}">${K[k].label(n)}</button>`;
+  rvDlg(`<b class="rl-h">Challenge a friend</b><p class="fine">Pick a taunt if you want one, then what they have to do. It only pays out for real training.</p>
+    <p class="rl-sec">Taunt</p><div class="rl-taunts" role="group" aria-label="Taunt"><button type="button" class="opt" data-act="rvTn" data-v="" aria-pressed="${rlTn == null}">No taunt</button>${TAUNTS.map((t, i) => `<button type="button" class="opt" data-act="rvTn" data-v="${i}" aria-pressed="${rlTn === i}">${esc(t)}</button>`).join('')}</div>
+    <button type="button" class="btn btn-ghost btn-sm" data-act="rvTauntOnly"${rlTn == null ? ' disabled' : ''}>Just send the taunt</button>
+    <p class="rl-sec">Beat my max</p><div class="rl-pick">${lifts.map(l => `<button type="button" class="opt" data-act="rvMake" data-k="lift" data-v="${l}">${LIFTS[l]}: ${fmt(Math.round(bestMax(l)))} ${S.unit}</button>`).join('') || '<p class="fine">Enter your maxes to send lift challenges.</p>'}</div>
+    <p class="rl-sec">Within 7 days</p><div class="rl-pick">${['wk', 'sets', 'full', 'vol', 'beat'].flatMap(k => K[k].opts.map(n => opt(k, n))).join('')}</div>
+    <p class="rl-sec">Within 14 days</p><div class="rl-pick">${opt('boss', 1)}</div>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button></div>`);
+}
+const rlCid = () => Math.random().toString(36).slice(2, 12).padEnd(10, '0');
+function rvMake(k, v){ const base = {t:'c', id:socialId(), n:S.hero.name || 'Hero', u:S.unit, cid:rlCid(), ...(rlTn != null ? {tn:rlTn} : {})};
+  const o = k === 'lift' ? {...base, k, lift:v, val:Math.round(bestMax(v))} : {...base, k, need:+v};
+  const what = k === 'lift' ? `beat my ${fmt(o.val)} ${S.unit} ${LIFTS[v]}` : `${RL_KINDS[k].label(+v).replace(/^./, ch => ch.toLowerCase())} in the next ${RL_KINDS[k].days} days`;
+  const tt = rlTn != null ? ` “${TAUNTS[rlTn]}”` : '';
+  rvShareBox('Challenge ready', `Send this to a friend. They have to ${what}.${tt}`, `${o.n} challenged you in Training Arc: ${what}.${tt}`, toCode(o)); }
+function rvTauntOnly(){ if (rlTn == null) return; const o = {t:'t', id:socialId(), n:S.hero.name || 'Hero', u:S.unit, cid:rlCid(), tn:rlTn};
+  rvShareBox('Taunt ready', `“${TAUNTS[rlTn]}” Send it and see if they answer.`, `${o.n} in Training Arc: “${TAUNTS[rlTn]}”`, toCode(o)); }
+function rvOpen(id){ const r = (S.rivals || {})[id]; if (!r) return; const me = myCard();
+  const row = (label, a, b, unit = '') => { const w = a > b ? 'me' : b > a ? 'them' : ''; return `<div class="rl-cmp-row"><b class="num${w === 'me' ? ' win' : ''}">${a ? fmt(a) + unit : '-'}</b><span>${label}</span><b class="num${w === 'them' ? ' win' : ''}">${b ? fmt(b) + unit : '-'}</b></div>`; };
+  rvDlg(`<div class="rl-vs"><div><canvas class="rl-big" id="rvMe" width="128" height="208" aria-hidden="true"></canvas><b>${esc(me.n)}</b><small>${RANKS[me.ri].k}-Rank · Lv ${me.lv}</small>${me.pet ? `<img class="rl-pet" src="${petArt(me.pet.id, me.pet.f) || ''}" alt="">` : ''}</div>
+      <span class="rl-vs-x">VS</span>
+      <div><canvas class="rl-big" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small>${r.pet ? `<img class="rl-pet" src="${petArt(r.pet.id, r.pet.f) || ''}" alt="">` : ''}</div></div>
+    <div class="rl-cmp">${Object.keys(LIFTS).map(l => row(LIFTS[l], me.m[l], Math.round(inMyUnit(r.m[l], r.u)), ` ${S.unit}`)).join('')}
+      ${row('Level', me.lv, r.lv)}${row('Medals', me.md, r.md)}${row('Week streak', me.st, r.st)}${row('Workouts', me.wk, r.wk)}</div>
+    <p class="fine">${esc(r.n)}'s card is from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. Ask for a new one to see their latest.</p>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvDel" data-id="${r.id}">Remove</button><button type="button" class="wk-link" data-act="rvClose">Close</button><button type="button" class="btn btn-power btn-sm" data-act="rvNew">Challenge</button></div>`);
+  drawRival(document.getElementById('rvMe'), me); }
+function rvAct(a, t){
+  if (a === 'rvShare') rvShareCard(); else if (a === 'rvNew') rvNewChal(); else if (a === 'rvMake') rvMake(t.dataset.k, t.dataset.v);
+  else if (a === 'rvOpen') rvOpen(t.dataset.id); else if (a === 'rvClose') document.getElementById('rvDlg').close();
+  else if (a === 'rvAdd'){ const el = document.getElementById('rvCode'); if (el && takeCode(el.value)) el.value = ''; }
+  else if (a === 'rvDel'){ const r = (S.rivals || {})[t.dataset.id]; if (!r) return; if (t.dataset.sure){ const R = {...S.rivals}; delete R[r.id]; S.rivals = R; save(); document.getElementById('rvDlg').close(); render(); toast(`${r.n} removed.`); }
+    else { t.dataset.sure = 1; t.textContent = `Remove ${r.n}?`; } }
+  else if (a === 'rvClaim') claimRivalChal(t.dataset.id); else if (a === 'rvDrop') dropRivalChal(t.dataset.id);
+  else if (a === 'rvTn'){ rlTn = t.dataset.v === '' ? null : +t.dataset.v; const sc = document.querySelector('#rvDlg .pc-card')?.scrollTop; rvNewChal(); const pc = document.querySelector('#rvDlg .pc-card'); if (pc) pc.scrollTop = sc || 0; }
+  else if (a === 'rvTauntOnly') rvTauntOnly();
+  else if (a === 'rvTauntX'){ S.tauntIn = (S.tauntIn || []).filter(x => x.cid !== t.dataset.id); save(); render(); }
+  else if (a === 'rvCopy'){ const ta = document.querySelector('#rvDlg .rl-code'), v = rvShareBox.cur;
+    (navigator.clipboard ? navigator.clipboard.writeText(v.url) : Promise.reject()).then(() => toast('Copied. Paste it to a friend.'), () => { ta?.select(); toast('Select the link and copy it.'); }); }
+  else if (a === 'rvSend'){ const v = rvShareBox.cur; navigator.share({title:'Training Arc', text:v.text, url:v.url}).catch(() => {}); }
+  else return false;
+  return true;
 }
 
 /* ---------- Year in review ---------- */
@@ -5287,6 +5466,7 @@ function viewProgress(){
     <div class="stat"><b class="num">${S.prs}</b><span>PRs</span></div>
   </div>
   ${S.log.some(l => l.iso && l.iso.startsWith(todayIso().slice(0, 4))) ? `<button class="yir-btn" data-act="openYear"><span><small>Year in review</small><b>Your ${todayIso().slice(0, 4)}</b></span><span aria-hidden="true">›</span></button>` : ''}
+  ${rivalsHTML()}
   ${rewardsHTML()}
   ${gatesHTML()}
   ${achHTML()}
@@ -6193,6 +6373,7 @@ function render(animate){
   v.classList.toggle('view-enter', !!animate);
   document.querySelector('.hud').hidden = tab === 'today' || tab === 'progress';   // the banner and the card carry the character there
   v.innerHTML =tab === 'today' ? viewToday() : tab === 'calendar' ? viewCalendar() : tab === 'maxes' ? viewMaxes() : tab === 'arcs' ? viewArcs() : viewProgress();
+  paintRivals(); landPendingCode();
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
   if (animate) [...v.children].forEach((c, i) => c.style.setProperty('--i', Math.min(i, 6)));
   if (tab === 'maxes') updateEstimate();
@@ -6352,6 +6533,7 @@ document.addEventListener('click', e => {
     if (boss) storyGate('boss', go); else if (!deloadOn() && !S.pos.w && !S.pos.d && !sessionSets()) storyGate('start', go); else go(); }
   else if (a === 'storyNext'){ if (!story) return; if (story.i < story.lines.length - 1){ story.i++; storyShow(); } else storyEnd(); }
   else if (a === 'storySkip') storyEnd();
+  else if (a.startsWith('rv') && rvAct(a, t)){}
   else if (a === 'petCard'){ e.stopPropagation(); openPetCard(t.dataset.id); } else if (a === 'petPoke') petPoke(); else if (a === 'petClose') petClose();
   else if (a === 'openYear') openYear(); else if (a === 'yirNext') yirNext(); else if (a === 'yirClose') yirClose(); else if (a === 'yirShare') shareYear();
   else if (a === 'startWkPlain') openWorkout();

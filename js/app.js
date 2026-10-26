@@ -2985,7 +2985,7 @@ function renderOb(){
   let body = '';
   if (ob.step === 'title') body = `<div class="ob-title">
       <canvas id="obImg" class="ob-hero" width="128" height="208" role="img" aria-label="Your character"></canvas>
-      <p class="ob-kicker">An anime gym RPG</p><h1 class="ob-logo" id="obTitle" tabindex="-1">Training<br>Arc</h1>
+      <h1 class="ob-logo" id="obTitle" tabindex="-1">Training<br>Arc</h1>
       <p class="ob-lede">Your real-life training arc starts now. Train, level up, rank up, and watch your character grow with you.</p></div>
     <div class="ob-foot"><button type="button" class="btn btn-power ob-primary" data-ob="next">Begin</button>${S.onboarded ? `<button type="button" class="wk-link" data-ob="cancel">Not now</button>` : `<button type="button" class="wk-link" data-ob="restore">Restore a backup</button>`}</div>`;
   else if (ob.step === 'hero') body = `<h2 class="ob-h" id="obTitle" tabindex="-1">Create your hero</h2><p class="ob-sub">Pick who you'll train as. You can change the look any time.</p>

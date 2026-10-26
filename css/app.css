@@ -397,7 +397,6 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 /* Launch splash */
 .splash{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:radial-gradient(ellipse at 50% 40%,var(--violet-glow),transparent 60%),var(--bg);color:var(--fg);transition:opacity .4s ease}
 .splash.out{opacity:0;pointer-events:none}
-.splash-k{margin:0;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--power)}
 .splash-t{margin:0;font-family:var(--display);font-size:min(84px,22vw);line-height:.88;text-transform:uppercase;text-align:center;text-shadow:0 0 40px var(--aura-glow)}
 .splash-bar{width:140px;height:4px;margin-top:14px;border-radius:4px;background:var(--surface-2);overflow:hidden}
 .splash-bar i{display:block;width:40%;height:100%;border-radius:4px;background:var(--power);animation:splash-load 1.1s ease-in-out infinite}

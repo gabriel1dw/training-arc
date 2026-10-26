@@ -673,6 +673,31 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .dd-xp{color:var(--good);font-weight:700}
 .dd-log .fine{margin:0}
 .dd-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.dd-log-r{display:flex;align-items:center;gap:8px}
+.dd-edit{min-height:32px;padding:0 10px}
+/* Editing a logged workout */
+.log-edit{width:min(440px,calc(100vw - 24px));max-height:calc(100dvh - 32px);padding:0;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--fg);overflow:auto}
+.log-edit::backdrop{background:rgba(8,6,14,.72)}
+.le-card{display:flex;flex-direction:column;gap:12px;padding:16px}
+.le-card .sec{margin:0;font-size:clamp(22px,7vw,30px);line-height:1}
+.le-card > .row-between{flex-wrap:nowrap;align-items:flex-start;gap:10px}
+.le-card > .row-between .icon-btn{flex:none}
+.le-field{display:flex;flex-direction:column;gap:4px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase}
+.le-field input,.le-set input{font:inherit;font-size:16px;color:var(--fg);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:44px;box-sizing:border-box}
+.le-ex{margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;gap:6px}
+.le-ex legend{padding:0 6px;font-weight:700}
+.le-set{display:flex;align-items:center;gap:8px}
+.le-n{flex:0 0 46px;font-size:13px;color:var(--muted)}
+.le-set label{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font-size:13px;color:var(--muted)}
+.le-set input{width:100%;min-width:0;text-align:right;text-transform:none}
+.le-foot{display:flex;flex-direction:column;gap:8px}
+.le-del.armed{background:#b3263a;border-color:#b3263a;color:#fff}
+.le-h{font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase}
+.le-row{display:flex;gap:8px;align-items:center}
+.le-row input{flex:1;min-width:0;font:inherit;font-size:16px;color:var(--fg);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:44px}
+.le-swap{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.le-swap select{font:inherit;font-size:16px;color:var(--fg);background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:44px}
+.dd-acts{display:flex;gap:8px;flex-wrap:wrap}
 .dd-tag{padding:2px 8px;border-radius:999px;font-family:var(--label);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
 .dd-tag.gold,.chip.gold{background:color-mix(in srgb,#ffd23f 20%,transparent);color:#ffd23f;border-color:#ffd23f}
 .dd-tag.boss{background:color-mix(in srgb,#ff4d7d 18%,transparent);color:#ff7a9a}

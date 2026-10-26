@@ -2106,6 +2106,7 @@ function normalize(s){
   if (s.bank){ s.xp = (s.xp || 0) + s.bank; s.bank = 0; } delete s.gates;
   if (!Array.isArray(s.schedHist) || !s.schedHist.length) s.schedHist = [{from:s.startedOn, days:clone(s.schedule || [])}];
   for (const k of ['dayMoves', 'dayPins']) if (!s[k] || typeof s[k] !== 'object' || Array.isArray(s[k])) s[k] = {};   // days moved by hand on the Calendar
+  (s.log || []).forEach(l => { if (!l.id) l.id = logId(); });   // every logged workout gets an id so it can be edited or deleted
   if (!s.arcSaves || typeof s.arcSaves !== 'object' || Array.isArray(s.arcSaves)) s.arcSaves = {};   // each arc's saved place
   // Saves from before levels used flat XP thresholds per rank. Nobody drops a rank in the switch:
   // if the new curve would put you below the rank you'd reached, you start at the bottom of it.
@@ -3227,7 +3228,7 @@ function dayDetail(iso, tIso, done, plan, miss){
   let body = '';
   if (done[iso]) body += done[iso].map(l => { const v = Math.round(volIn(l));
     const tags = [l.full ? '<span class="dd-tag gold">Full clear</span>' : '', l.boss ? '<span class="dd-tag boss">Boss down</span>' : '', l.bossFight ? '<span class="dd-tag boss">Boss battle</span>' : ''].join('');
-    return `<article class="dd-log"><div class="row-between"><b class="dd-day">${esc(l.day || 'Workout')}</b><span class="num dd-xp">+${fmt(l.xp || 0)} XP</span></div>
+    return `<article class="dd-log"><div class="row-between"><b class="dd-day">${esc(l.day || 'Workout')}</b><span class="dd-log-r"><span class="num dd-xp">+${fmt(l.xp || 0)} XP</span><button type="button" class="btn btn-ghost btn-sm dd-edit" data-act="logEdit" data-id="${l.id}" aria-label="Edit or delete ${esc(l.day || 'workout')}">Edit</button></span></div>
       <p class="fine">${esc(l.prog || '')}${l.week ? `, week ${l.week}` : ''}</p>
       <div class="dd-chips"><span class="chip">${l.sets}${l.total ? ` of ${l.total}` : ''} sets</span>${v ? `<span class="chip">${fmt(v)} ${S.unit} moved</span>` : ''}${tags}</div></article>`; }).join('');
   const prs = S.history.filter(h => h.iso === iso && h.src === 'PR');
@@ -3238,7 +3239,7 @@ function dayDetail(iso, tIso, done, plan, miss){
     body += `<div class="dd-block"><span class="eyebrow">${iso === tIso ? "Today's workout" : 'Planned'}${boss ? ' · boss day' : ''}</span>
       <div class="dd-name">${pl.name}</div><div class="fine">${pl.prog} · Week ${pl.w + 1}, Day ${pl.d + 1}${boss ? ` · ${bossName(p)}` : ''}</div>
       <ul class="dd-ex">${ex.slice(0, 6).map(x => `<li><span>${x.name}</span><b class="num">${x.sets.length} × ${x.sets[0].reps}${unitShort(x.sets[0].unit)}</b></li>`).join('')}${ex.length > 6 ? `<li class="fine">+${ex.length - 6} more</li>` : ''}</ul>
-      ${iso === tIso ? `<button class="btn btn-power btn-sm" data-act="startWk">${boss && window.TA_BOSSES ? 'Fight the boss' : 'Start workout'}</button>` : ''}</div>`;
+      <div class="dd-acts">${iso === tIso ? `<button class="btn btn-power btn-sm" data-act="startWk">${boss && window.TA_BOSSES ? 'Fight the boss' : 'Start workout'}</button>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-act="planEdit" data-iso="${iso}">Edit</button></div></div>`;
   } else if (!done[iso]){
     body = miss[iso] === 'shield' ? `<p class="empty">${CAL_ICON.shield}Missed, but your streak shield covered it. One miss a week won't break your streak.</p>`
       : miss[iso] ? '<p class="empty">Missed. This was a training day with no workout logged.</p>'
@@ -3358,6 +3359,110 @@ document.addEventListener('pointercancel', () => calDragEnd(false));
 document.addEventListener('touchmove', e => { if (calDrag?.on) e.preventDefault(); }, {passive:false});
 document.addEventListener('contextmenu', e => { if (calDrag || e.target.closest?.('[data-drag]')) e.preventDefault(); });
 document.addEventListener('click', e => { if (calNoClick){ e.stopPropagation(); e.preventDefault(); calNoClick = false; } }, true);
+
+/* ---------- Fixing a logged workout ---------- */
+// From a day on the Calendar: move a workout to the right date, correct any set's weight and reps, or delete it.
+function logId(){ return 'L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+let logEd = null;   // {id, armed: delete asked once}
+// The sets to edit: saved with the workout, or for workouts from before that, the "last time" record of that day
+function logExercises(l){
+  if (l.ex) return l.ex.map(x => ({...x, sets:x.sets.map(s => [...s])}));
+  return Object.entries(S.exLog).flatMap(([name, list]) => list.filter(e => e.iso === l.iso).slice(0, 1)
+    .map(e => ({name, w:e.sets.some(s => s[0] > 0) ? 1 : 0, unit:null, sets:e.sets.map(s => [...s]), old:true})));
+}
+function openLogEdit(id){
+  const l = S.log.find(x => x.id === id); if (!l) return;
+  logEd = {id, armed:false, ex:logExercises(l)};
+  const dlg = document.getElementById('logEdit'), unitOf = x => x.unit === 'sec' ? 'sec' : x.unit === 'time' ? 'sec' : 'reps';
+  dlg.innerHTML = `<form method="dialog" class="le-card" data-le="form">
+    <div class="row-between"><h2 class="sec" id="logEditTitle">Edit workout</h2><button type="button" class="icon-btn" data-act="logClose" aria-label="Close">✕</button></div>
+    <p class="fine">${esc(l.day || 'Workout')}${l.prog ? ` · ${esc(l.prog)}` : ''}</p>
+    <label class="le-field"><span>Date</span><input type="date" id="leDate" value="${l.iso}" max="${todayIso()}" required></label>
+    ${logEd.ex.length ? logEd.ex.map((x, i) => `<fieldset class="le-ex"><legend>${esc(x.name)}</legend>
+      ${x.sets.map((s, j) => `<div class="le-set"><span class="le-n">Set ${j + 1}</span>
+        ${x.w ? `<label><input type="number" inputmode="decimal" min="0" step="any" data-w="${i}-${j}" value="${s[0]}" aria-label="Set ${j + 1} weight"><span>${S.unit}</span></label>` : ''}
+        <label><input type="number" inputmode="numeric" min="0" step="1" data-r="${i}-${j}" value="${s[1]}" aria-label="Set ${j + 1} ${unitOf(x)}"><span>${unitOf(x)}</span></label></div>`).join('')}</fieldset>`).join('')
+      : '<p class="empty">The sets for this workout weren\'t saved, so only its date can be changed. Workouts you finish from now on keep every set.</p>'}
+    <div class="le-foot"><button type="button" class="btn btn-power" data-act="logSave">Save changes</button>
+      <button type="button" class="btn btn-ghost le-del" data-act="logDel">Delete workout</button></div>
+    <p class="fine">Deleting takes away its ${fmt(l.xp || 0)} XP. Your maxes and arc progress stay as they are; you can change maxes on the Maxes tab.</p></form>`;
+  dlg.showModal();
+}
+function closeLogEdit(){ const d = document.getElementById('logEdit'); if (d.open) d.close(); logEd = null; }
+function saveLogEdit(){
+  const l = S.log.find(x => x.id === logEd?.id); if (!l) return closeLogEdit();
+  const dlg = document.getElementById('logEdit'), iso = dlg.querySelector('#leDate').value;
+  if (!iso || iso > todayIso()){ toast('Pick a date up to today.'); return; }
+  const num = (sel, fb) => { const v = parseFloat(dlg.querySelector(sel)?.value); return isFinite(v) && v >= 0 ? v : fb; };
+  const ex = logEd.ex.map((x, i) => ({...x, sets:x.sets.map((s, j) => [x.w ? num(`[data-w="${i}-${j}"]`, s[0]) : s[0], Math.round(num(`[data-r="${i}-${j}"]`, s[1]))])}));
+  // the "last time" record follows the fix, so auto-progression builds on what you really did
+  for (const x of ex){ const list = S.exLog[x.name]; if (!list) continue;
+    const e = list.find(s => s.iso === l.iso); if (e){ e.sets = x.sets.map(s => [...s]); e.iso = iso; list.sort((a, b) => b.iso.localeCompare(a.iso)); } }
+  if (ex.length){ l.ex = ex.map(({old, ...x}) => x);
+    const vol = ex.filter(x => x.w).reduce((a, x) => a + x.sets.reduce((b, s) => b + s[0] * s[1], 0), 0);
+    if (vol){ l.vol = Math.round(vol); l.unit = S.unit; } else { delete l.vol; delete l.unit; } }
+  const moved = iso !== l.iso;
+  l.iso = iso; l.date = fromYmd(iso).toLocaleDateString(undefined, {month:'short', day:'numeric'});
+  S.log.sort((a, b) => (b.iso || '').localeCompare(a.iso || ''));
+  calSel = iso; save(); closeLogEdit(); render();
+  toast(moved ? `Workout moved to ${shortDate(iso)}.` : 'Workout updated.');
+}
+function deleteLog(){
+  const l = S.log.find(x => x.id === logEd?.id); if (!l) return closeLogEdit();
+  if (!logEd.armed){ logEd.armed = true; const b = document.querySelector('#logEdit .le-del'); b.textContent = 'Tap again to delete'; b.classList.add('armed'); return; }
+  S.log = S.log.filter(x => x !== l);
+  S.xp = Math.max(0, S.xp - (l.xp || 0)); S.sets = Math.max(0, (S.sets || 0) - (l.sets || 0));
+  const names = new Set(logExercises(l).map(x => x.name));
+  for (const n of names) if (S.exLog[n]){ S.exLog[n] = S.exLog[n].filter(e => e.iso !== l.iso); if (!S.exLog[n].length) delete S.exLog[n]; }
+  save(); closeLogEdit(); render(); renderHeader(); paintHeroes();
+  toast(`Workout deleted${l.xp ? `, ${fmt(l.xp)} XP removed` : ''}.`);
+}
+
+// A planned workout: move it to another day, rest that day instead, or swap its exercises
+let planEd = null;
+function openPlanEdit(iso){
+  const pl = projectPlan(iso)[iso]; if (!pl) return;
+  const p = prog(), day = p.weeks[pl.w].days[pl.d], swappable = day.ex.filter(x => !x.lift && SWAPS[x.name]);
+  planEd = {iso};
+  const max = ymd(new Date(fromYmd(todayIso()).getTime() + 60 * 864e5)), dlg = document.getElementById('logEdit');
+  dlg.innerHTML = `<form method="dialog" class="le-card">
+    <div class="row-between"><h2 class="sec" id="logEditTitle">Edit planned workout</h2><button type="button" class="icon-btn" data-act="logClose" aria-label="Close">✕</button></div>
+    <p class="fine">${esc(pl.name)} · ${esc(pl.prog)}, week ${pl.w + 1} day ${pl.d + 1} · ${longDate(iso)}</p>
+    <div class="le-ex"><span class="le-h">Move to another day</span>
+      <div class="le-row"><input type="date" id="peDate" value="${iso}" min="${todayIso()}" max="${max}" aria-label="New day"><button type="button" class="btn btn-ghost btn-sm" data-act="planMove">Move</button></div>
+      <p class="fine">Onto a day with another workout, the two swap.</p></div>
+    <button type="button" class="btn btn-ghost" data-act="planRest">Rest this day instead</button>
+    ${swappable.length ? `<div class="le-ex"><span class="le-h">Swap exercises</span>
+      ${swappable.map((x, i) => `<label class="le-swap"><span>${esc(x.name)}</span><select data-swap="${i}" data-base="${esc(x.name)}">
+        ${[x.name, ...SWAPS[x.name]].map(n => `<option value="${esc(n)}"${swapOf(x.name) === n ? ' selected' : ''}>${esc(n === x.name ? n + ' (original)' : n)}</option>`).join('')}</select></label>`).join('')}
+      <button type="button" class="btn btn-power btn-sm" data-act="planSwaps">Save swaps</button>
+      <p class="fine">A swap applies everywhere that exercise shows up in your arc.</p></div>` : ''}
+  </form>`;
+  dlg.showModal();
+}
+function planMove(){
+  const from = planEd?.iso, to = document.querySelector('#peDate')?.value; if (!from) return;
+  if (!to || to < todayIso()){ toast('Pick a day from today on.'); return; }
+  if (to === from){ closeLogEdit(); return; }
+  const r = moveWorkout(from, to); if (!r){ toast('That workout can\'t be moved.'); return; }
+  calSel = to; const dt = fromYmd(to); calView = {y:dt.getFullYear(), m:dt.getMonth()};
+  save(); closeLogEdit(); render();
+  toast(r.swapped ? `Swapped ${r.name} and ${r.swapped}.` : `Moved ${r.name} to ${shortDate(to)}.`);
+}
+function planRest(){
+  const iso = planEd?.iso; if (!iso) return;
+  const onBySched = schedOn(iso).includes(fromYmd(iso).getDay());
+  if (onBySched) S.dayMoves[iso] = 'off'; else delete S.dayMoves[iso];
+  delete S.dayPins[iso];
+  save(); closeLogEdit(); render();
+  toast(`${shortDate(iso)} is a rest day now. Your plan picks up on the next training day.`);
+}
+function planSwaps(){
+  let n = 0;
+  for (const sel of document.querySelectorAll('#logEdit [data-swap]')){ const base = sel.dataset.base, v = sel.value;
+    if ((S.swaps[base] || base) === v) continue; if (v === base) delete S.swaps[base]; else S.swaps[base] = v; n++; }
+  save(); closeLogEdit(); render(); toast(n ? `Swaps saved (${n}).` : 'No changes.');
+}
 
 /* ---------- Progress ---------- */
 let resetArmed = false;
@@ -4116,7 +4221,7 @@ function bossWon(id, r, rematch){
   if (!rematch) shopExtra = [[`First win: ${bossTitle(boss)}`, GEM_BOSS]];
   const pay = shopPay({n:r.sets, total:0, rank:'C', bossDay:!rematch, oldXp:old}), payTxt = ` · +${fmt(pay.coins)} Grind${pay.gems ? ` · +${fmt(pay.gems)} Glory` : ''}`;
   S.log.unshift({date:today(), iso:todayIso(), prog:'Boss battle', path:prog().path, rank:rankFor(S.xp).k, day:bossTitle(boss), week:0,
-    sets:r.sets, total:r.sets, full:true, bossFight:id, vol:r.volume ? Math.round(r.volume) : undefined, unit:r.volume ? S.unit : undefined, xp:won});
+    sets:r.sets, total:r.sets, full:true, bossFight:id, vol:r.volume ? Math.round(r.volume) : undefined, unit:r.volume ? S.unit : undefined, xp:won, id:logId()});
   checkItems(); save(); render(); paintHeroes(); cheer(); buzz(PR_BUZZ);
   toast(rematch ? `${boss.name} beaten again · +${fmt(won)} XP${payTxt}` : `${boss.name} defeated! +${fmt(won)} XP${payTxt}${nb ? ` · ${nb.name} unlocked` : ' · every boss beaten'}`);
   rankCheck(old);
@@ -5410,7 +5515,10 @@ function completeWorkout(){
   const entry = {date:today(), iso:todayIso(), prog:p.name, path:p.path, rank:p.rank, day:day.name, week:w + 1, sets:n, total, full,
     acc:rows.some(r => r.e.acc) && rows.filter(r => r.e.acc).every(r => r.sets >= r.e.sets.length),
     beat:rows.some(r => r.e.sets.some(s => s.amrap && setDone(s) && setActual(s).r > s.reps)),
-    warm:rows.some(r => /warm-up/i.test(r.e.base) && r.sets), boss:bossWon || undefined, vol:vol ? Math.round(vol) : undefined, unit:vol ? S.unit : undefined, xp:0};
+    warm:rows.some(r => /warm-up/i.test(r.e.base) && r.sets), boss:bossWon || undefined, vol:vol ? Math.round(vol) : undefined, unit:vol ? S.unit : undefined, xp:0,
+    // every set as done, so the workout can be corrected later from the Calendar
+    id:logId(), ex:rows.filter(r => r.sets && !/warm-up/i.test(r.e.base)).map(r => ({name:r.e.name, w:r.e.weighted ? 1 : 0, unit:r.e.unit || null,
+      sets:r.e.sets.filter(setDone).map(s => { const a = setActual(s); return [a.w, a.r]; })}))};
   S.log.unshift(entry); S.log = S.log.slice(0, 1000);
   const streakN = weekStreak(), sm = streakMult(streakN), streakXp = Math.round(base * (sm - 1));
   const quests = claimQuests(entry), questXp = quests.reduce((a, q) => a + q[1], 0);
@@ -5805,6 +5913,14 @@ document.addEventListener('click', e => {
     render();
   }
   else if (a === 'calToday'){ const n = new Date(); calView = {y:n.getFullYear(), m:n.getMonth()}; calSel = todayIso(); render(); }
+  else if (a === 'logEdit') openLogEdit(t.dataset.id);
+  else if (a === 'planEdit') openPlanEdit(t.dataset.iso);
+  else if (a === 'planMove') planMove();
+  else if (a === 'planRest') planRest();
+  else if (a === 'planSwaps') planSwaps();
+  else if (a === 'logClose') closeLogEdit();
+  else if (a === 'logSave') saveLogEdit();
+  else if (a === 'logDel') deleteLog();
   else if (a === 'calUnmove'){   // past days keep how they were moved, so streaks and misses don't change
     const tIso = todayIso(); for (const iso in S.dayMoves) if (iso >= tIso) delete S.dayMoves[iso]; S.dayPins = {};
     save(); render(); toast('Moved days undone. Workouts follow your training days again.'); }

@@ -2041,9 +2041,9 @@ function shopEq(){ return window.TA_SHOP ? TA_SHOP.equipped() : {}; }
 // Shop gear goes on over your own colors: an outfit sets the shirt and pants, then hair dye, shoes and cape
 function shopLook(base, w, aura){
   const look = Object.assign({}, base);
-  if (w.outfit){ look.top = w.outfit.shirt; look.bottom = w.outfit.pants; }
+  if (w.outfit){ look.top = w.outfit.shirt; look.bottom = w.outfit.pants; if (w.outfit.gid && GARB[w.outfit.gid]) look.garb = `${w.outfit.gid}|${w.outfit.stripe || ''}|${w.outfit.emb || ''}`; }
   if (w.hair) look.hair = w.hair;
-  if (w.shoes) look.shoes = w.shoes.shoe;
+  if (w.shoes){ look.shoes = w.shoes.shoe; if (w.shoes.sole) look.sole = w.shoes.sole; if (w.shoes.kind) look.shoeKind = w.shoes.kind; }
   if (w.cape) look.cape = w.cape;
   if (aura) look.aura = aura;
   return look;
@@ -2228,6 +2228,8 @@ function applyPetArt(){
   if (!window.TA_SHOP) return;
   TA_SHOP.todayShop();   // merges the item packs into the catalog
   TA_SHOP_DATA.coinIcon = tokenArt('grind'); TA_SHOP_DATA.gemIcon = tokenArt('glory');   // Grind and Glory tokens
+  for (const it of Object.values(TA_SHOP_DATA.items)) if (it.type === 'outfit' && it.outfit) it.outfit.gid = it.garb || it.id;   // which garment the hero wears it as
+  for (const it of Object.values(TA_SHOP_DATA.items)) if (it.type === 'shoes' && it.shoes) it.shoes.kind = /boot/i.test(it.name) ? 'boot' : /sandal|slide|flip/i.test(it.name) ? 'open' : /cleat|spike|stud/i.test(it.name) ? 'studs' : '';   // and which shoe shape
   for (const it of Object.values(TA_SHOP_DATA.items)){ const pk = perkOf(it); if (pk && !it.perk){ it.perk = pk.text; it.desc = `${it.desc} Perk: ${pk.text} from workouts.`; } }   // pets and auras say what they do
   // pets drawn in code replace their pack art everywhere (shop, inventory, loot), drawn the first time they're shown
   for (const it of Object.values(TA_SHOP_DATA.items)) if (it.type === 'pet' && window.PETART && PETART.PETS[it.id]){ const old = it.icon;
@@ -4067,6 +4069,9 @@ function cleanCard(o, base){
   const own = (obj, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(obj, k);
   const g = own(GENDERS, o.g) ? o.g : 'male', look = {};
   for (const p of PART_IDS) if (/^#[0-9a-f]{6}$/i.test((o.look || {})[p] || '')) look[p] = o.look[p];
+  { const gb = String((o.look || {}).garb || '').split('|'); if (GARB[gb[0]] && gb.slice(1).every(c => !c || /^#[0-9a-f]{6}$/i.test(c))) look.garb = gb.join('|'); }   // the outfit's garment
+  if (/^#[0-9a-f]{6}$/i.test((o.look || {}).sole || '')) look.sole = o.look.sole;   // the shoes' sole
+  if (['boot', 'open', 'studs'].includes((o.look || {}).shoeKind)) look.shoeKind = o.look.shoeKind;
   const acc = {}; for (const s of SLOT_ORDER){ const a = (o.acc || {})[s]; if (ACCESSORIES.some(x => x.id === a && x.slot === s)) acc[s] = a; }
   const pet = o.pet && typeof o.pet.id === 'string' && own(TA_SHOP_DATA.items, o.pet.id) && shopItem(o.pet.id).type === 'pet' ? {id:o.pet.id, f:int(o.pet.f, 0, 3)} : null;
   const iso = v => /^\d{4}-\d\d-\d\d$/.test(v) ? v : null;
@@ -7650,7 +7655,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape'){
 const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 let previewRank = 0;
 const rankIdx = () => RANKS.indexOf(rankFor(S.xp));
-const lookKey = (look, style, acc = {}) => style + '|' + PART_IDS.map(p => look[p] || '').join('|') + '|' + SLOT_ORDER.map(s => acc[s] || '').join(',');
+const lookKey = (look, style, acc = {}) => style + '|' + PART_IDS.map(p => look[p] || '').join('|') + '|' + SLOT_ORDER.map(s => acc[s] || '').join(',') + '|' + (look.garb || '') + '|' + (look.sole || '') + (look.shoeKind || '');
 const BASES = {}, RENDERS = new Map();
 let editG = 'male';   // the character page open in the editor
 const hasArt = g => !!GENDERS[g].ranks;
@@ -7667,14 +7672,248 @@ function spriteBase(g, k){
   }));
 }
 // One frame with headroom added above, the chosen hairstyle painted in, then recolored
-function styledFrame(b, i, style, look, accs = []){
+function styledFrame(b, i, style, look, accs = [], cape = null){
   const img = new ImageData(SPRITE_W, SPRITE_H), map = new Uint8Array(SPRITE_W * SPRITE_H);
   img.data.set(b.dec.frames[i].data.data, SPRITE_PAD * SPRITE_W * 4); map.set(b.maps[i], SPRITE_PAD * SPRITE_W);
   applyHair(img, map, style, b.ramp, b.heads[i]);
   for (const a of accs) paintAcc(img, map, a, b.ext, a.anchor === 'head' ? b.heads[i] : b.bodies[i]);
-  return recolor(img, map, b.mean, look);
+  if (cape) paintCape(img, map, cape, b.ext, b.bodies[i]);
+  const mean = cape ? Object.assign([...b.mean], {7:cape.mean}) : b.mean;
+  return recolor(img, map, mean, look);
 }
-const recolor = (src, map, mean, look) => createImageBitmap(recolorData(src, map, mean, look));
+// Capes: the art only wears one from S-Rank up. On the ranks below, a bought cape is the S-Rank cape's shape,
+// fitted row by row to this body (same overhang past the shoulders and legs) and drawn behind it.
+const CAPE_ART = {};
+async function capeArt(g){
+  if (CAPE_ART[g]) return CAPE_ART[g];
+  const b = await spriteBase(g, 'S'), W = b.dec.w, d = b.dec.frames[0].data.data, m = b.maps[0], rows = new Map();
+  for (let p = 0; p < m.length; p++) if (m[p] === 7){ const y = Math.floor(p / W); if (!rows.has(y)) rows.set(y, []); rows.get(y).push([p % W, d[p * 4], d[p * 4 + 1], d[p * 4 + 2]]); }
+  return CAPE_ART[g] = {rows, ext:b.ext, mean:b.mean[7], off:b.bodies[0]};
+}
+function paintCape(img, map, cape, ext, off){
+  const d = img.data, C = 63.5, W = SPRITE_W;
+  for (const [y, pts] of cape.rows){
+    const sL = C - cape.ext.L[y], sR = cape.ext.R[y] - C, tL = C - ext.L[y], tR = ext.R[y] - C, ok = cape.ext.L[y] >= 0 && ext.L[y] >= 0;
+    for (const [x, r, g, b] of pts){ const dx = x - C, left = dx < 0, s = left ? sL : sR, t = left ? tL : tR, a = Math.abs(dx);
+      const na = !ok ? a : a > s ? t + (a - s) : a * t / Math.max(1, s);
+      for (const nx of [Math.round(C + (left ? -na : na))]){ const tx = nx + off.dx, ty = y + SPRITE_PAD + off.dy; if (tx < 0 || tx >= W || ty < 0 || ty >= SPRITE_H) continue;
+        const q = ty * W + tx; if (d[q * 4 + 3] > 0) continue;   // behind the body: only where nothing is drawn yet
+        d[q * 4] = r; d[q * 4 + 1] = g; d[q * 4 + 2] = b; d[q * 4 + 3] = 255; map[q] = 7; } }
+    // close the one-pixel gaps a wider body opens up in the cape
+    for (let x = 1; x < W - 1; x++){ const ty = y + SPRITE_PAD + off.dy; if (ty < 0 || ty >= SPRITE_H) continue; const q = ty * W + x;
+      if (d[q * 4 + 3] === 0 && map[q - 1] === 7 && map[q + 1] === 7){ for (let k = 0; k < 3; k++) d[q * 4 + k] = d[(q - 1) * 4 + k]; d[q * 4 + 3] = 255; map[q] = 7; } }
+  }
+  // where the hands stick out further than on the S-Rank body, a row can throw a stray sliver: drop cape pixels with few cape neighbors
+  for (let pass = 0; pass < 2; pass++){ const drop = [];
+    for (let q = W; q < map.length - W; q++) if (map[q] === 7 && d[q * 4 + 3] === 255){ let n = 0; for (const o of [-W - 1, -W, -W + 1, -1, 1, W - 1, W, W + 1]) if (map[q + o] === 7) n++; if (n < 3) drop.push(q); }
+    for (const q of drop){ d[q * 4 + 3] = 0; map[q] = 0; } }
+}
+const recolor = (src, map, mean, look) => createImageBitmap(paintSole(paintGarb(recolorData(src, map, mean, look), map, look), map, look));
+// Shoes have a sole color too: the bottom two rows of each shoe
+function paintSole(img, map, look){
+  const d = img.data, W = img.width, H = img.height, put = (p, c) => { d[p * 4] = c[0]; d[p * 4 + 1] = c[1]; d[p * 4 + 2] = c[2]; d[p * 4 + 3] = 255; };
+  const sh = (c, k) => { const [h, s, l] = rgbHsl(...c); return hslRgb(h, s, Math.min(.96, Math.max(.04, l + k))); };
+  const sole = /^#[0-9a-f]{6}$/i.test(look.sole || '') ? hexRgbA(look.sole) : null, kind = look.shoeKind, up = look.shoes ? hexRgbA(look.shoes) : null;
+  if (!sole && !kind) return img;
+  // each column of a shoe: its top and bottom rows
+  const cols = []; for (let x = 0; x < W; x++){ let lo = -1, hi = -1; for (let y = H - 1; y >= 0; y--) if (map[y * W + x] === 6){ if (lo < 0) lo = y; hi = y; } else if (lo >= 0 && y < hi - 1) break; if (lo >= 0) cols.push([x, hi, lo]); }
+  if (!cols.length) return img;
+  if (kind === 'boot' && up) for (const [x, hi] of cols) for (let k = 1; k <= 7; k++){ const p = (hi - k) * W + x; if (p < 0 || map[p] === 1 || d[p * 4 + 3] < 200) break; put(p, k === 7 ? sh(up, -.24) : k === 6 ? sh(up, .12) : (x + k) % 5 ? up : sh(up, -.06)); map[p] = 6; }   // boots go over the trouser hem
+  if (kind === 'open'){ const skin = (() => { for (let p = 0; p < map.length; p++) if (map[p] === 1){ const i = p * 4; return [d[i], d[i + 1], d[i + 2]]; } return [225, 165, 122]; })();
+    for (const [x, hi, lo] of cols) for (let y = hi; y <= lo - 2; y++){ const p = y * W + x, strap = y === hi + 1 || y === lo - 3; if (!strap) put(p, (x + y) % 7 ? skin : sh(skin, -.1)); } }
+  if (sole) for (const [x, , lo] of cols) for (let k = 0; k < 2; k++){ const p = (lo - k) * W + x; if (map[p] !== 6) break; put(p, k ? sole : sh(sole, -.12)); }
+  if (kind === 'studs') for (const [x, , lo] of cols) if (x % 3 === 0 && lo + 1 < H){ put((lo + 1) * W + x, sh(sole || [230, 230, 230], .2)); }
+  return img;
+}
+
+// Outfits as advertised: on top of the recolored shirt and pants, each outfit draws its own garment (a gi's
+// V-neck and belt, a hoodie's hood and pocket, a raincoat's length and zip, armor plates...) from pieces. The
+// shapes are measured from this frame's own shirt pixels, so they fit every rank and both heroes.
+// [pieces, jersey number]. Colorways (vo_*) draw like the outfit they were made from.
+var GARB = {
+  of_crimson_gi:['vneck belt emb'], of_white_gi:['vneck belt emb'], of_jade_gi:['vneck belt emb dragon'], of_storm_gi:['vneck belt emb bolt'], of_black_belt:['vneck belt emb'],
+  of_blossom:['vneck belt petals'], dr_dragonscale:['vneck belt scales'], of_ronin:['vneck belt emb'], of_midnight:['vneck belt emb'],
+  of_monk:['vneck sash robe'], of_lantern:['vneck belt robe glowtrim'], dr_divine:['vneck belt robe trim'],
+  of_arcade_tee:['trim emb'], of_combo_tee:['trim emb'], of_practice:['sides emb'], of_skeleton:['bones'], dr_chainmail:['chain trim'],
+  of_team_jersey:['number trim', 88], of_away_jersey:['number trim', 7], of_joystick:['number trim', 1], of_pinnie:['trim number', 3],
+  of_pixel_hoodie:['hood strings pocket cuffs'], of_dawn_hoodie:['hood strings pocket cuffs'], of_camp_hoodie:['hood strings pocket cuffs emb'], of_valentine:['hood strings pocket cuffs hearts'],
+  of_glitch_jacket:['zip collar glitch'], of_holo_jacket:['zip collar gloss holo'], of_letterman:['zip letter cuffs'], of_windbreaker:['zip collar sstripe gloss'],
+  of_city_tech:['zip collar chestpockets straps'], of_flannel:['plaid buttons'], of_kite_runner:['zip collar sstripe gloss'],
+  of_sunset_track:['zip collar sstripe pstripe'], of_neon_runner:['zip collar sstripe pstripe glow'], of_synthwave:['zip collar sstripe pstripe glow'],
+  of_track_warmup:['zip collar sstripe pstripe'], of_resolution:['zip collar sstripe pstripe'], dr_storm_suit:['zip collar sstripe pstripe bolt'], of_mirror:['zip collar sstripe pstripe'],
+  of_cloud_set:['zip collar cuffs'], of_champion:['zip collar sstripe emb'], of_beach:['tank trim'], of_tank:['tank trim'], of_firecracker:['tank trim chestband'],
+  of_iron_armor:['pauldrons plates belt'], of_knight_plate:['pauldrons plates belt emb'], of_chrome:['pauldrons plates gloss'], dr_stoneplate:['pauldrons plates belt'], dr_cushion_armor:['pauldrons quilt belt'],
+  of_parka:['zip hood fur quilt coat cuffs'], of_rain_jacket:['zip hood coat snaps gloss cuffs']
+};
+const hexRgbA = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+// Where the shirt sits on one frame. The art's shirt opens in a V at the neck, its sleeves run into the body,
+// and the top ranks add trim, so: yTop is the collar, yC the row where the chest closes under the V, yBot the hem,
+// hw the torso's half-width (sleeves are whatever lies outside it above the armpits, yArm).
+function garbGeo(map, W, H){
+  const runs = []; let yTop = -1;
+  for (let y = 0; y < H; y++){ const r = []; let s = -1;
+    for (let x = 0; x <= W; x++){ const on = x < W && map[y * W + x] === 4; if (on && s < 0) s = x; if (!on && s >= 0){ r.push([s, x - 1]); s = -1; } }
+    for (let i = r.length - 1; i > 0; i--) if (r[i][0] - r[i - 1][1] <= 4){ r[i - 1][1] = r[i][1]; r.splice(i, 1); }   // a seam or a pendant down the middle is still shirt
+    runs[y] = r; if (r.length && yTop < 0) yTop = y; }
+  if (yTop < 0) return null;
+  const cover = (y, c) => (runs[y] || []).find(([a, b]) => a <= c && b >= c);
+  let C = 63.5; { let n = 0, s = 0; for (let y = yTop; y < yTop + 60 && y < H; y++){ const r = cover(y, 63) || cover(y, 64); if (r && r[1] - r[0] > 12){ s += (r[0] + r[1]) / 2; n++; } } if (n) C = s / n; }
+  const Ci = Math.round(C); let yC = -1, yBot = -1;
+  for (let y = yTop, miss = 0; y < H; y++){ const r = cover(y, Ci); if (r && r[1] - r[0] >= 12){ if (yC < 0) yC = y; yBot = y; miss = 0; } else if (yC >= 0 && ++miss > 12) break; }   // a pendant can interrupt the middle for a few rows
+  if (yC < 0) return null;
+  const width = y => { const r = runs[y]; return r.length ? r[r.length - 1][1] - r[0][0] : 0; };
+  const waist = []; for (let y = Math.max(yC, yBot - 10); y <= yBot; y++){ const r = cover(y, Ci); if (r) waist.push((r[1] - r[0]) / 2); }
+  const hwW = waist.length ? waist.sort((a, b) => a - b)[waist.length >> 1] : 16;
+  let yArm = yBot; for (let y = yC + 2; y <= yBot; y++) if (width(y) <= hwW * 2 + 8){ yArm = y; break; }
+  let hw = Math.round(hwW + 3);
+  for (let y = yC; y < yArm; y++) if (runs[y].length >= 3){ const r = cover(y, Ci); if (r && (r[1] - r[0]) / 2 > hwW && (r[1] - r[0]) / 2 < hwW + 10){ hw = Math.round((r[1] - r[0]) / 2); break; } }
+  return {runs, yTop, yC, yBot, yArm, Ci, hw, cover};
+}
+function paintGarb(img, map, look){
+  const g = look.garb && GARB[look.garb.split('|')[0]]; if (!g) return img;
+  const W = img.width, H = img.height, G = garbGeo(map, W, H); if (!G) return img;
+  const {yTop, yC, yBot, yArm, Ci, hw, cover} = G, [, stH, emH] = look.garb.split('|'), has = new Set(g[0].split(' ')), d = img.data;
+  const SH = hexRgbA(look.top || '#888888'), ST = hexRgbA(stH || '#ffffff'), EM = hexRgbA(emH || stH || '#ffffff'), PA = hexRgbA(look.bottom || '#333333');
+  const shade = (c, k) => { const [h, s, l] = rgbHsl(...c); return hslRgb(h, s, Math.min(.96, Math.max(.04, l + k))); };
+  const at = (x, y) => (y * W + x) * 4, inb = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
+  const px = (x, y) => { const i = at(x, y); return [d[i], d[i + 1], d[i + 2]]; };
+  const set = (x, y, c) => { if (!inb(x, y)) return; const i = at(x, y); d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; };
+  const mp = (x, y) => inb(x, y) ? map[y * W + x] : 0, op = (x, y) => inb(x, y) && d[at(x, y) + 3] > 200;
+  const shirt = (x, y) => mp(x, y) === 4, onShirt = (x, y, c) => { if (shirt(x, y)) set(x, y, c); };
+  const torsoL = y => y < yArm ? Ci - hw : ((cover(y, Ci) || [Ci - hw])[0]), torsoR = y => y < yArm ? Ci + hw : ((cover(y, Ci) || [, Ci + hw])[1]);
+  const sleeve = (x, y) => shirt(x, y) && y < yArm + 3 && (x < torsoL(y) || x > torsoR(y));
+  const SLV = []; for (let y = yTop; y < yArm + 3 && y < H; y++) for (let x = 0; x < W; x++) if (sleeve(x, y)) SLV.push([x, y]);
+  const slvSet = new Set(SLV.map(([x, y]) => y * W + x)), isSlv = (x, y) => slvSet.has(y * W + x);
+  const legRuns = y => { const r = []; let s = -1; for (let x = 0; x <= W; x++){ const on = x < W && mp(x, y) === 5; if (on && s < 0) s = x; if (!on && s >= 0){ r.push([s, x - 1]); s = -1; } } return r; };
+  const skinNear = (x, y) => { for (let k = 1; k < 18; k++) if (mp(x, y + k) === 1) return px(x, y + k); for (let k = 1; k < 8; k++) for (const xx of [x - k, x + k]) if (mp(xx, y) === 1) return px(xx, y); return null; };
+  const neckSkin = (() => { for (let k = 0; k < 12; k++) if (mp(Ci, yTop + k) === 1) return px(Ci, yTop + k); for (let k = 1; k < 10; k++) if (mp(Ci, yTop - k) === 1) return px(Ci, yTop - k); return [225, 165, 122]; })();
+  const recol = (x, y, base, from) => { const l = rgbHsl(...px(x, y))[2], [bh, bs, bl] = rgbHsl(...base), fl = rgbHsl(...from)[2]; set(x, y, hslRgb(bh, bs, Math.min(.95, Math.max(.05, bl + (l - fl) * .8)))); };
+  const dark = shade(SH, -.24), lite = shade(SH, .18);
+  const glyph = (rows, x0, y0, c, out, sc = 1) => { const on = (i, j) => (rows[j] || '')[i] === '1';
+    for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) if (on(i, j)) for (let a = 0; a < sc; a++) for (let b = 0; b < sc; b++){
+      if (out) for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){ const ii = Math.floor((i * sc + a + ox) / sc), jj = Math.floor((j * sc + b + oy) / sc); if (!on(ii, jj) || (i * sc + a + ox) < 0 || (j * sc + b + oy) < 0) set(x0 + i * sc + a + ox, y0 + j * sc + b + oy, out); } }
+    for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) if (on(i, j)) for (let a = 0; a < sc; a++) for (let b = 0; b < sc; b++) set(x0 + i * sc + a, y0 + j * sc + b, c); };
+  const DIG = ['111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001', '111100111001111', '111100111101111', '111001001001001', '111101111101111', '111101111001111'].map(s => [0, 3, 6, 9, 12].map(i => s.slice(i, i + 3)));
+
+  // ---- length: a robe to the knee, a coat over the hips (drawn first, so the rest goes on top)
+  // the art's own belt (dark band and buckle under the shirt): a gi, robe, coat or armor covers it
+  const beltRows = []; { const L0 = torsoL(yBot), R0 = torsoR(yBot);
+    for (let y = yBot + 1; y <= yBot + 10 && y < H; y++){ let n = 0, t = 0; for (let x = L0; x <= R0; x++){ t++; if (op(x, y) && mp(x, y) === 0) n++; } if (n > t * .5) beltRows.push(y); else if (beltRows.length) break; }
+    // the belt's stitching runs along a row of its own, broken into dots: that goes too
+    const last = beltRows[beltRows.length - 1]; if (last != null){ let n = 0; for (let x = L0; x <= R0; x++) if (op(x, last + 1) && mp(x, last + 1) === 0) n++; if (n >= 4) beltRows.push(last + 1); } }
+  const lenBelow = (has.has('robe') ? 30 : has.has('coat') ? 12 : 0) && (has.has('robe') ? 30 : 12) + beltRows.length;   // past the belt: a coat to mid-thigh, a robe to the knee
+  if (beltRows.length && (lenBelow || has.has('belt') || has.has('pauldrons'))){ const L0 = torsoL(yBot), R0 = torsoR(yBot), fill = lenBelow ? SH : PA;
+    const below = beltRows[beltRows.length - 1] + 1;   // covered by the waistband of the pants underneath: carry their texture up
+    beltRows.forEach((y, i) => { for (let x = L0; x <= R0; x++) if (op(x, y) && mp(x, y) !== 1){ if (lenBelow){ set(x, y, i === beltRows.length - 1 ? shade(fill, -.1) : fill); continue; }
+      let yy = below; while (yy < below + 6 && mp(x, yy) !== 5) yy++; if (mp(x, yy) !== 5){ set(x, y, PA); continue; }
+      const sm = [0, 0, 0]; let n = 0; for (let k = -3; k <= 3; k++) for (const yv of [yy + 2, yy + 4]) if (mp(x + k, yv) === 5){ const c = px(x + k, yv); sm[0] += c[0]; sm[1] += c[1]; sm[2] += c[2]; n++; }   // smoothed, so pleat lines do not run up into it
+      const c = n ? sm.map(v => Math.round(v / n)) : PA; set(x, y, i === 0 ? shade(c, -.1) : i === beltRows.length - 1 ? shade(c, -.05) : c); } }); }
+  if (lenBelow) for (let y = yBot + 1; y <= yBot + lenBelow && y < H; y++){ const lr = legRuns(y); if (!lr.length) continue;
+    for (const [a, b] of lr) for (let x = a; x <= b; x++) recol(x, y, SH, PA);
+    if (lr.length > 1 && (has.has('robe') || y <= yBot + 9)){ const lo = lr[0][1] + 1, hi = lr[lr.length - 1][0] - 1; if (hi - lo < 16) for (let x = lo; x <= hi; x++) set(x, y, shade(SH, -.14)); }
+    if (y >= yBot + lenBelow - 1) for (const [a, b] of lr) for (let x = a; x <= b; x++) set(x, y, y === yBot + lenBelow ? dark : shade(SH, -.1)); }
+  // ---- sleeveless: the sleeves become arm, the neck scoops
+  if (has.has('tank')){ const sk = []; for (let y = yArm; y < yArm + 16 && y < H; y++) for (let x = 0; x < W; x++) if (mp(x, y) === 1) sk.push(px(x, y)); sk.sort((a, b) => rgbHsl(...a)[2] - rgbHsl(...b)[2]);
+    const skinBase = sk.length ? sk[Math.floor(sk.length * .6)] : neckSkin;   // one even arm tone, shaded like the sleeve was
+    { const [kh, ks, kl] = rgbHsl(...skinBase), fl = rgbHsl(...SH)[2]; for (const [x, y] of SLV){ const dl = Math.max(-.12, Math.min(.06, (rgbHsl(...px(x, y))[2] - fl) * .7)); set(x, y, hslRgb(kh, ks, Math.max(.05, Math.min(.92, kl + dl)))); } }   // soft shading only: sleeve details must not show on skin
+    // the sleeve's rank bars (gold, not part of the shirt) go with the sleeve
+    for (const side of [-1, 1]){ const pts = SLV.filter(([x]) => side < 0 ? x < Ci : x > Ci); if (!pts.length) continue;
+      const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x0 = Math.min(...xs) - 2, x1 = Math.max(...xs) + 2, y0 = Math.min(...ys) - 1, y1 = Math.max(...ys) + 2;
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++){ if (mp(x, y) !== 0 || !op(x, y)) continue; const [hh, ss, ll] = rgbHsl(...px(x, y));
+        if (ll > .22) set(x, y, shade(skinBase, ll > .6 ? .04 : -.04)); } }   // gold or white bars; the dark outline stays
+    for (let y = yTop; y < yC + 4; y++) for (let x = Ci - 6; x <= Ci + 6; x++) if (shirt(x, y) && Math.abs(x - Ci) <= 6 - Math.max(0, y - yC)) set(x, y, neckSkin);
+    for (let y = yTop; y < yC + 6; y++) for (const x of [torsoL(y), torsoL(y) + 1, torsoR(y) - 1, torsoR(y)]) if (shirt(x, y)) recol(x, y, skinBase, SH);
+    if (has.has('trim')) for (let y = yTop; y < yArm; y++){ for (const x of [torsoL(y) + 2, torsoR(y) - 2]) if (shirt(x, y)) set(x, y, ST); } }   // armhole trim: reads as sleeveless
+  // ---- patterns over the whole shirt
+  const allShirt = (fn) => { for (let y = yTop; y <= yBot + (lenBelow || 0); y++) for (let x = 0; x < W; x++) if (shirt(x, y) || (lenBelow && y > yBot && mp(x, y) === 5)) fn(x, y); };
+  if (has.has('quilt')) allShirt((x, y) => { if ((y - yC) % 4 === 0) set(x, y, shade(px(x, y), -.16)); else if ((y - yC) % 4 === 1) set(x, y, shade(px(x, y), .06)); });
+  if (has.has('chain')) allShirt((x, y) => { if (y > yBot) return; set(x, y, shade(px(x, y), (x + y) % 2 ? -.13 : .07)); });
+  if (has.has('plaid')) allShirt((x, y) => { if (y > yBot) return; const a = (y - yC) % 6 < 2, b = (Math.abs(x - Ci) + 1) % 6 < 2; if (a || b){ const k = a && b ? .75 : .45, c = px(x, y); set(x, y, [0, 1, 2].map(i => Math.round(c[i] * (1 - k) + ST[i] * k))); } });
+  if (has.has('scales')) for (let y = yC + 3; y <= yBot - 5; y += 3) for (let x = torsoL(y) + 2; x <= torsoR(y) - 2; x += 4){ const xx = x + (((y - yC) / 3) % 2 ? 2 : 0); onShirt(xx, y, shade(ST, -.05)); onShirt(xx - 1, y + 1, shade(SH, -.2)); onShirt(xx + 1, y + 1, shade(SH, -.2)); }
+  if (has.has('glitch')) [[.25, EM], [.45, ST], [.7, EM]].forEach(([k, c]) => { const y = Math.round(yC + (yBot - yC) * k); for (let yy = y; yy <= y + 1; yy++) for (let x = torsoL(yy) - 6; x <= torsoR(yy) + 6; x++) if (shirt(x, yy) && (x + yy * 3) % 5 > 1) set(x + (yy === y ? 1 : -1), yy, c); });
+  if (has.has('holo')) allShirt((x, y) => { if (y > yBot) return; const k = (x - y + 400) % 16; if (k === 0) set(x, y, shade(EM, .08)); else if (k === 1) set(x, y, shade(px(x, y), .12)); });   // a thin sheen line now and then
+  if (has.has('gloss')) for (let y = yTop + 3; y <= yBot - 3; y++){ const x = torsoL(y) + 4 + Math.floor((y - yTop) / 9); onShirt(x, y, lite); onShirt(x + 1, y, shade(SH, .1)); }
+  if (has.has('sides')) for (let y = yArm; y <= yBot; y++){ for (const x of [torsoL(y) + 1, torsoL(y) + 2, torsoR(y) - 2, torsoR(y) - 1]) onShirt(x, y, ST); }
+  if (has.has('chestband')) for (let y = yC + 4; y <= yC + 9; y++) for (let x = torsoL(y); x <= torsoR(y); x++) if (!isSlv(x, y)) onShirt(x, y, y === yC + 6 || y === yC + 7 ? EM : ST);
+  // ---- armor
+  if (has.has('pauldrons')) for (const side of [-1, 1]){ const pts = SLV.filter(([x, y]) => (side < 0 ? x < Ci : x > Ci) && y <= yC + 8); if (!pts.length) continue;
+    const xs = pts.map(p => p[0]), x0 = Math.min(...xs) - (side < 0 ? 2 : 0), x1 = Math.max(...xs) + (side > 0 ? 2 : 0), y0 = Math.min(...pts.map(p => p[1])) - 1, y1 = yC + 8;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++){ const rx = (x - (x0 + x1) / 2) / ((x1 - x0) / 2 + .5), ry = (y - y1) / (y1 - y0 + .5); if (rx * rx + ry * ry > 1.05) continue;
+      if (!(mp(x, y) === 4 || mp(x, y) === 0 || mp(x, y) === 1)) continue; const edge = rx * rx + ry * ry > .72;
+      set(x, y, edge ? shade(SH, -.32) : y < y0 + (y1 - y0) * .35 ? shade(SH, .22) : (y - y0) % 4 === 0 ? shade(SH, -.12) : SH); }
+    set(Math.round((x0 + x1) / 2), y0 + 3, EM); set(Math.round((x0 + x1) / 2) + 1, y0 + 3, EM); }
+  if (has.has('plates')){ for (let y = yC + 3; y <= yBot - 4; y += 5) for (let x = torsoL(y); x <= torsoR(y); x++) if (shirt(x, y)){ set(x, y, shade(SH, -.28)); if (shirt(x, y + 1)) set(x, y + 1, shade(SH, .14)); }
+    for (let y = yC; y <= yBot - 2; y++) onShirt(Ci, y, shade(SH, .22)); [[0, -2], [-1, -1], [0, -1], [1, -1], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [-1, 1], [0, 1], [1, 1], [0, 2]].forEach(([dx, dy]) => set(Ci + dx, yC + 3 + dy, EM)); }
+  // ---- fronts and necklines
+  if (has.has('vneck')){ const deep = yC + 8, band = has.has('trim') ? ST : shade(SH, -.1);
+    for (let y = yTop; y <= deep; y++){ const w = Math.max(0, Math.round((deep - y) * .6)); for (let x = Ci - w; x <= Ci + w; x++) if (shirt(x, y)) set(x, y, neckSkin);
+      for (let k = 1; k <= 4; k++) for (const s of [-1, 1]){ const x = Ci + s * (w + k); if (shirt(x, y)) set(x, y, k === 4 ? dark : k === 1 ? shade(band, .08) : band); } }
+    // the wrap: the left panel crosses over the right, down to the belt
+    const x1 = Ci + Math.round(hw * .55), y1 = yBot - 4;
+    for (let y = deep; y <= y1; y++){ const x = Math.round(Ci - 1 + (x1 - Ci + 1) * (y - deep) / Math.max(1, y1 - deep));
+      for (let k = 0; k <= 3; k++) onShirt(x + k, y, k === 3 ? dark : k === 0 ? shade(band, .08) : band); } }
+  // the art's shirt is open in a V at the neck: where it is zipped, hooded or collared, close the V by carrying the
+  // shirt's own shading across it (and its outline goes too), so it reads as one piece of cloth
+  const gapAt = y => { let l = -1, r = -1; for (let x = Ci; x >= Ci - 16; x--) if (shirt(x, y)){ l = x; break; } for (let x = Ci + 1; x <= Ci + 16; x++) if (shirt(x, y)){ r = x; break; } return l >= 0 && r >= 0 && r - l > 1 ? [l, r] : null; };
+  const neckAt = y => { let l = Ci, r = Ci; if (mp(Ci, y) !== 1) return null; while (mp(l - 1, y) === 1) l--; while (mp(r + 1, y) === 1) r++; return [l, r]; };
+  const closed = (has.has('zip') || has.has('hood') || has.has('collar')) && !has.has('vneck');
+  if (closed){ const g0 = gapAt(yTop) || [Ci - 5, Ci + 5], half0 = (g0[1] - g0[0]) / 2 + 1;
+    for (let y = yTop; y <= yC + 3; y++){   // the V and the darker lines drawn along it, as a narrowing band
+      const w = Math.max(1, Math.round(half0 * (yC + 2 - y) / Math.max(1, yC + 2 - yTop))) + 2; let l = Ci - w - 1, r = Ci + w + 1;
+      while (!shirt(l, y) && l > Ci - w - 7) l--; while (!shirt(r, y) && r < Ci + w + 7) r++;
+      if (!shirt(l, y) || !shirt(r, y)){ const g = gapAt(y); if (!g) continue; [l, r] = g; } const lc = px(l, y), rc = px(r, y);
+      for (let x = l + 1; x < r; x++) if (shirt(x, y) || mp(x, y) === 1 || mp(x, y) === 0){ const t = (x - l) / (r - l); set(x, y, [0, 1, 2].map(i => Math.round(lc[i] * (1 - t) + rc[i] * t))); } } }
+  // a stand-up collar that wraps the base of the neck, open a pixel at the zip
+  if (has.has('collar')) for (let y = yTop - 2; y <= yTop; y++){ const n = neckAt(y) || neckAt(yTop - 1); if (!n) continue; const [l, r] = n;
+    for (let x = l - 1; x <= r + 1; x++){ if (Math.abs(x - Ci) < 1 && y < yTop) continue; if (!(mp(x, y) === 1 || shirt(x, y) || mp(x, y) === 0)) continue; if (mp(x, y) === 0 && !op(x, y) && (x < l || x > r)) continue;
+      set(x, y, y === yTop - 2 ? shade(SH, -.28) : y === yTop - 1 ? shade(SH, .08) : shade(SH, -.2)); }
+    if (y === yTop - 1){ set(l - 1, y, shade(SH, -.3)); set(r + 1, y, shade(SH, -.3)); } }
+  if (has.has('hood')){ const fur = has.has('fur'), F = (c, x, y) => fur ? ((x * 7 + y * 3) % 5 === 0 ? shade(EM, -.16) : EM) : c;
+    // the back of the hood, showing behind the neck above the shoulders
+    for (let y = yTop - 4; y < yTop; y++){ const n = neckAt(y) || neckAt(yTop - 1); if (!n) continue; const [l, r] = n, k = yTop - y, reach = Math.max(2, 7 - k);
+      for (const s of [-1, 1]) for (let i = 1; i <= reach; i++){ const x = s < 0 ? l - i : r + i; if (op(x, y) && mp(x, y) !== 1 && mp(x, y) !== 4) continue;
+        set(x, y, F(i === reach || k === 4 ? shade(SH, -.32) : i === 1 ? shade(SH, -.22) : shade(SH, -.1), x, y)); } }
+    // the cowl lying on the shoulders: a U around the neck, dipping lowest at the middle
+    for (let x = Ci - 12; x <= Ci + 12; x++){ const dx = Math.abs(x - Ci); if (dx < 3) continue; const edge = yTop + 5 - Math.round((dx - 3) * .5);
+      for (let y = yTop - 1; y <= edge; y++){ if (!(shirt(x, y) || mp(x, y) === 1)) continue; if (mp(x, y) === 1 && y >= yTop) continue;
+        set(x, y, F(y === edge ? shade(SH, -.3) : y === edge - 1 ? shade(SH, .1) : shade(SH, -.07), x, y)); } }
+    for (let y = yTop - 1; y <= yTop + 5; y++) for (const x of [Ci - 2, Ci + 2]) if (shirt(x, y) || mp(x, y) === 1) set(x, y, F(shade(SH, -.3), x, y)); }   // the opening's edge
+  if (has.has('strings')) for (const x of [Ci - 2, Ci + 2]) for (let y = yTop + 5; y <= yC + 8; y++) if (shirt(x, y)) set(x, y, y >= yC + 7 ? shade(ST, -.18) : ST);
+  if (has.has('zip')){ const z0 = has.has('collar') ? yTop - 1 : yTop + (has.has('hood') ? 5 : 1);
+    for (let y = z0; y <= yBot + (has.has('coat') ? lenBelow - 1 : 0); y++) if (shirt(Ci, y) || op(Ci, y)){
+      set(Ci, y, has.has('letter') ? shade(SH, -.32) : shade(ST, -.04)); set(Ci + 1, y, shade(SH, -.22)); if (shirt(Ci - 1, y) || y <= yC + 1) set(Ci - 1, y, shade(SH, .06)); }
+    for (let k = 0; k < 3; k++){ set(Ci - 1, z0 + 2 + k, shade(ST, .14)); if (k > 0) set(Ci - 2, z0 + 2 + k, shade(ST, -.1)); } }   // the pull tab
+  if (has.has('snaps')) for (let y = yC + 1; y <= yBot + (lenBelow ? lenBelow - 4 : 0); y += 5){ set(Ci - 3, y, ST); set(Ci - 3, y + 1, shade(ST, -.25)); }
+  if (has.has('buttons')) for (let y = yC; y <= yBot - 1; y += 4) if (shirt(Ci, y)){ set(Ci, y, EM); set(Ci + 1, y, shade(EM, -.2)); }
+  if (has.has('pocket')){ const y0 = yBot - 13, y1 = yBot - 4; for (let y = y0; y <= y1; y++){ const w = 9 - Math.max(0, y0 + 2 - y); for (let x = Ci - w; x <= Ci + w; x++){ if (!shirt(x, y)) continue;
+      const edge = y === y0 || Math.abs(x - Ci) === w || (y === y0 + 1 && Math.abs(x - Ci) > w - 3); set(x, y, edge ? shade(SH, -.24) : shade(px(x, y), -.06)); } } for (let y = y0 + 2; y <= y1 - 1; y++){ onShirt(Ci - 8, y, shade(SH, -.3)); onShirt(Ci + 8, y, shade(SH, -.3)); } }
+  if (has.has('chestpockets')) for (const cx of [Ci - 8, Ci + 8]) for (let y = yC + 3; y <= yC + 9; y++) for (let x = cx - 3; x <= cx + 3; x++) onShirt(x, y, y <= yC + 4 ? ST : Math.abs(x - cx) === 3 || y === yC + 9 ? shade(SH, -.24) : shade(SH, -.06));
+  if (has.has('straps')) for (let y = yTop + 2; y <= yBot; y++){ const x = Ci - hw + 4 + Math.round((y - yTop) * (2 * hw - 8) / Math.max(1, yBot - yTop)); for (const dx of [0, 1, 2]) onShirt(x + dx, y, dx === 2 ? shade(ST, -.25) : ST); }
+  if (has.has('sash')) for (let y = yTop + 1; y <= yBot; y++){ const x = Ci + hw - 4 - Math.round((y - yTop) * (2 * hw - 8) / Math.max(1, yBot - yTop)); for (const dx of [0, 1, 2, 3]) onShirt(x + dx, y, dx === 3 ? shade(ST, -.25) : dx === 0 ? shade(ST, .1) : ST); }
+  if (has.has('cuffs')){ for (const [x, y] of SLV) if (!isSlv(x, y + 2)) set(x, y, shade(SH, -.16));
+    if (!lenBelow && !has.has('belt')) for (let y = yBot - 2; y <= yBot; y++) for (let x = torsoL(y); x <= torsoR(y); x++) onShirt(x, y, shade(SH, -.16)); }
+  if (has.has('sstripe')) for (const [x, y] of SLV){ const outer = x < Ci ? !isSlv(x - 1, y) : !isSlv(x + 1, y); if (outer){ const s = x < Ci ? 1 : -1; for (const k of [1, 2, 4]) if (isSlv(x + s * k, y)) set(x + s * k, y, k === 4 ? shade(ST, -.1) : ST); } }
+  if (has.has('pstripe')) for (let y = yBot + 1; y < H; y++) for (const [a, b] of legRuns(y)) if (b - a >= 5){ const o = a < Ci ? a + 1 : b - 1, s = a < Ci ? 1 : -1; set(o, y, ST); set(o + s, y, ST); }
+  if (has.has('glow')) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){ const c = px(x, y); if (c[0] === ST[0] && c[1] === ST[1] && c[2] === ST[2] && op(x, y)) set(x, y, shade(ST, .12)); }
+  if (has.has('letter')){ for (const [x, y] of SLV) recol(x, y, ST, SH); glyph(['0110', '1001', '1111', '1001', '1001'], Ci - Math.round(hw * .7), yC + 2, EM, shade(SH, -.3), 2); }
+  if (has.has('number')){ const n = String(g[1] ?? 1), sc = 2, w = n.length * 4 * sc - sc, x0 = Ci - Math.floor(w / 2); [...n].forEach((ch, i) => glyph(DIG[+ch], x0 + i * 4 * sc, yC + 2, EM, String(ST) === String(EM) ? shade(SH, -.32) : ST, sc)); }
+  if (has.has('bones')){ for (let y = yC - 1; y <= yBot - 1; y++){ onShirt(Ci, y, ST); onShirt(Ci + 1, y, shade(ST, -.15)); }
+    for (let r = 0; r < 5; r++){ const y = yC + 2 + r * 3, w = Math.round(hw * (.85 - r * .09)); for (let x = Ci - w; x <= Ci + w; x++){ if (Math.abs(x - Ci) < 2) continue; const yy = y + (Math.abs(x - Ci) > w - 3 ? 1 : 0); onShirt(x, yy, ST); } }
+    for (let y = yBot + 3; y < H; y++){ if ((y - yBot) % 24 === 12) continue; for (const [a, b] of legRuns(y)) if (b - a >= 4){ const cx = Math.round((a + b) / 2); set(cx, y, ST); set(cx + 1, y, shade(ST, -.15)); } } }
+  if (has.has('belt')){ for (let y = yBot - 3; y <= yBot; y++) for (let x = torsoL(y) - 1; x <= torsoR(y) + 1; x++) if (shirt(x, y)) set(x, y, y === yBot - 3 ? shade(ST, .14) : y === yBot ? shade(ST, -.2) : ST);
+    if (!has.has('pauldrons')){ for (let y = yBot - 4; y <= yBot + 1; y++) for (let x = Ci - 2; x <= Ci + 2; x++) set(x, y, Math.abs(x - Ci) === 2 ? shade(ST, -.22) : shade(ST, .04));
+      for (let k = 1; k <= 8; k++){ set(Ci - 2 - Math.floor(k / 3), yBot + 1 + k, ST); set(Ci - 1 - Math.floor(k / 3), yBot + 1 + k, ST); set(Ci + 1 + Math.floor(k / 4), yBot + 1 + k, shade(ST, -.14)); set(Ci + 2 + Math.floor(k / 4), yBot + 1 + k, shade(ST, -.14)); } }
+    else { set(Ci, yBot - 2, EM); set(Ci, yBot - 1, EM); set(Ci - 1, yBot - 1, EM); set(Ci + 1, yBot - 1, EM); } }
+  if (has.has('trim')){ if (!has.has('tank')) for (const [x, y] of SLV) if (!isSlv(x, y + 1) || !isSlv(x, y + 2)) set(x, y, ST);
+    if (!lenBelow && !has.has('belt')) for (let y = yBot - 1; y <= yBot; y++) for (let x = torsoL(y); x <= torsoR(y); x++) onShirt(x, y, ST);
+    if (!has.has('vneck') && !has.has('tank')) for (let y = yTop; y < yC + 2; y++) for (let x = Ci - 9; x <= Ci + 9; x++) if (shirt(x, y) && (mp(x - 1, y) === 1 || mp(x + 1, y) === 1 || mp(x, y - 1) === 1)) set(x, y, ST); }
+  if (has.has('emb')) [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [1, 2], [3, 0], [-1, 1]].forEach(([dx, dy]) => onShirt(Ci + Math.round(hw * .45) + dx, yC + 2 + dy, EM));
+  if (has.has('bolt')) [[3, 0], [2, 1], [1, 2], [0, 3], [1, 3], [2, 3], [3, 3], [2, 4], [1, 5], [0, 6]].forEach(([dx, dy]) => onShirt(Ci - Math.round(hw * .6) + dx, yC + 2 + dy, EM));
+  if (has.has('dragon')) for (let k = 0; k < 18; k++){ const x = Ci - Math.round(hw * .55) + Math.round(Math.sin(k * .7) * 3), y = yC + k; onShirt(x, y, EM); onShirt(x + 1, y, shade(EM, -.2)); }
+  if (has.has('petals') || has.has('hearts')) for (const [x, y] of SLV) if ((x * 5 + y * 3) % 9 === 0){ set(x, y, EM); if (isSlv(x + 1, y)) set(x + 1, y, EM); if (has.has('hearts') && isSlv(x, y + 1)) set(x, y + 1, shade(EM, -.15)); }
+  if (has.has('glowtrim')) for (let y = yTop; y <= yBot; y++){ onShirt(torsoL(y), y, ST); onShirt(torsoR(y), y, ST); }
+  return img;
+}
 function recolorData(src, map, mean, look){
   const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height), d = out.data, cache = new Map();
   const tgt = PART_IDS.map(p => look[p] ? rgbHsl(...hexRgb(look[p])) : null);
@@ -7691,7 +7930,8 @@ function spriteFrames(g, k, look, style, acc = {}){
   const key = g + '|' + k + '|' + lookKey(look, style, acc);
   if (!RENDERS.has(key)){
     if (RENDERS.size > 12) RENDERS.delete(RENDERS.keys().next().value);
-    RENDERS.set(key, Promise.all([spriteBase(g, k), equippedArt(g, acc)]).then(([b, accs]) => Promise.all(b.dec.frames.map((f, i) => styledFrame(b, i, style, look, accs)))
+    RENDERS.set(key, Promise.all([spriteBase(g, k), equippedArt(g, acc), look.cape && RANKS.findIndex(r => r.k === k) < 6 ? capeArt(g) : null])
+      .then(([b, accs, cape]) => Promise.all(b.dec.frames.map((f, i) => styledFrame(b, i, style, look, accs, cape)))
       .then(bmps => bmps.map((bmp, i) => ({bmp, delay:b.dec.frames[i].delay})))));
   }
   return RENDERS.get(key);

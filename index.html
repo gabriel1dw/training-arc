@@ -799,7 +799,7 @@ A.dr_dragon_egg = P => { P.shadow(48, 90, 22);
   const styles = []; for (const b of bases('outfit')) if (b.outfit && !styles.some(s => lastWord(s.name) === lastWord(b.name))) styles.push(b);
   styles.slice(0, 10).forEach((b, i) => [0, 1].forEach(j => { const p = OUTFIT_PAL[(i * 2 + j * 5) % OUTFIT_PAL.length], cheap = j === 0;
     gear(b, `vo_${slug(p[0])}_${slug(lastWord(b.name))}`, `${p[0]} ${lastWord(b.name)}`, cheap ? 'C' : 'R', cheap ? 280 + (i % 3) * 20 : 560 + (i % 3) * 40,
-      {outfit:{shirt:p[1], pants:p[2], stripe:p[3], emb:p[4]}},
+      {outfit:{shirt:p[1], pants:p[2], stripe:p[3], emb:p[4]}, garb:b.id},   // garb: drawn on the hero like its base outfit
       [[b.outfit.shirt, p[1]], [b.outfit.pants, p[2]], [b.outfit.stripe, p[3]], [b.outfit.emb, p[4]]]); }));
   // 12 hair dyes
   const hairBase = bases('hair').find(b => b.color);

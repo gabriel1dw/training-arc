@@ -2585,6 +2585,51 @@ const VOICES = {
     "You call that your last rep? I've seen you do two more.",
     "See you at the top. I'll be waiting, a little annoyed."
   ],
+  // The calm genius: tracks your numbers, never raises his voice, quietly hates losing
+  'Rival Itsuki': [
+    "I logged your last workout in my head. You left two reps in the tank.",
+    "I don't rush. I just never miss a session.",
+    "Talent fades. Consistency compounds. That's why I'm ahead.",
+    "Your form slipped on the last set. Fix it, then come find me.",
+    "I ran the numbers. You can beat me. You just haven't yet.",
+    "Rest is part of the plan. Skipping isn't.",
+    "Loud people peak early. I'm still climbing.",
+    "You're getting stronger. I noticed. Don't make it a habit.",
+    "Every set you skip is a set I don't have to beat.",
+    "I'm not your enemy. I'm your measuring stick.",
+    "Calm mind, heavy bar. Try it sometime.",
+    "When you finally pass me, I'll already be planning the comeback."
+  ],
+  // The firecracker: loud, hype, trash-talks with a grin, wants you at your best so the win counts
+  'Rival Akane': [
+    "Already hit my workout today. Bet you can't match it.",
+    "Resting again? I'm three sets ahead and counting!",
+    "New PR? Cute. Mine's coming tomorrow.",
+    "Skip today and I'm telling everyone I won.",
+    "I don't do second place. So hurry up and lose.",
+    "Every rep you do makes me train harder. Honestly annoying.",
+    "Ponytail up, music loud, rival mode on.",
+    "You think that was heavy? Add a plate and call me.",
+    "We're rivals. That means I need you at your best.",
+    "Quit now and I'll never let you live it down.",
+    "Weights, sprints, whatever. I'll beat you at all of it.",
+    "See you at the top. I'll be the one already there."
+  ],
+  // The ice queen: cool, precise, quietly intimidating, respects you too much to go easy
+  'Rival Yuki': [
+    "I trained at dawn. Quietly. You should try it.",
+    "You don't need to be loud to be strong.",
+    "Your last set was sloppy. I noticed. So did the bar.",
+    "I don't chase PRs. They come to me.",
+    "Breathe. Brace. Lift. Then do it better than me.",
+    "Skipping today? I won't say anything. I'll just get ahead.",
+    "Cold mornings and heavy bars. My favorite combination.",
+    "I respect you. That's exactly why I won't go easy.",
+    "Every rival needs a reason to keep training. You're mine.",
+    "Patience is a muscle too. Mine is stronger.",
+    "Finish the set. Excuses don't count as reps.",
+    "When we meet at the top, I'll be waiting. Calmly."
+  ],
   'Captain Mira': [
     "Nobody levels up alone. We rise together.",
     "Count your reps out loud. Let the whole room hear you work.",
@@ -2730,7 +2775,13 @@ const VOICES = {
 const ALL_QUOTES = [...QUOTES.map((text, n) => ({text, by:MASTERS[n % MASTERS.length]})),
   ...Object.entries(VOICES).flatMap(([by, lines]) => lines.map(text => ({text, by})))];
 let quoteOrder = null, quotePos = 0, quoteTimer = null;
-function quoteAt(i){ if (!quoteOrder){ quoteOrder = [...ALL_QUOTES.keys()]; for (let j = quoteOrder.length - 1; j > 0; j--){ const k = Math.floor(Math.random() * (j + 1)); [quoteOrder[j], quoteOrder[k]] = [quoteOrder[k], quoteOrder[j]]; } }
+// Your rivals match your character: guys get Daichi and Itsuki, girls get Akane and Yuki. The masters talk to everyone.
+const RIVALS = {male:['Rival Daichi', 'Rival Itsuki'], female:['Rival Akane', 'Rival Yuki']};
+const myRivals = () => RIVALS[S && S.hero && S.hero.gender === 'female' ? 'female' : 'male'];
+const quoteFits = q => !/^Rival /.test(q.by) || myRivals().includes(q.by);
+function quoteAt(i){ const q = quoteAtRaw(i); if (quoteFits(q)) return q;
+  for (let k = 1; k < ALL_QUOTES.length; k++){ const r = quoteAtRaw(i + k); if (quoteFits(r)) return r; } return q; }
+function quoteAtRaw(i){ if (!quoteOrder){ quoteOrder = [...ALL_QUOTES.keys()]; for (let j = quoteOrder.length - 1; j > 0; j--){ const k = Math.floor(Math.random() * (j + 1)); [quoteOrder[j], quoteOrder[k]] = [quoteOrder[k], quoteOrder[j]]; } }
   return ALL_QUOTES[quoteOrder[i % quoteOrder.length]]; }
 // D: closing words on the workout complete page. Big moments get their own lines; any other day, the rotation.
 const MOMENT_WORDS = {
@@ -2739,6 +2790,9 @@ const MOMENT_WORDS = {
     ['Master Kaito', 'You earned this rank one honest rep at a time. Wear it well.'],
     ['Your Future Self', "This is the rank-up I still tell people about."],
     ['Rival Daichi', "A new rank? Fine. Guess I'm training twice tomorrow."],
+    ['Rival Itsuki', "A new rank. Statistically I should be worried. I'm not. Yet."],
+    ['Rival Akane', "A new rank?! Okay, now it's personal."],
+    ['Rival Yuki', "A new rank. Hm. I suppose I'll train in the dark tonight too."],
     ['Champion Ryo', 'Every rank I climbed felt impossible until it was mine. Same for you.'],
     ['Granny Sato, gym owner', 'Look at you, all grown up and strong. Now go eat something.'],
     ['Captain Mira', "The whole team felt that one. New rank, same hunger."],
@@ -2746,6 +2800,9 @@ const MOMENT_WORDS = {
   ],
   boss: [
     ['Rival Daichi', "You beat the boss. Not bad. I'm going after a bigger one."],
+    ['Rival Itsuki', "You beat the boss. I'll study how. Then do it faster."],
+    ['Rival Akane', "You beat the boss? Fine. I'm hunting a bigger one tonight."],
+    ['Rival Yuki', "The boss fell. Clean work. Mine fell faster."],
     ['Champion Ryo', "Bosses fall to people who prepared. You prepared."],
     ['Captain Mira', "That was a captain's performance. The whole arc in one fight."],
     ['Sage of the Mountain', 'A peak reached. Rest here, then look for a taller one.'],
@@ -2764,15 +2821,15 @@ const MOMENT_WORDS = {
   ]
 };let closeQ = 0;
 function closingWords(s){
-  const pool = s.rankedUp ? MOMENT_WORDS.rank : s.bossWon ? MOMENT_WORDS.boss : s.arcDone ? MOMENT_WORDS.arc : null;
-  if (pool){ const [by, text] = pool[Math.floor(Math.random() * pool.length)]; return {text, by}; }
+  const pool = (s.rankedUp ? MOMENT_WORDS.rank : s.bossWon ? MOMENT_WORDS.boss : s.arcDone ? MOMENT_WORDS.arc : []).filter(([by]) => quoteFits({by}));
+  if (pool.length){ const [by, text] = pool[Math.floor(Math.random() * pool.length)]; return {text, by}; }
   return quoteAt(quotePos + 3 + closeQ++ * 11);
 }
 
 // E: the scroll of the day at the bottom of Today. Picked from the date, so it stays the same all day.
 function scrollHTML(){
   if (!S.prefs.quotes) return '';
-  const q = ALL_QUOTES[seeded('scroll' + todayIso(), ALL_QUOTES.length)];
+  const fit = ALL_QUOTES.filter(quoteFits), q = fit[seeded('scroll' + todayIso(), fit.length)];
   return `<section class="day-scroll" aria-label="Scroll of the day"><p class="ds-h">Scroll of the day</p><p class="ds-q">“${q.text}”</p><p class="ds-by">${q.by}</p></section>`;
 }
 
@@ -2809,36 +2866,50 @@ function bannerHTML(){
 const FLAME = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-6 1-9.5z"/></svg>';
 /* ---------- Story moments ---------- */
 // Short scenes that make each arc a chapter: when it starts, right before its boss, and after you win.
-// Each plays once per run of an arc. Your path decides which master speaks; Rival Daichi always has an opinion.
+// Each plays once per run of an arc. Your path decides which master speaks; one of your rivals always has an opinion.
 const MASTER_FOR = {power:'Master Kaito', strong:'Master Kaito', cali:'Sensei Rin', pilates:'Sensei Rin', sculpt:'Sensei Rin', build:'Grandmaster Hoshi', glute:'Grandmaster Hoshi',
   sprint:'Coach Tetsu', run:'Coach Tetsu', athlete:'Coach Tetsu', sport:'Coach Tetsu', fighter:'Champion Ryo'};
 const SPEAKER_LOOK = {'Master Kaito':['MK', '#f3c94a'], 'Sensei Rin':['SR', '#7fd1ff'], 'Grandmaster Hoshi':['GH', '#c79bff'], 'Coach Tetsu':['CT', '#ff9a5a'], 'Champion Ryo':['CR', '#ff5a6e'],
-  'Rival Daichi':['RD', '#e14b4b'], 'Spirit of the Dojo':['✦', '#9fe3c8'], 'Your Future Self':['YOU', '#ffffff'], 'Old Master Goro':['OG', '#d8b48a']};
+  'Rival Daichi':['RD', '#e14b4b'], 'Rival Itsuki':['RI', '#4c9aff'], 'Rival Akane':['RA', '#ff4f8b'], 'Rival Yuki':['RY', '#9fe7ff'],
+  'Spirit of the Dojo':['✦', '#9fe3c8'], 'Your Future Self':['YOU', '#ffffff'], 'Old Master Goro':['OG', '#d8b48a']};
+// Each rival's own lines for the arc scenes: start (two takes), right before the boss, and after the win (two takes)
+const RIVAL_LINES = {
+  'Rival Daichi':{start:[arc => `I'll be watching your log. Don't embarrass yourself.`, arc => `The ${arc}? I cleared that months ago. Try to keep up.`],
+    boss:"Don't you dare lose. I want to be the one who beats you.", win:["Don't get comfortable. I'm already training for the next one.", '...Fine. That was impressive. Next arc, I win.']},
+  'Rival Itsuki':{start:[arc => `Interesting choice. I'll be tracking your numbers the whole way.`, arc => `The ${arc}. I've already mapped every week of it.`],
+    boss:"Steady breathing. Clean reps. Don't give me a reason to be disappointed.", win:['Good. Now the next arc gets interesting.', '...Efficient. I underestimated you. It won\'t happen twice.']},
+  'Rival Akane':{start:[arc => `Oh, you're starting an arc? I'll be watching every single log.`, arc => `The ${arc}? I crushed that last season. Try to keep up!`],
+    boss:"Don't you dare lose. Beating you is MY job.", win:["Don't get comfy. I'm already training for the next one!", '...Okay, that was kind of amazing. Next arc, I win.']},
+  'Rival Yuki':{start:[arc => `I'll be reading your log. Make it worth reading.`, arc => `The ${arc}. A good choice. I'll be one step ahead the whole way.`],
+    boss:'Stay calm. Panic is heavier than any weight. Now win.', win:['Rest tonight. Tomorrow the race starts again.', '...Impressive. Truly. Next arc, I won\'t hold back.']}
+};
 function storyLines(kind, p){
   const m = MASTER_FOR[p.path] || 'Master Kaito', name = S.hero.name || 'Hero', arc = p.name, boss = bossName(p), weeks = p.weeks.length, v = seeded(kind + p.id + (S.arcs || 0), 2);
+  // one of your two rivals per run of an arc, the same one for its start, boss and win
+  const rv = myRivals()[seeded('rival' + p.id + (S.arcs || 0), 2)], R = RIVAL_LINES[rv], them = S.hero.gender === 'female' ? 'her' : 'him';
   if (kind === 'start') return v ? [
     [m, `${name}. You've chosen the ${arc}.`],
     [m, `${weeks} weeks. Show up for every session and the path will do the rest.`],
-    ['Rival Daichi', `The ${arc}? I cleared that months ago. Try to keep up.`],
-    [m, 'Ignore him. Your arc, your pace. Begin.']] : [
+    [rv, R.start[1](arc)],
+    [m, `Ignore ${them}. Your arc, your pace. Begin.`]] : [
     ['Spirit of the Dojo', 'A new chapter opens. The dojo remembers every one.'],
     [m, `The ${arc} starts today, ${name}. Light the first fire.`],
-    ['Rival Daichi', `I'll be watching your log. Don't embarrass yourself.`],
+    [rv, R.start[0](arc)],
     [m, `${weeks} weeks from now, ${boss} will be waiting. Get ready.`]];
   if (kind === 'boss') return v ? [
     ['Spirit of the Dojo', `The air is heavy today... ${boss} has come.`],
     [m, 'Everything you built these weeks was for this. Clear every set.'],
-    ['Rival Daichi', "Don't you dare lose. I want to be the one who beats you."]] : [
+    [rv, R.boss]] : [
     [m, `${name}. ${boss} stands between you and the end of this arc.`],
     ['Your Future Self', "I remember this fight. Breathe, brace, and don't stop."],
     [m, 'Every set is a strike. Go.']];
   return v ? [
     [m, `${boss} has fallen. You're not the same person who started the ${arc}.`],
-    ['Rival Daichi', '...Fine. That was impressive. Next arc, I win.'],
+    [rv, R.win[1]],
     ['Your Future Self', 'Remember this one. I still do.']] : [
     ['Spirit of the Dojo', 'The walls shook. A new name is carved into the dojo.'],
     [m, `The ${arc} is yours, ${name}. Rest well. A taller mountain waits.`],
-    ['Rival Daichi', "Don't get comfortable. I'm already training for the next one."]];
+    [rv, R.win[0]]];
 }
 let story = null;   // {lines, i, done}
 function playStory(lines, done){

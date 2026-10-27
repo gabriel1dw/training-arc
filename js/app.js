@@ -2381,7 +2381,7 @@ function renderHeader(){
   const em = document.getElementById('emblem');
   em.textContent = r.k; em.style.setProperty('--rc', `var(--rank-${r.k.toLowerCase()})`); em.style.fontSize = emFont(r.k, 'xs');
   document.getElementById('heroName').textContent = S.hero.name || 'Hero';
-  { const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = rivalsBtn(); }   // Rivals, with a count of new challenges
+  { const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = rivalsBtn() + settingsBtn(); }   // Rivals, with a count of new challenges
   paintCoins();
   paintHeroes();
   document.getElementById('rankTitle').textContent = `${r.k}-Rank · ${heroTitle()}`;
@@ -4153,8 +4153,10 @@ const rivalsNew2 = () => (S.chals || []).filter(c => !c.claimed && !c.gone && (c
 const rivalsNew = () => friendsNew() + rivalsNew2();
 const rivalsBtn = () => { const n = rivalsNew(); return `<button type="button" class="icon-btn rv-btn" data-act="openRivals" aria-label="Friends and rivals${n ? `, ${n} new` : ''}">${RV_ICON}${n ? `<i class="rv-dot num">${n}</i>` : ''}</button>`; };
 // Today: a thin header with the date, and Friends & Rivals in the top-right corner (red count when something's new)
+function settingsBtn(){   // the gear, beside Friends & Rivals on every tab
+  return `<button type="button" class="icon-btn" data-act="openSettings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>`; }
 function todayHead(){ const d = new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
-  return `<div class="today-head"><span class="today-date">${d}</span><span id="todayRv">${rivalsBtn()}</span></div>`; }
+  return `<div class="today-head"><span class="today-date">${d}</span><span class="sec-btns"><span id="todayRv">${rivalsBtn()}</span>${settingsBtn()}</span></div>`; }
 function openRivals(){ if (tab !== 'rivals') rvBack = tab;
   if (auth() && Date.now() - (openRivals.at || 0) > 20000){ openRivals.at = Date.now(); netLoad(); }   // fresh feed and messages, at most every 20 s
   if (!rvTab) rvTab = rivalsNew2() && !friendsNew() ? 'rivals' : 'friends'; tab = 'rivals'; render(true); window.scrollTo(0, 0); }
@@ -4164,7 +4166,7 @@ function viewRivals(){
     ? `${cheersHTML()}<div class="rl-actions"><button type="button" class="btn btn-power btn-sm" data-act="rvCheer">Send a cheer</button></div>`
     : `${rivalChalsHTML()}<div class="rl-actions"><button type="button" class="btn btn-power btn-sm" data-act="rvNew">Challenge or taunt</button></div>`;
   return `<section class="row-between rv-head"><button type="button" class="icon-btn" data-act="tab" data-tab="${rvBack}" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
-    <h1 class="sec">Friends &amp; Rivals</h1><span class="rv-head-pad" aria-hidden="true"></span></section>
+    <h1 class="sec">Friends &amp; Rivals</h1>${settingsBtn()}</section>
     <div class="seg seg-wide rl-tabs" role="tablist" aria-label="Friends or rivals"><button type="button" role="tab" data-act="rvTab" data-v="friends" aria-pressed="${t === 'friends'}" aria-selected="${t === 'friends'}">🤝 Friends${dot(f)}</button><button type="button" role="tab" data-act="rvTab" data-v="rivals" aria-pressed="${t === 'rivals'}" aria-selected="${t === 'rivals'}">⚔️ Rivals${dot(r)}</button></div>
     ${top}
     ${rivalsHTML(t)}`;
@@ -5906,7 +5908,7 @@ function viewProgress(){
   const r = rankFor(S.xp), n = nextRank(S.xp), lv = levelInfo(S.xp);
   const hist = S.history.slice(0, 10).map(h => `<div class="li"><div class="l">${LIFTS[h.lift]}<small>${h.date} · ${h.src}</small></div><span class="r num">${fmt(h.val)} ${h.unit}</span></div>`).join('');
   const log = S.log.slice(0, 10).map(l => `<div class="li"><div class="l">${l.day}<small>${l.date} · ${l.prog}, week ${l.week} · ${l.sets} sets</small></div><span class="r num" style="color:var(--power)">+${l.xp} XP</span></div>`).join('');
-  return `<section class="row-between"><h1 class="sec">Progress</h1><span class="sec-btns">${rivalsBtn()}<button class="icon-btn" data-act="openSettings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></span></section>
+  return `<section class="row-between"><h1 class="sec">Progress</h1><span class="sec-btns">${rivalsBtn()}${settingsBtn()}</span></section>
   ${backupNudge()}
   ${tcardHTML(r, n, lv)}
   <div class="stats">

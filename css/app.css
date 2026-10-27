@@ -440,8 +440,10 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .sec-btns{display:flex;gap:8px;align-items:center}
 .rv-head{margin-bottom:6px}
 .rv-head-pad{width:44px;flex:none}
+section.rv-head{display:flex}   /* the page header, not the leaderboard's grid header */
+section.rv-head>.icon-btn{flex:none}
 .rv-sub{display:block;margin:6px 0 8px}
-#hudRv{margin-left:auto;display:inline-flex}
+#hudRv{margin-left:auto;display:inline-flex;gap:8px}
 #hudRv .icon-btn{width:36px;height:36px}
 .net-box{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:color-mix(in srgb,var(--power) 7%,transparent);border:1px solid color-mix(in srgb,var(--power) 25%,transparent)}
 .net-box .wk-link b{color:var(--power);letter-spacing:.08em}

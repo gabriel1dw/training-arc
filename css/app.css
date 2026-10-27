@@ -38,6 +38,8 @@ button,input,select{font:inherit;color:inherit}
 .brand-name{font-family:var(--display);font-size:26px;letter-spacing:.05em;line-height:1}
 .brand-sub,.eyebrow{font-family:var(--label);font-weight:700;text-transform:uppercase;letter-spacing:.14em;font-size:13px}
 .brand-sub{color:var(--muted);margin-top:3px}
+.hud .brand{flex-wrap:wrap;row-gap:8px}
+.hud .brand-sub{flex:1 1 96px;min-width:0}   /* on narrow phones the Friends and Settings buttons drop below instead of crushing the rank name */
 .eyebrow{color:var(--power)}
 .hud{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:center}
 .hero-btn{position:relative;padding:4px 6px 0;border:1px solid var(--line);border-radius:16px;cursor:pointer;overflow:hidden;
@@ -440,7 +442,7 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .sec-btns{display:flex;gap:8px;align-items:center}
 .rv-head{margin-bottom:6px}
 .rv-head-pad{width:44px;flex:none}
-section.rv-head{display:flex}   /* the page header, not the leaderboard's grid header */
+section.rv-head{display:flex;color:inherit;letter-spacing:normal}   /* the page header, not the leaderboard's grid header */
 section.rv-head>.icon-btn{flex:none}
 .rv-sub{display:block;margin:6px 0 8px}
 #hudRv{margin-left:auto;display:inline-flex;gap:8px}

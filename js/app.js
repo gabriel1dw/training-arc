@@ -1212,7 +1212,7 @@ function partMaps(dec, hasCape, hairZone){
     const h = hex6(f0[i], f0[i + 1], f0[i + 2]), [hu, s, l] = rgbHsl(f0[i], f0[i + 1], f0[i + 2]);
     if (!SKIN_HEX.has(h) && l >= .07 && !isGold(hu, s, l)) cape.add(h);
   }
-  return dec.frames.map(fr => {
+  const maps = dec.frames.map(fr => {
     const d = fr.data.data, map = new Uint8Array(W * H);
     let dy = 0;   // the idle bob shifts the body down a pixel on some frames
     find: for (let y = 0; y < 4; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] === 255){ dy = y; break find; }
@@ -1233,6 +1233,22 @@ function partMaps(dec, hasCape, hairZone){
     }
     return map;
   });
+  // The breathing frames drop the torso a little, so the shirt's hem (and a sleeve's edge) can slip out of
+  // the shirt band above. Catch those by color: a shade the shirt uses in the middle of the chest, and the
+  // pants never use, is shirt wherever it turns up on the body.
+  const core = (t, y0, y1) => { const s = new Set(), m = maps[0];
+    for (let y = y0; y < y1; y++) for (let x = 46; x <= 82; x++){ const p = y * W + x, i = p * 4; if (m[p] === t) s.add(hex6(f0[i], f0[i + 1], f0[i + 2])); }
+    return s; };
+  const shirt = core(4, 50, 92), pants = core(5, 118, 160);
+  for (const h of pants) shirt.delete(h);
+  dec.frames.forEach((fr, n) => {
+    const d = fr.data.data, map = maps[n];
+    for (let y = 40; y < 124; y++) for (let x = 0; x < W; x++){
+      const p = y * W + x, i = p * 4;
+      if ((map[p] === 0 || map[p] === 5) && d[i + 3] === 255 && shirt.has(hex6(d[i], d[i + 1], d[i + 2]))) map[p] = 4;
+    }
+  });
+  return maps;
 }
 
 // Hairstyles. The first style in each list is the sprite's own hair. The others were lifted pixel for

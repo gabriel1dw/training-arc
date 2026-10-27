@@ -445,6 +445,19 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 #hudRv .icon-btn{width:36px;height:36px}
 .net-box{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:color-mix(in srgb,var(--power) 7%,transparent);border:1px solid color-mix(in srgb,var(--power) 25%,transparent)}
 .net-box .wk-link b{color:var(--power);letter-spacing:.08em}
+.fd{margin:0;padding:0;list-style:none;display:flex;flex-direction:column}
+.fd-i{display:flex;gap:10px;padding:10px 2px;border-top:1px solid var(--line)}
+.fd-i:first-child{border-top:0}
+.fd-ico{display:grid;place-items:center;width:34px;height:34px;flex:none;border-radius:10px;background:var(--surface-2);font-size:17px}
+.fd-b{flex:1;min-width:0}
+.fd-b p{margin:0;font-size:14px;line-height:1.4}
+.fd-b small{color:var(--dim);font-size:12px}
+.fd-rs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.fd-r{display:inline-flex;align-items:center;gap:4px;min-height:36px;min-width:44px;justify-content:center;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--text);font:inherit;font-size:15px;cursor:pointer}
+span.fd-r{min-height:28px;cursor:default}
+.fd-r b{font-size:12px}
+.fd-r.on{border-color:var(--power);background:color-mix(in srgb,var(--power) 16%,var(--surface-2))}
+.fd-rel{display:block;font-size:11px;color:var(--dim);font-weight:600;letter-spacing:.04em}
 .rq{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
 .rq-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--power) 45%,transparent);border-radius:12px;background:var(--surface-2)}
 .rq-btns{display:flex;align-items:center;gap:6px;flex:none}

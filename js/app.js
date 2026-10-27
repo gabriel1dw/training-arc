@@ -3979,7 +3979,7 @@ function rvCheer(){ rvDlg(`<b class="rl-h">Cheer on a friend</b><p class="fine">
     <div class="rl-pick rl-cheers">${CHEERS.map((c, i) => `<button type="button" class="opt" data-act="rvCheerMake" data-v="${i}">${esc(c)}</button>`).join('')}</div>
     <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button></div>`); }
 function rvCheerMake(i){ const o = {t:'h', id:socialId(), n:S.hero.name || 'Hero', u:S.unit, cid:rlCid(), ch:i};
-  rvShareBox('Cheer ready', `“${CHEERS[i]}” Send it to a friend.`, `${o.n} in Training Arc: “${CHEERS[i]}”`, toCode(o)); }
+  msgSendTo('cheer', {ch:i}, `“${CHEERS[i]}”`, () => rvShareBox('Cheer ready', `“${CHEERS[i]}” Send it to a friend.`, `${o.n} in Training Arc: “${CHEERS[i]}”`, toCode(o))); }
 function cheersHTML(){ return (S.cheerIn || []).map(x => `<section class="panel rl-taunt rl-cheer"><div class="row-between"><span class="eyebrow">${esc(x.n)} cheered you on</span><button type="button" class="icon-btn rl-x" data-act="rvCheerX" data-id="${x.cid}" aria-label="Dismiss">×</button></div>
     <b class="rl-quote">“${esc(CHEERS[x.ch] || '')}”</b><div><button type="button" class="btn btn-power btn-sm" data-act="rvCheer">Cheer back</button></div></section>`).join(''); }
 // Challenges besides lifts: what counts, the honest range a code may ask for, how many days they get, the choices offered
@@ -4064,7 +4064,9 @@ const rivalsBtn = () => { const n = rivalsNew(); return `<button type="button" c
 // Today: a thin header with the date, and Friends & Rivals in the top-right corner (red count when something's new)
 function todayHead(){ const d = new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
   return `<div class="today-head"><span class="today-date">${d}</span><span id="todayRv">${rivalsBtn()}</span></div>`; }
-function openRivals(){ if (tab !== 'rivals') rvBack = tab; if (!rvTab) rvTab = rivalsNew2() && !friendsNew() ? 'rivals' : 'friends'; tab = 'rivals'; render(true); window.scrollTo(0, 0); }
+function openRivals(){ if (tab !== 'rivals') rvBack = tab;
+  if (auth() && Date.now() - (openRivals.at || 0) > 20000){ openRivals.at = Date.now(); netLoad(); }   // fresh feed and messages, at most every 20 s
+  if (!rvTab) rvTab = rivalsNew2() && !friendsNew() ? 'rivals' : 'friends'; tab = 'rivals'; render(true); window.scrollTo(0, 0); }
 function viewRivals(){
   const t = rvTab || 'friends', f = friendsNew(), r = rivalsNew2(), dot = n => n ? ` <i class="rv-dot num">${n}</i>` : '';
   const top = t === 'friends'
@@ -4105,9 +4107,10 @@ function rvMake(k, v){ const base = {t:'c', id:socialId(), n:S.hero.name || 'Her
   const o = k === 'lift' ? {...base, k, lift:v, val:Math.round(bestMax(v))} : {...base, k, need:+v};
   const what = k === 'lift' ? `beat my ${fmt(o.val)} ${S.unit} ${LIFTS[v]}` : `${RL_KINDS[k].label(+v).replace(/^./, ch => ch.toLowerCase())} in the next ${RL_KINDS[k].days} days`;
   const tt = rlTn != null ? ` “${TAUNTS[rlTn]}”` : '';
-  rvShareBox('Challenge ready', `Send this to a friend. They have to ${what}.${tt}`, `${o.n} challenged you in Training Arc: ${what}.${tt}`, toCode(o)); }
+  const data = {k:o.k, u:o.u, ...(k === 'lift' ? {lift:o.lift, val:o.val} : {need:o.need}), ...(o.tn != null ? {tn:o.tn} : {})};
+  msgSendTo('challenge', data, `They have to ${what}.${tt}`, () => rvShareBox('Challenge ready', `Send this to a friend. They have to ${what}.${tt}`, `${o.n} challenged you in Training Arc: ${what}.${tt}`, toCode(o))); }
 function rvTauntOnly(){ if (rlTn == null) return; const o = {t:'t', id:socialId(), n:S.hero.name || 'Hero', u:S.unit, cid:rlCid(), tn:rlTn};
-  rvShareBox('Taunt ready', `“${TAUNTS[rlTn]}” Send it and see if they answer.`, `${o.n} in Training Arc: “${TAUNTS[rlTn]}”`, toCode(o)); }
+  msgSendTo('taunt', {tn:rlTn}, `“${TAUNTS[rlTn]}”`, () => rvShareBox('Taunt ready', `“${TAUNTS[rlTn]}” Send it and see if they answer.`, `${o.n} in Training Arc: “${TAUNTS[rlTn]}”`, toCode(o))); }
 function rvOpen(id){ const r = (S.rivals || {})[id] || (netFriends || []).find(f => f.id === id); if (!r) return; const me = myCard(), live = !(S.rivals || {})[id], rel = relOf(id, live);
   const row = (label, a, b, unit = '') => { const w = a > b ? 'me' : b > a ? 'them' : ''; return `<div class="rl-cmp-row"><b class="num${w === 'me' ? ' win' : ''}">${a ? fmt(a) + unit : '-'}</b><span>${label}</span><b class="num${w === 'them' ? ' win' : ''}">${b ? fmt(b) + unit : '-'}</b></div>`; };
   rvDlg(`<div class="rl-vs"><div><canvas class="rl-big" id="rvMe" width="128" height="208" aria-hidden="true"></canvas><b>${esc(me.n)}</b><small>${RANKS[me.ri].k}-Rank · Lv ${me.lv}</small>${me.pet ? `<img class="rl-pet" src="${petArt(me.pet.id, me.pet.f) || ''}" alt="">` : ''}</div>
@@ -4128,6 +4131,7 @@ function rvAct(a, t){
   else if (a === 'rvClaim') claimRivalChal(t.dataset.id); else if (a === 'rvDrop') dropRivalChal(t.dataset.id);
   else if (a === 'rvTn'){ rlTn = t.dataset.v === '' ? null : +t.dataset.v; const sc = document.querySelector('#rvDlg .pc-card')?.scrollTop; rvNewChal(); const pc = document.querySelector('#rvDlg .pc-card'); if (pc) pc.scrollTop = sc || 0; }
   else if (a === 'rvTauntOnly') rvTauntOnly();
+  else if (a === 'rvMsgTo') msgTo(t.dataset.id); else if (a === 'rvMsgLink'){ const p = msgPick; msgPick = null; if (p) p.linkFn(); }
   else if (a === 'rvTab'){ rvTab = t.dataset.v; render(); }
   else if (a === 'rvCheer') rvCheer(); else if (a === 'rvCheerMake') rvCheerMake(+t.dataset.v);
   else if (a === 'rvCheerX'){ S.cheerIn = (S.cheerIn || []).filter(x => x.cid !== t.dataset.id); save(); render(); }
@@ -4185,6 +4189,7 @@ async function cloudPush(){ cloudInit(); const a = auth(); if (!a || cloud.busy)
   try {
     await sb('/rest/v1/saves?on_conflict=user_id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify({user_id:a.user.id, data:{...S, cloudDirty:false, cloudAt:now}, updated_at:now})});
     await sb('/rest/v1/profiles?on_conflict=id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify({id:a.user.id, name:(S.hero.name || 'Hero').slice(0, 20), card:netCard(), updated_at:now})});
+    await feedFlush();   // posts waiting in the outbox
     S.cloudAt = now; if (cloud.gen === gen) S.cloudDirty = false; quietSave(); cloud.at = Date.now(); cloud.err = '';
     if (S.cloudDirty) cloud.timer = setTimeout(cloudPush, 5000);
   } catch(e){ cloud.err = netMsg(e); } finally { cloud.busy = false; acctPaint(); }
@@ -4231,6 +4236,7 @@ async function netLoad(){ const a = auth(); if (!a) return;
       ri:Math.min(RANKS.length - 1, Math.max(0, Math.round(+r.ri) || 0)), lv:Math.min(MAX_LEVEL, Math.max(1, Math.round(+r.lv) || 1))}));
     for (const o of before) if (!netReq.some(r => r.id === o.id) && (netFriends || []).some(f => f.id === o.id)) toast(`${o.n} accepted your friend request!`);
   } catch(e){ if (!netReq) netReq = []; }
+  await msgLoad(); await feedLoad();   // messages leave a card on Today; the reaction note shows last so it isn't covered
   netPaint(); acctPaint(); const tr = document.getElementById('todayRv'); if (tr) tr.innerHTML = rivalsBtn(); }
 // Friend requests: answer one sent to you, or take back one you sent
 async function netAnswer(id, accept){ const r = (netReq || []).find(x => x.id === id && x.dir === 'in'); if (!r) return;
@@ -4238,6 +4244,73 @@ async function netAnswer(id, accept){ const r = (netReq || []).find(x => x.id ==
     if (accept) relAsk(id, r.n); else toast(`Declined ${r.n}'s request.`); } catch(e){ toast(netMsg(e)); await netLoad(); } }
 async function netCancel(id){ const r = (netReq || []).find(x => x.id === id && x.dir === 'out'); if (!r) return;
   try { await sb('/rest/v1/rpc/cancel_request', {method:'POST', body:JSON.stringify({target:id})}); toast(`Request to ${r.n} cancelled.`); await netLoad(); } catch(e){ toast(netMsg(e)); } }
+/* ---------- Activity feed, reactions, direct messages ---------- */
+// While signed in, workouts, PRs, boss wins, rank-ups and pet evolutions go in a small outbox that rides
+// along with the next cloud save. Friends' posts come back with their reactions; your own show who reacted.
+// Cheers, taunts and challenges can go straight to a friend; they arrive like a pasted link would.
+var netFeed, msgPick;
+const FEED_EMOJI = [['fire', '🔥'], ['muscle', '💪'], ['clap', '👏']];
+function feedPost(kind, data){ if (!auth()) return; S.feedOut = [...(S.feedOut || []), {kind, data}].slice(-20); }
+async function feedFlush(){ const out = S.feedOut || []; if (!out.length) return;
+  try { await sb('/rest/v1/feed', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify(out.map(e => ({kind:e.kind, data:e.data})))}); S.feedOut = []; }
+  catch(e){ if (e.status >= 400 && e.status < 500) S.feedOut = []; } }   // a refused post (daily limit, bad data) is dropped, not retried forever
+// One line of the feed, built only from fields that check out (a friend's post is their data, not ours)
+function feedLine(e){ const d = e.data || {}, s = (v, n) => esc(String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, '').slice(0, n));
+  const num = v => fmt(Math.max(0, Math.round(+v) || 0));
+  if (e.kind === 'workout') return `cleared ${s(d.day, 40) || 'a workout'}${+d.sets > 0 ? ` · ${num(d.sets)} sets` : ''}${d.full === true ? ' · full clear' : ''}`;
+  if (e.kind === 'pr') return `set a new ${Object.prototype.hasOwnProperty.call(LIFTS, d.lift) ? LIFTS[d.lift] : 'lift'} max: <b class="num">${num(d.val)} ${d.unit === 'kg' ? 'kg' : 'lb'}</b>`;
+  if (e.kind === 'boss') return `defeated <b>${s(d.name, 40)}</b>`;
+  if (e.kind === 'rank'){ const r = RANKS.find(x => x.k === d.k); return r ? `ranked up to <b>${r.k}-Rank · ${esc(r.t)}</b>` : 'ranked up'; }
+  if (e.kind === 'pet'){ const it = typeof d.id === 'string' && Object.prototype.hasOwnProperty.call(TA_SHOP_DATA.items, d.id) ? shopItem(d.id) : null, f = Math.min(3, Math.max(0, Math.round(+d.f) || 0));
+    return it ? `${esc(it.name)} grew into its ${PET_FORMS[f][1]} form` : 'pet grew'; }
+  return 'did something'; }
+const FEED_ICON = {workout:'⚔️', pr:'🏋️', boss:'👹', rank:'⭐', pet:'🐾'};
+async function feedLoad(){ const a = auth(); if (!a) return;
+  try { const rows = await sb('/rest/v1/feed?select=id,user_id,kind,data,created_at,reactions(user_id,emoji,created_at)&order=created_at.desc&limit=40') || [];
+    netFeed = rows.filter(r => FEED_ICON[r.kind]).map(r => ({id:+r.id, uid:String(r.user_id), kind:r.kind, data:r.data && typeof r.data === 'object' ? r.data : {}, at:r.created_at,
+      reacts:(r.reactions || []).filter(x => FEED_EMOJI.some(([k]) => k === x.emoji)).map(x => ({uid:String(x.user_id), emoji:x.emoji, at:x.created_at}))}));
+    // someone reacted to your post since you last looked
+    const seen = S.feedSeen ? Date.parse(S.feedSeen) : Date.now() - 864e5, fresh = [];
+    for (const e of netFeed) if (e.uid === a.user.id) for (const x of e.reacts) if (x.uid !== a.user.id && Date.parse(x.at) > seen) fresh.push([x, e]);
+    if (fresh.length){ const [x, e] = fresh[0], who = feedName(x.uid), em = (FEED_EMOJI.find(([k]) => k === x.emoji) || [])[1] || '';
+      toast(fresh.length === 1 ? `${who} ${em} your ${e.kind === 'pr' ? 'PR' : e.kind === 'boss' ? 'boss win' : e.kind === 'rank' ? 'rank-up' : 'workout'}` : `${who} and ${fresh.length - 1} more reacted to your posts`); }
+    S.feedSeen = new Date().toISOString(); quietSave();
+  } catch(e){ if (!netFeed) netFeed = []; } }
+const feedName = uid => uid === (auth() || {user:{}}).user.id ? 'You' : ((netFriends || []).find(f => f.id === uid) || {}).n || 'A friend';
+function feedHTML(rel){ const a = auth(); if (!a || !netFeed) return '';
+  const mine = a.user.id, items = netFeed.filter(e => e.uid === mine || relOf(e.uid, true) === rel).slice(0, 15);
+  if (!items.length) return `<span class="rl-sec">Activity</span><p class="fine">Workouts, PRs and boss wins from you and your ${rel === 'rival' ? 'rivals' : 'friends'} show up here.</p>`;
+  return `<span class="rl-sec">Activity</span><ul class="fd">${items.map(e => { const who = feedName(e.uid), me = e.uid === mine;
+    const counts = FEED_EMOJI.map(([k, em]) => { const n = e.reacts.filter(x => x.emoji === k).length, on = e.reacts.some(x => x.uid === mine && x.emoji === k);
+      return me ? (n ? `<span class="fd-r on">${em} <b class="num">${n}</b></span>` : '') : `<button type="button" class="fd-r${on ? ' on' : ''}" data-act="netReact" data-id="${e.id}" data-v="${k}" aria-pressed="${on}" aria-label="${k}">${em}${n ? ` <b class="num">${n}</b>` : ''}</button>`; }).join('');
+    return `<li class="fd-i"><span class="fd-ico" aria-hidden="true">${FEED_ICON[e.kind]}</span><div class="fd-b"><p><b>${e.kind === 'pet' ? (me ? 'Your' : esc(who) + '’s') : esc(who)}</b> ${feedLine(e)}</p><small>${agoText(e.at)}</small>${counts ? `<div class="fd-rs">${counts}</div>` : ''}</div></li>`; }).join('')}</ul>`; }
+// tap a reaction to add it, tap it again to take it back, tap another to switch
+async function netReact(id, emoji){ const a = auth(), e = (netFeed || []).find(x => x.id === +id); if (!a || !e) return;
+  const mine = e.reacts.find(x => x.uid === a.user.id), off = mine && mine.emoji === emoji;
+  e.reacts = e.reacts.filter(x => x.uid !== a.user.id); if (!off) e.reacts.push({uid:a.user.id, emoji, at:new Date().toISOString()}); netPaint();   // show it right away
+  try { if (off) await sb(`/rest/v1/reactions?event_id=eq.${e.id}&user_id=eq.${a.user.id}`, {method:'DELETE'});
+    else await sb('/rest/v1/reactions?on_conflict=event_id,user_id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify({event_id:e.id, user_id:a.user.id, emoji})}); buzz(8); }
+  catch(err){ toast(netMsg(err)); await feedLoad(); netPaint(); } }
+// Messages: a friend sent you a cheer, taunt or challenge. Each goes through the same checks as a pasted link.
+async function msgLoad(){ const a = auth(); if (!a) return;
+  let rows; try { rows = await sb(`/rest/v1/messages?select=id,from_id,kind,data&to_id=eq.${a.user.id}&order=created_at.asc&limit=20`) || []; } catch(e){ return; }
+  const names = new Map((netFriends || []).map(f => [f.id, f.n]));   // looked up first: taking a message redraws the screen
+  for (const m of rows){ const d = m.data && typeof m.data === 'object' ? m.data : {}, from = String(m.from_id), t = m.kind === 'cheer' ? 'h' : m.kind === 'taunt' ? 't' : m.kind === 'challenge' ? 'c' : null;
+    if (t){ const raw = {...d, t, id:from.replace(/-/g, '').slice(0, 16), n:names.get(from) || 'A friend', cid:('m' + m.id).padEnd(6, '0').slice(0, 16)};
+      if (t === 'c' && raw.k === 'lift' && !raw.u) raw.u = 'lb';
+      takeCode(toCode(raw), true); }
+    try { await sb(`/rest/v1/messages?id=eq.${+m.id}`, {method:'DELETE'}); } catch(e){} } }
+// Send: pick a live friend, or share a link for someone who isn't on the app
+function msgSendTo(kind, data, label, linkFn){
+  const rel = kind === 'cheer' ? 'friend' : 'rival', people = (netFriends || []).slice().sort((x, y) => (relOf(y.id, true) === rel) - (relOf(x.id, true) === rel) || x.n.localeCompare(y.n));
+  if (!auth() || !people.length) return linkFn();
+  msgPick = {kind, data, linkFn};
+  rvDlg(`<b class="rl-h">Send to…</b><p class="fine">${esc(label)}</p>
+    <div class="rl-pick">${people.map(f => `<button type="button" class="opt" data-act="rvMsgTo" data-id="${f.id}">${esc(f.n)}<small class="fd-rel">${relOf(f.id, true) === 'rival' ? 'Rival' : 'Friend'}</small></button>`).join('')}</div>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button><button type="button" class="btn btn-ghost btn-sm" data-act="rvMsgLink">Share a link instead</button></div>`); }
+async function msgTo(id){ const p = msgPick, f = (netFriends || []).find(x => x.id === id); if (!p || !f) return;
+  try { await sb('/rest/v1/messages', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify({to_id:id, kind:p.kind, data:p.data})});
+    document.getElementById('rvDlg').close(); toast(`Sent to ${f.n}.`); buzz(12); } catch(e){ toast(netMsg(e)); } }
 function netReqHTML(){ const ins = (netReq || []).filter(r => r.dir === 'in'), outs = (netReq || []).filter(r => r.dir === 'out'); if (!ins.length && !outs.length) return '';
   const row = (r, btns) => `<li class="rq-row"><span class="rl-who"><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small></span><span class="rq-btns">${btns}</span></li>`;
   return `${ins.length ? `<span class="rl-sec">Friend requests</span><ul class="rq">${ins.map(r => row(r, `<button type="button" class="btn btn-ghost btn-sm" data-act="netDecline" data-id="${r.id}">Decline</button><button type="button" class="btn btn-power btn-sm" data-act="netAccept" data-id="${r.id}">Accept</button>`)).join('')}</ul>` : ''}
@@ -4252,6 +4325,7 @@ function netHTML(rel = rvTab === 'rivals' ? 'rival' : 'friend'){
     <ol class="lb">${board.map((c, i) => `<li><button type="button" class="lb-row${c.isMe ? ' me' : ''}"${c.isMe ? ' disabled' : ` data-act="rvOpen" data-id="${c.id}"`}><span class="lb-n num">${i + 1}</span><canvas class="rl-hero" data-rv="${c.id}" width="128" height="208" aria-hidden="true"></canvas>
       <span class="rl-who"><b>${esc(c.n)}</b><small>${c.isMe ? 'You · ' : ''}${RANKS[c.ri].k}-Rank · Lv ${c.lv}</small></span><span class="lb-xp"><b class="num">${fmt(c.wx)} XP</b><small>${c.wwk} workout${c.wwk === 1 ? '' : 's'} · ${fmt(c.wsets)} sets</small></span></button></li>`).join('')}</ol>
     ${netFriends && !mine.length ? `<p class="fine">${rel === 'rival' ? 'No live rivals yet. Add someone by their code and pick Rival.' : 'No live friends yet. Send them your code, or type theirs below.'}</p>` : ''}
+    ${feedHTML(rel)}
     <div class="rl-add"><input id="netCode" type="text" placeholder="Friend's code" aria-label="Friend's 8-character code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10"><button type="button" class="btn btn-ghost btn-sm" data-act="netAdd">Send request</button></div></div>`;
 }
 async function netAdd(){ const el = document.getElementById('netCode'), code = (el && el.value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
@@ -4295,7 +4369,7 @@ async function acctVerify(){ const st = acctState(), code = (document.getElement
     acct = null; acctState(); if (cloud) cloud.booted = null; netFriends = null; netMe = null;
     document.getElementById('acctDlg').close(); toast('Signed in.'); render(); cloudBoot(); }
   catch(e){ st.busy = false; st.err = e.status === 403 || /expired|invalid/i.test(e.message) ? 'That code didn\'t work or has run out. Send a new one.' : netMsg(e); acctShow(); } }
-function acctSignedOut(msg){ setAuth(null); delete S.cloudAt; delete S.cloudDirty; quietSave(); netFriends = null; netMe = null; netReq = null; if (cloud) cloud.booted = null; acct = null;
+function acctSignedOut(msg){ setAuth(null); delete S.cloudAt; delete S.cloudDirty; quietSave(); netFriends = null; netMe = null; netReq = null; netFeed = null; if (cloud) cloud.booted = null; acct = null;
   document.getElementById('acctDlg').close(); render(); if (settingsOpen()) renderSettings(); toast(msg); }
 function acctAct(a, t){
   if (a === 'acctOpen') acctOpen(); else if (a === 'acctClose') document.getElementById('acctDlg').close();
@@ -4311,6 +4385,7 @@ function acctAct(a, t){
   else if (a === 'netAdd') netAdd();
   else if (a === 'netAccept' || a === 'netDecline'){ t.disabled = true; netAnswer(t.dataset.id, a === 'netAccept'); }
   else if (a === 'netCancel') netCancel(t.dataset.id);
+  else if (a === 'netReact') netReact(t.dataset.id, t.dataset.v);
   else if (a === 'netCopy'){ const c = netMe && netMe.friend_code; if (!c) return true; (navigator.clipboard ? navigator.clipboard.writeText(c) : Promise.reject()).then(() => toast(`Copied your code: ${c}`), () => toast(`Your code: ${c}`)); }
   else if (a === 'netDel'){ const f = (netFriends || []).find(x => x.id === t.dataset.id); if (!f) return true;
     if (!t.dataset.sure){ t.dataset.sure = 1; t.textContent = `Remove ${f.n}?`; return true; }
@@ -5090,6 +5165,7 @@ function bossWon(id, r, rematch){
   const pay = shopPay({n:r.sets, total:0, rank:'C', bossDay:!rematch, oldXp:old}), payTxt = ` · +${fmt(pay.coins)} Grind${pay.gems ? ` · +${fmt(pay.gems)} Glory` : ''}`;
   S.log.unshift({date:today(), iso:todayIso(), prog:'Boss battle', path:prog().path, rank:rankFor(S.xp).k, day:bossTitle(boss), week:0,
     sets:r.sets, total:r.sets, full:true, bossFight:id, vol:r.volume ? Math.round(r.volume) : undefined, unit:r.volume ? S.unit : undefined, xp:won, id:logId()});
+  feedPost('boss', {name:bossTitle(boss)});
   checkItems(); save(); render(); paintHeroes(); cheer(); buzz(PR_BUZZ);
   toast(rematch ? `${boss.name} beaten again · +${fmt(won)} XP${payTxt}` : `${boss.name} defeated! +${fmt(won)} XP${payTxt}${nb ? ` · ${nb.name} unlocked` : ' · every boss beaten'}`);
   rankCheck(old);
@@ -6483,11 +6559,15 @@ function completeWorkout(){
   if (nw >= p.weeks.length){ nw = 0; arcDone = true; }
   if (boss && !bossWon){ nd = d; nw = w; arcDone = false; }   // the boss waits for a rematch
   if (bossWon) S.storyNext = {prog:p.id};   // the victory scene plays once the summary is closed
+  // the feed: this workout, any new maxes, and the boss if it fell
+  feedPost('workout', {day:day.name, prog:p.name, sets:n, full, xp:gain});
+  for (const r of prs) feedPost('pr', {lift:r.e.lift, val:Math.round(r.pr), unit:S.unit});
+  if (bossWon) feedPost('boss', {name:bossName(p)});
   // the pet you have out grows with every set; a new form gets its own little scene
   { const pid = shopEq().pet; if (pid && shopItem(pid)){ const f0 = petForm(pid), l0 = petLv(pid);
     S.petXp = {...(S.petXp || {}), [pid]:petPts(pid) + n};
     S.petWk = {...(S.petWk || {}), [pid]:((S.petWk || {})[pid] || 0) + 1}; if (!(S.petSince || {})[pid]) S.petSince = {...(S.petSince || {}), [pid]:todayIso()};
-    if (petForm(pid) > f0) S.petEvolve = {id:pid, form:petForm(pid)}; else if (petLv(pid) > l0) S.petUp = {id:pid, lv:petLv(pid)};
+    if (petForm(pid) > f0){ S.petEvolve = {id:pid, form:petForm(pid)}; feedPost('pet', {id:pid, f:petForm(pid)}); } else if (petLv(pid) > l0) S.petUp = {id:pid, lv:petLv(pid)};
     if (bossWon || prs.length) S.petReact = {id:pid, kind:bossWon ? 'boss' : 'pr'}; } }
   // A deload session leaves the arc where it paused; the last one ends the deload
   if (dl){ nd = S.pos.d; nw = S.pos.w; arcDone = false; S.deload.left--;
@@ -6670,6 +6750,7 @@ function move(dir){
 }
 function rankCheck(oldXp){
   const a = rankFor(oldXp), b = rankFor(S.xp);
+  if (a.k !== b.k && RANKS.indexOf(b) > RANKS.indexOf(a)) feedPost('rank', {k:b.k, t:b.t});   // friends see your rank-ups
   if (a.k !== b.k){
     const showRank = r => { document.getElementById('ruLetter').textContent = r.k; document.getElementById('ruTitle').textContent = r.t; };
     document.getElementById('ruGear').textContent = 'Your character evolved. New look unlocked.';
@@ -6802,6 +6883,7 @@ document.addEventListener('click', e => {
   }
   else if (a === 'lock'){
     const lift = t.dataset.lift, val = +t.dataset.val, old = S.xp;
+    feedPost('pr', {lift, val:Math.round(val), unit:S.unit});
     const ach = setMax(lift, val, 'PR'); const qs = claimQuests(null), qx = qs.reduce((a, q) => a + q[1], 0), qg = qs.reduce((a, q) => a + (q[2] || 0), 0); if (qg && window.TA_SHOP) TA_SHOP.addCoins(qg); S.xp += 100 + qx; S.prs++; const gear = checkItems(); save(); render(); cheer(); sfx('pr'); buzz(PR_BUZZ);
     const lvUp = levelFor(S.xp) > levelFor(old) ? ` · Level ${levelFor(S.xp)}!` : '';
     toast(`PR! ${LIFTS[lift]} max is now ${fmt(val)} ${S.unit} · +${100 + qx} XP${qx ? ` (quest done${qg ? `, +${qg} Grind` : ''})` : ''}${lvUp}${gear.length ? ' · Unlocked ' + gear.map(g => g.name).join(', ') : ''}${ach.length ? ' · Achievement: ' + ach.map(achText).join(', ') : ''}${flairNote()}`); rankCheck(old);

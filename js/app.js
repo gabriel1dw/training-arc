@@ -3934,12 +3934,13 @@ function cleanCard(o, base){
   return {...base, t:'f', g, ri:int(o.ri, 0, RANKS.length - 1), lv:int(o.lv, 1, MAX_LEVEL), title:str(o.title, 28),
     m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, int((o.m || {})[l], 0, 2000)])), md:int(o.md, 0, 999), st:int(o.st, 0, 999), wk:int(o.wk, 0, 99999),
     look, style:styleById(o.style) ? o.style : (g === 'male' ? 'spiky' : (FEMALE_HAIR_STYLES[0] || {}).id), acc, pet, d:iso(o.d) || todayIso(),
-    ws:iso(o.ws), wx:int(o.wx, 0, 1e6), wsets:int(o.wsets, 0, 5000), wwk:int(o.wwk, 0, 50)};   // this week, for the leaderboard
+    ws:iso(o.ws), wx:int(o.wx, 0, 1e6), wsets:int(o.wsets, 0, 5000), wwk:int(o.wwk, 0, 50), wv:int(o.wv, 0, 1e8),   // this week, for the leaderboard
+    wh:typeof o.wh === 'string' && /^[01]{1,52}$/.test(o.wh) ? o.wh : ''};   // weeks that hit the goal, for a streak together
 }
 function myCard(){ const g = S.hero.gender, h = S.hero[g], pid = shopEq().pet;
   return {t:'f', id:socialId(), n:S.hero.name || 'Hero', g, ri:rankIdx(), lv:levelInfo(S.xp).L, title:heroTitle(), u:S.unit,
     m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, Math.round(bestMax(l))])), md:Object.keys(S.ach).length, st:weekStreak(), wk:S.log.length,
-    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso()}; }
+    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso(), wh:weekHits()}; }
 const inMyUnit = (v, u) => u === S.unit ? v : S.unit === 'kg' ? v / 2.20462 : v * 2.20462;
 // Opening a code: a card adds or updates a rival, a challenge goes on Today
 function takeCode(text, quiet){
@@ -3997,6 +3998,9 @@ const RL_KINDS = {
 var pendingCode, pendingAuth;   // var with no value: takeLinkCode runs at startup, before this line, and must not be reset by it
 // The sign-in link from the account email lands here too: #access_token=…&refresh_token=… (or #error=…)
 function takeLinkCode(){
+  // an invite (#inv=FRIENDCODE) waits on the device, across sign-in, until it's used or turned down
+  const inv = location.hash.match(/#inv=([A-Za-z0-9]{8})(?![A-Za-z0-9])/);
+  if (inv){ try { localStorage.setItem('ta-invite', JSON.stringify({code:inv[1].toUpperCase(), at:Date.now()})); history.replaceState(null, '', location.pathname + location.search); } catch(e){} return; }
   const h = new URLSearchParams(location.hash.slice(1)), m = location.hash.match(/#ta=(TA1\.[A-Za-z0-9_-]+)/);
   if (!m && !h.get('access_token') && !h.get('error_description')) return;
   try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
@@ -4006,10 +4010,26 @@ function takeLinkCode(){
 function landPendingCode(){ const ts = document.getElementById('title'); if (!(pendingCode || pendingAuth) || !S.onboarded || ts && !ts.hidden) return;
   if (pendingAuth){ const p = pendingAuth; pendingAuth = null; setTimeout(() => landAuthLink(p), 1800); return; }
   const c = pendingCode; pendingCode = null; setTimeout(() => takeCode(c), 1800); }
+// Invite links: once you're in your profile, offer to send the request (or to sign in first). Asked once a session.
+var inviteAsked;
+function readInvite(){ let v = null; try { v = JSON.parse(localStorage.getItem('ta-invite')); } catch(e){}
+  if (v && /^[A-Z0-9]{8}$/.test(v.code) && Date.now() - v.at < 14 * 864e5) return v;
+  try { localStorage.removeItem('ta-invite'); } catch(e){} return null; }
+const dropInvite = () => { try { localStorage.removeItem('ta-invite'); } catch(e){} };
+function inviteCheck(){ const ts = document.getElementById('title'); if (inviteAsked || !S.onboarded || ts && !ts.hidden) return;
+  const v = readInvite(); if (!v) return;
+  if (netMe && netMe.friend_code === v.code){ dropInvite(); return; }   // your own link
+  inviteAsked = true; setTimeout(() => { if (!document.querySelector('dialog[open]')) inviteShow(v.code); else inviteAsked = false; }, 2400); }
+function inviteShow(code){ const a = auth();
+  rvDlg(`<b class="rl-h">You've been invited!</b><p class="fine">${a ? 'A friend sent you an invite to train together. Send them a friend request?' : 'A friend invited you to train together. Sign in (free, no password) and you can connect right away.'}</p>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvInvNo">Not now</button>${a ? `<button type="button" class="btn btn-power btn-sm" data-act="rvInvYes" data-v="${code}">Send request</button>` : '<button type="button" class="btn btn-power btn-sm" data-act="rvInvSign">Sign in</button>'}</div>`); }
+function shareInvite(){ if (!auth()){ acctOpen(); return; } if (!netMe){ toast('One moment, loading your code…'); netLoad(); return; }
+  const url = `${LIVE_URL}#inv=${netMe.friend_code}`;
+  rvShareBox('Invite a friend', 'When they open this and sign in, a friend request to you is ready to send. No codes to type.', `Train with me on Training Arc! ${S.hero.name || 'Hero'} invited you.`, null, url); }
 async function landAuthLink(p){
   if (p.error){ toast(/expired|invalid/i.test(p.error) ? 'That sign-in link has run out. Ask for a new one in Settings › Account.' : `Sign-in didn't work: ${p.error}`); return; }
   try { const user = await sbRaw('/auth/v1/user', {}, p.access_token); setAuth(slimAuth({...p, user}));
-    if (cloud) cloud.booted = null; netFriends = null; netMe = null; acct = null; toast(`Signed in as ${user.email} on ${S.hero.name || 'Hero'}'s profile.`); render(); }
+    if (cloud) cloud.booted = null; netFriends = null; netMe = null; acct = null; inviteAsked = false; toast(`Signed in as ${user.email} on ${S.hero.name || 'Hero'}'s profile.`); render(); }
   catch(e){ toast(netMsg(e)); } }
 const volLb = l => !l.vol ? 0 : l.unit === 'kg' ? l.vol * 2.20462 : l.vol;
 function chalState(c){
@@ -4083,11 +4103,12 @@ async function drawRival(cv, r){ try { const fr = await spriteFrames(r.g, RANKS[
 const paintRivals = () => document.querySelectorAll('canvas[data-rv]').forEach(cv => { const id = cv.dataset.rv, r = id === 'me' ? myCard() : (S.rivals || {})[id] || (netFriends || []).find(f => f.id === id); if (r && !cv.dataset.done){ cv.dataset.done = 1; drawRival(cv, r); } });
 // One dialog for sharing a code, writing a challenge, and comparing with a rival
 function rvDlg(html){ const d = document.getElementById('rvDlg'); d.innerHTML = `<div class="pc-card rl-card" style="--rc:var(--power)">${html}</div>`; if (!d.open) d.showModal(); paintRivals(); }
-function rvShareBox(title, sub, text, code){
+function rvShareBox(title, sub, text, code, link){   // link: a ready-made address instead of a code (invites)
+  link = link || codeLink(code);
   rvDlg(`<b class="rl-h">${title}</b><p class="fine">${sub}</p>
-    <textarea class="rl-code" readonly rows="3" aria-label="Your code">${esc(codeLink(code))}</textarea>
+    <textarea class="rl-code" readonly rows="3" aria-label="Your link">${esc(link)}</textarea>
     <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button><button type="button" class="btn btn-ghost btn-sm" data-act="rvCopy">Copy</button>${navigator.share ? '<button type="button" class="btn btn-power btn-sm" data-act="rvSend">Send</button>' : ''}</div>`);
-  rvShareBox.cur = {text, url:codeLink(code)};
+  rvShareBox.cur = {text, url:link};
 }
 function rvShareCard(){ rvShareBox('Your rival card', 'Your hero, rank, maxes, medals and pet. Send it to a friend; they open the link or paste it under Rivals.', `Add me as a rival in Training Arc: ${S.hero.name || 'Hero'}, ${rankFor(S.xp).k}-Rank, Lv ${levelInfo(S.xp).L}.`, toCode(myCard())); }
 let rlTn = null;   // the taunt picked in the challenge composer
@@ -4116,6 +4137,7 @@ function rvOpen(id){ const r = (S.rivals || {})[id] || (netFriends || []).find(f
   rvDlg(`<div class="rl-vs"><div><canvas class="rl-big" id="rvMe" width="128" height="208" aria-hidden="true"></canvas><b>${esc(me.n)}</b><small>${RANKS[me.ri].k}-Rank · Lv ${me.lv}</small>${me.pet ? `<img class="rl-pet" src="${petArt(me.pet.id, me.pet.f) || ''}" alt="">` : ''}</div>
       <span class="rl-vs-x">VS</span>
       <div><canvas class="rl-big" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small>${r.pet ? `<img class="rl-pet" src="${petArt(r.pet.id, r.pet.f) || ''}" alt="">` : ''}</div></div>
+    ${(d => d ? `<p class="rl-duo">🔥 <b>${d}-week streak together</b> · you both hit your goal ${d} week${d === 1 ? '' : 's'} in a row</p>` : `<p class="rl-duo off">Hit your weekly goal together to start a streak.</p>`)(duoStreak(r))}
     <div class="rl-cmp">${Object.keys(LIFTS).map(l => row(LIFTS[l], me.m[l], Math.round(inMyUnit(r.m[l], r.u)), ` ${S.unit}`)).join('')}
       ${row('Level', me.lv, r.lv)}${row('Medals', me.md, r.md)}${row('Week streak', me.st, r.st)}${row('Workouts', me.wk, r.wk)}</div>
     <p class="fine">${live ? `Live card · updated ${agoText(r.at)}.` : `${esc(r.n)}'s card is from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. Ask for a new one to see their latest.`}</p>
@@ -4131,6 +4153,11 @@ function rvAct(a, t){
   else if (a === 'rvClaim') claimRivalChal(t.dataset.id); else if (a === 'rvDrop') dropRivalChal(t.dataset.id);
   else if (a === 'rvTn'){ rlTn = t.dataset.v === '' ? null : +t.dataset.v; const sc = document.querySelector('#rvDlg .pc-card')?.scrollTop; rvNewChal(); const pc = document.querySelector('#rvDlg .pc-card'); if (pc) pc.scrollTop = sc || 0; }
   else if (a === 'rvTauntOnly') rvTauntOnly();
+  else if (a === 'rvInvite') shareInvite();
+  else if (a === 'rvLb'){ S.lbBy = t.dataset.v; save(); netPaint(); }
+  else if (a === 'rvInvYes'){ dropInvite(); document.getElementById('rvDlg').close(); netAdd(t.dataset.v); }
+  else if (a === 'rvInvNo'){ dropInvite(); document.getElementById('rvDlg').close(); }
+  else if (a === 'rvInvSign'){ document.getElementById('rvDlg').close(); inviteAsked = false; acctOpen(); }
   else if (a === 'rvMsgTo') msgTo(t.dataset.id); else if (a === 'rvMsgLink'){ const p = msgPick; msgPick = null; if (p) p.linkFn(); }
   else if (a === 'rvTab'){ rvTab = t.dataset.v; render(); }
   else if (a === 'rvCheer') rvCheer(); else if (a === 'rvCheerMake') rvCheerMake(+t.dataset.v);
@@ -4223,7 +4250,22 @@ document.addEventListener('visibilitychange', () => { if (!auth() || !cloud) ret
   else if (Date.now() - cloud.lastPull > 120000 && !document.querySelector('dialog[open]')) cloudPull().catch(e => { cloud.err = netMsg(e); }).then(netLoad); });
 // Live friends. Your card on the server carries this week's numbers for the leaderboard.
 function netCard(){ const ws = weekStart(todayIso()), logs = S.log.filter(l => l.iso && l.iso >= ws);
-  return {...myCard(), ws, wx:logs.reduce((t, l) => t + (l.xp || 0), 0), wsets:logs.reduce((t, l) => t + (l.sets || 0), 0), wwk:logs.filter(l => !l.bossFight).length}; }
+  return {...myCard(), ws, wx:logs.reduce((t, l) => t + (l.xp || 0), 0), wsets:logs.reduce((t, l) => t + (l.sets || 0), 0), wwk:logs.filter(l => !l.bossFight).length,
+    wv:Math.round(logs.reduce((t, l) => t + volLb(l), 0))}; }
+// Which of the last 52 weeks hit your training goal, newest first ('1' hit, '0' missed): friends compare these for a streak together
+function weekHits(n = 52){ const goal = weekGoal(), c = {}; for (const l of S.log) if (l.iso){ const k = weekStart(l.iso); c[k] = (c[k] || 0) + 1; }
+  const w0 = weekStart(todayIso()); let s = ''; for (let i = 0; i < n; i++) s += (c[addDays(w0, -7 * i)] || 0) >= goal ? '1' : '0'; return s; }
+// Weeks in a row you both hit your goal. This week counts once you both have; until then it doesn't break anything.
+function duoStreak(c){ if (!c || !c.wh) return 0; const mine = weekHits(), off = Math.round((dayNum(weekStart(todayIso())) - dayNum(weekStart(c.d || todayIso()))) / 7);
+  const both = i => mine[i] === '1' && c.wh[i - off] === '1';
+  let i = both(0) ? 0 : 1, n = 0; while (i < 52 && both(i)){ n++; i++; } return n; }
+// What the leaderboard ranks by
+const LB_BY = [['wx', 'XP'], ['wwk', 'Workouts'], ['wsets', 'Sets'], ['wv', 'Volume'], ['st', 'Streak'], ['lv', 'Level']];
+const LB_WEEKLY = {wx:1, wwk:1, wsets:1, wv:1};   // these reset each Monday; streak and level don't
+function lbValue(c, by){ return by === 'st' ? (c.isMe ? weekStreak() : c.st) : by === 'lv' ? c.lv : c[by] || 0; }
+function lbLabel(c, by){ const v = lbValue(c, by);
+  return by === 'wx' ? `${fmt(v)} XP` : by === 'wwk' ? `${v} workout${v === 1 ? '' : 's'}` : by === 'wsets' ? `${fmt(v)} sets` : by === 'wv' ? `${fmt(Math.round(inMyUnit(v, 'lb')))} ${S.unit}`
+    : by === 'st' ? `${v} wk${v === 1 ? '' : 's'}` : `Lv ${v}`; }
 async function netLoad(){ const a = auth(); if (!a) return;
   try { const rows = await sb('/rest/v1/profiles?select=id,friend_code,name,card,updated_at') || [];
     netMe = rows.find(r => r.id === a.user.id) || null;
@@ -4319,16 +4361,20 @@ function netPaint(){ const box = document.getElementById('netBox'); if (box){ bo
 function netHTML(rel = rvTab === 'rivals' ? 'rival' : 'friend'){
   if (!auth()) return `<div id="netBox" class="net-box"><p class="fine">Sign in for live friends and rivals, a weekly leaderboard and a cloud backup of your progress.</p><div><button type="button" class="btn btn-ghost btn-sm" data-act="acctOpen">Sign in</button></div></div>`;
   const ws = weekStart(todayIso()), me = {...netCard(), id:'me', n:S.hero.name || 'Hero', isMe:true}, mine = (netFriends || []).filter(f => relOf(f.id, true) === rel);
-  const board = [me, ...mine].map(c => c.ws === ws ? c : {...c, wx:0, wsets:0, wwk:0}).sort((x, y) => y.wx - x.wx || y.wsets - x.wsets);
-  return `<div id="netBox" class="net-box">${netReqHTML()}<div class="row-between"><span class="rl-sec">${rel === 'rival' ? 'Rivals' : 'Friends'} · this week</span><button type="button" class="wk-link" data-act="netCopy">Your code <b class="num">${netMe ? netMe.friend_code : '…'}</b></button></div>
+  const by = LB_BY.some(([k]) => k === S.lbBy) ? S.lbBy : 'wx';
+  const board = [me, ...mine].map(c => c.ws === ws ? c : {...c, wx:0, wsets:0, wwk:0, wv:0}).sort((x, y) => lbValue(y, by) - lbValue(x, by) || y.wx - x.wx);
+  return `<div id="netBox" class="net-box">${netReqHTML()}<div class="row-between"><span class="rl-sec">${rel === 'rival' ? 'Rivals' : 'Friends'} · ${LB_WEEKLY[by] ? 'this week' : 'all time'}</span><button type="button" class="wk-link" data-act="netCopy">Your code <b class="num">${netMe ? netMe.friend_code : '…'}</b></button></div>
+    <div class="lb-cats" role="group" aria-label="Rank by">${LB_BY.map(([k, l]) => `<button type="button" class="opt" data-act="rvLb" data-v="${k}" aria-pressed="${by === k}">${l}</button>`).join('')}</div>
     ${netFriends === null ? '<p class="fine">Loading friends…</p>' : ''}${netErr ? `<p class="fine">${esc(netErr)}</p>` : ''}
-    <ol class="lb">${board.map((c, i) => `<li><button type="button" class="lb-row${c.isMe ? ' me' : ''}"${c.isMe ? ' disabled' : ` data-act="rvOpen" data-id="${c.id}"`}><span class="lb-n num">${i + 1}</span><canvas class="rl-hero" data-rv="${c.id}" width="128" height="208" aria-hidden="true"></canvas>
-      <span class="rl-who"><b>${esc(c.n)}</b><small>${c.isMe ? 'You · ' : ''}${RANKS[c.ri].k}-Rank · Lv ${c.lv}</small></span><span class="lb-xp"><b class="num">${fmt(c.wx)} XP</b><small>${c.wwk} workout${c.wwk === 1 ? '' : 's'} · ${fmt(c.wsets)} sets</small></span></button></li>`).join('')}</ol>
+    <ol class="lb">${board.map((c, i) => { const duo = c.isMe ? 0 : duoStreak(c);
+      return `<li><button type="button" class="lb-row${c.isMe ? ' me' : ''}"${c.isMe ? ' disabled' : ` data-act="rvOpen" data-id="${c.id}"`}><span class="lb-n num">${i + 1}</span><canvas class="rl-hero" data-rv="${c.id}" width="128" height="208" aria-hidden="true"></canvas>
+      <span class="rl-who"><b>${esc(c.n)}</b><small>${c.isMe ? 'You · ' : ''}${RANKS[c.ri].k}-Rank · Lv ${c.lv}</small>${duo ? `<small class="lb-duo" title="Weeks in a row you both hit your goal">🔥 ${duo}-week streak together</small>` : ''}</span><span class="lb-xp"><b class="num">${lbLabel(c, by)}</b>${by === 'wx' ? `<small>${c.wwk} workout${c.wwk === 1 ? '' : 's'} · ${fmt(c.wsets)} sets</small>` : ''}</span></button></li>`; }).join('')}</ol>
     ${netFriends && !mine.length ? `<p class="fine">${rel === 'rival' ? 'No live rivals yet. Add someone by their code and pick Rival.' : 'No live friends yet. Send them your code, or type theirs below.'}</p>` : ''}
     ${feedHTML(rel)}
+    <div class="rl-actions"><button type="button" class="btn btn-power btn-sm" data-act="rvInvite">Invite a friend</button></div>
     <div class="rl-add"><input id="netCode" type="text" placeholder="Friend's code" aria-label="Friend's 8-character code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10"><button type="button" class="btn btn-ghost btn-sm" data-act="netAdd">Send request</button></div></div>`;
 }
-async function netAdd(){ const el = document.getElementById('netCode'), code = (el && el.value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+async function netAdd(given){ const el = given ? null : document.getElementById('netCode'), code = (given || el && el.value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
   if (code.length !== 8){ toast('Friend codes are 8 letters and numbers.'); return; }
   try { const r = await sb('/rest/v1/rpc/send_request', {method:'POST', body:JSON.stringify({code})}) || {}; if (el) el.value = '';
     await netLoad();
@@ -4366,7 +4412,7 @@ async function acctVerify(){ const st = acctState(), code = (document.getElement
   if (code.length < 6){ st.err = 'Type the code from the email.'; return acctShow(); }
   st.busy = true; st.err = ''; acctShow();
   try { const s = await sbRaw('/auth/v1/verify', {method:'POST', body:JSON.stringify({type:'email', email:st.email, token:code})}); setAuth(slimAuth(s));
-    acct = null; acctState(); if (cloud) cloud.booted = null; netFriends = null; netMe = null;
+    acct = null; acctState(); if (cloud) cloud.booted = null; netFriends = null; netMe = null; inviteAsked = false;
     document.getElementById('acctDlg').close(); toast('Signed in.'); render(); cloudBoot(); }
   catch(e){ st.busy = false; st.err = e.status === 403 || /expired|invalid/i.test(e.message) ? 'That code didn\'t work or has run out. Send a new one.' : netMsg(e); acctShow(); } }
 function acctSignedOut(msg){ setAuth(null); delete S.cloudAt; delete S.cloudDirty; quietSave(); netFriends = null; netMe = null; netReq = null; netFeed = null; if (cloud) cloud.booted = null; acct = null;
@@ -6708,7 +6754,7 @@ function render(animate){
   v.classList.toggle('view-enter', !!animate);
   document.querySelector('.hud').hidden = tab === 'today' || tab === 'progress' || tab === 'rivals';   // the banner and the card carry the character there
   v.innerHTML =tab === 'rivals' ? viewRivals() : tab === 'today' ? viewToday() : tab === 'calendar' ? viewCalendar() : tab === 'maxes' ? viewMaxes() : tab === 'arcs' ? viewArcs() : viewProgress();
-  paintRivals(); landPendingCode(); cloudBoot();
+  paintRivals(); landPendingCode(); cloudBoot(); inviteCheck();
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
   if (animate) [...v.children].forEach((c, i) => c.style.setProperty('--i', Math.min(i, 6)));
   if (tab === 'maxes') updateEstimate();

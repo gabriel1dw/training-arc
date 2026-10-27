@@ -445,6 +445,12 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 #hudRv .icon-btn{width:36px;height:36px}
 .net-box{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:color-mix(in srgb,var(--power) 7%,transparent);border:1px solid color-mix(in srgb,var(--power) 25%,transparent)}
 .net-box .wk-link b{color:var(--power);letter-spacing:.08em}
+.lb-cats{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.lb-cats::-webkit-scrollbar{display:none}
+.lb-cats .opt{flex:none;min-height:36px;padding:0 12px}
+.lb-duo{color:#ffb02e;font-size:12px;font-weight:600}
+.rl-duo{margin:0;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,#ffb02e 14%,transparent);color:#ffd27a;font-size:13px;line-height:1.4}
+.rl-duo.off{background:rgba(255,255,255,.05);color:#a197b8}
 .fd{margin:0;padding:0;list-style:none;display:flex;flex-direction:column}
 .fd-i{display:flex;gap:10px;padding:10px 2px;border-top:1px solid var(--line)}
 .fd-i:first-child{border-top:0}

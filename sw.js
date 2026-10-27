@@ -1,5 +1,5 @@
-// Training Arc service worker (built by build-app.ps1, version 20261026-230018)
-const VERSION = 'ta-20261026-230018';
+// Training Arc service worker (built by build-app.ps1, version 20261026-233448)
+const VERSION = 'ta-20261026-233448';
 const CORE = [
   'index.html',
   'css/app.css',
@@ -26,9 +26,6 @@ const CORE = [
   'fonts/files/qILuG22Tv1rIsaQ6sD6T4bWGwqEH09ARfQDSriqrL_bc1IGt70DTgVxC0yBmCt8VyyJ5XUG8_49c3zCl8JiVAPWHCAM8_skey_82994e245a1cc281_v_v19'
 ];
 const LATER = [
-  '.gitignore',
-  '.nojekyll',
-  'sw-probe.js',
   'art/hero-f-01.png',
   'art/hero-f-02.png',
   'art/hero-f-03.png',
@@ -297,8 +294,18 @@ self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     for (const k of await caches.keys()) if (k !== VERSION) await caches.delete(k);   // old versions go
     await self.clients.claim();
-    const c = await caches.open(VERSION);   // then everything else, quietly, for full offline use
+  })());
+});
+// everything else (all the art, every style's font) for full offline use: only when the page asks, a little
+// after it has opened and not on data saver, so a first visit on mobile data isn't slowed down by it
+let laterBusy = false;
+self.addEventListener('message', e => {
+  if (!e.data || e.data.type !== 'cache-later' || laterBusy) return;
+  laterBusy = true;
+  e.waitUntil((async () => {
+    const c = await caches.open(VERSION);
     for (const u of LATER) { try { if (!(await c.match(u))) await c.add(new Request(u, {cache: 'reload'})); } catch (err) {} }
+    laterBusy = false;
   })());
 });
 // the page itself: network first, so updates arrive when online; everything else: cache first

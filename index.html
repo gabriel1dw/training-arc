@@ -13,7 +13,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<script>window.TA_APP = true; if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
+<script>window.TA_APP = true; if ('serviceWorker' in navigator) addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {});
+  const cn = navigator.connection, slow = cn && (cn.saveData || /2g/.test(cn.effectiveType || ''));
+  if (!slow) setTimeout(() => navigator.serviceWorker.ready.then(r => r.active && r.active.postMessage({type: 'cache-later'})).catch(() => {}), 20000); });</script>
 <script>window.TA_LOCAL_FONTS = true;</script>
 </head>
 <body>
@@ -289,8 +291,16 @@ function render(draw, o = {}){
 // Every colored pixel takes the theme's hue; saturation and lightness are nudged by the theme. Whites, blacks
 // and greys (eye shines, ink, outlines of grey parts) are left alone so the pet keeps its face and contrast.
 function shinyTint(d, t){
+  // a mostly white or grey pet (a paper crane, a robot) has little color to shift, so its pale parts take the tint too
+  // (near-white shades count as pale even when their HSL saturation reads high, so measure the raw spread of the channels)
+  const chroma = i => (Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2])) / 255;
+  let col = 0, all = 0;
+  for (let i = 0; i < d.length; i += 4){ if (d[i + 3] < 8) continue; const [, , l] = rgbHsl([d[i], d[i + 1], d[i + 2]]); if (l < .06) continue; all++; if (chroma(i) >= .12) col++; }
+  const pale = all && col / all < .45;
   for (let i = 0; i < d.length; i += 4){ if (d[i + 3] < 8) continue;
-    const [h, s, l] = rgbHsl([d[i], d[i + 1], d[i + 2]]); if (s < .14 || l < .06 || l > .95) continue;
+    const [h, s, l] = rgbHsl([d[i], d[i + 1], d[i + 2]]);
+    if (pale && chroma(i) < .12 && l >= .25){ const c = hslRgb(t.h, clamp(.68 * (t.sm || 1), .4, .8), clamp(l * .8 + (t.la || 0), .2, .82)); d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; continue; }
+    if (s < .14 || l < .06 || l > .95) continue;
     const c = hslRgb(t.h + (h - 180) * (t.spread || 0), clamp(s * (t.sm || 1) + (t.sa || 0), 0, 1), clamp(l + (t.la || 0), .03, .97));
     d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; } }
 function sparkleOn(B, x, y){ for (let i = -2; i <= 2; i++){ B.set(x + i, y, '#fff6c8', 1 - Math.abs(i) / 3); B.set(x, y + i, '#fff6c8', 1 - Math.abs(i) / 3); } B.set(x, y, '#ffffff'); }
@@ -776,9 +786,9 @@ A.dr_dragon_egg = P => { P.shadow(48, 90, 22);
 
   // ---------- gear colorways: a base item's look in new colors ----------
   const recolorJobs = [];   // [item, base icon, [[fromHex, toHex], ...]]
-  const gear = (base, id, name, r, price, extra, map, isWear = true) => { if (!base || !base.icon) return;
+  const gear = (base, id, name, r, price, extra, map, isWear = true, whole = false) => { if (!base || !base.icon) return;
     const it = {id, type:base.type, name, r, price, cur:'c', icon:base.icon, desc:base.desc || '', ...extra}; add(it, isWear);
-    if (items[id]) recolorJobs.push([it, base.icon, map]); };
+    if (items[id]) recolorJobs.push([it, base.icon, map, whole]); };
   const lastWord = n => n.split(' ').pop();
   const bases = t => all().filter(i => i.type === t && !i.drop && i.icon).sort((a, b) => a.id.localeCompare(b.id));
   const OUTFIT_PAL = [['Midnight', '#1d2550', '#12162a', '#8ec8ff', '#8ec8ff'], ['Ember', '#d84a1f', '#2a1a14', '#ffcf4a', '#ffcf4a'], ['Forest', '#2f6b3a', '#1c2a1e', '#d8c27a', '#d8c27a'],
@@ -806,7 +816,7 @@ A.dr_dragon_egg = P => { P.shadow(48, 90, 22);
   // 10 capes
   const capeBase = bases('cape').find(b => b.color);
   [['Midnight', '#1d2550'], ['Ember', '#d84a1f'], ['Forest', '#2f6b3a'], ['Royal', '#5a2fb0'], ['Ocean', '#1f7ab0'], ['Sakura', '#f2a6c4'], ['Storm', '#4a5a72'], ['Gilded', '#e8b43a'], ['Ivory', '#f0e8d8'], ['Obsidian', '#1a1820']]
-    .forEach(([n, c], i) => gear(capeBase, 'vc_' + slug(n), `${n} Cape`, i % 3 === 2 ? 'R' : 'C', i % 3 === 2 ? 620 : 300 + (i % 2) * 40, {color:c}, [[capeBase.color, c]]));
+    .forEach(([n, c], i) => gear(capeBase, 'vc_' + slug(n), `${n} Cape`, i % 3 === 2 ? 'R' : 'C', i % 3 === 2 ? 620 : 300 + (i % 2) * 40, {color:c}, [[capeBase.color, c]], true, true));
   // 10 auras (a little XP perk each, by rarity)
   const auraBase = bases('aura').find(b => b.color);
   [['Mint Ki', '#6af0c0'], ['Sakura Ki', '#ff8ac8'], ['Solar Flare', '#ffcf3a'], ['Void Pulse', '#6a3ad8'], ['Frost Mist', '#9fe7ff'], ['Toxic Haze', '#a8ff3a'], ['Ember Glow', '#ff6a2a'], ['Tidal Ki', '#3a9aff'], ['Rose Flame', '#ff4a6a'], ['Silver Ki', '#e0e4f0']]
@@ -840,11 +850,13 @@ A.dr_dragon_egg = P => { P.shadow(48, 90, 22);
   // relative to that color carries over to the new color, so highlights and shadows stay put
   function dist(a, b){ const sat = Math.min(a[1], b[1]); if (sat < .12) return Math.abs(a[2] - b[2]) * .9 + Math.abs(a[1] - b[1]);
     const dh = Math.min(Math.abs(a[0] - b[0]), 360 - Math.abs(a[0] - b[0])) / 180; return dh * 2.2 + Math.abs(a[1] - b[1]) * .7 + Math.abs(a[2] - b[2]) * .35; }
-  function recolor([it, src, map]){ return new Promise(res => { const img = new Image(); img.onload = () => {
+  function recolor([it, src, map, whole]){ return new Promise(res => { const img = new Image(); img.onload = () => {
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
     const d = x.getImageData(0, 0, c.width, c.height), px = d.data, m = map.filter(([f, t]) => f && t).map(([f, t]) => [rgbHsl(...hexRgb(f)), rgbHsl(...hexRgb(t))]);
     for (let i = 0; i < px.length; i += 4){ if (px[i + 3] < 10) continue; const p = rgbHsl(px[i], px[i + 1], px[i + 2]); if (p[2] < .07) continue;
       let best = null, bd = .42; for (const pair of m){ const dd = dist(p, pair[0]); if (dd < bd){ bd = dd; best = pair; } }
+      // a cape is one color on the hero, so every colored part of its icon (lining and all) follows it; gold trim stays
+      if (!best && whole && p[1] >= .12 && !(p[0] >= 33 && p[0] <= 55 && p[1] >= .7 && p[2] >= .45)) best = [[m[0][0][0], m[0][0][1], p[2] < m[0][0][2] ? p[2] + .08 : p[2]], m[0][1]];
       if (!best){ continue; } const [F, T] = best;
       const s = F[1] > .06 ? Math.min(1, T[1] * (p[1] / F[1])) : T[1], l = Math.min(.97, Math.max(.03, T[2] + (p[2] - F[2])));
       const out = hslRgb(T[0], s, l); px[i] = out[0]; px[i + 1] = out[1]; px[i + 2] = out[2]; }

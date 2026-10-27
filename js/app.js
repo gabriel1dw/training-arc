@@ -1625,7 +1625,7 @@ function touchProfile(){
   if (e.name !== name || now - (e.played || 0) > 60000){ e.name = name; e.played = now; writeProfiles(PROFILES); }
 }
 const DEFAULT = {unit:'lb', maxes:{squat:315, bench:225, deadlift:405, ohp:135, clean:225}, example:true,
-  programId:'power-c', pos:{w:0, d:0}, done:{}, amrap:{}, xp:0, prs:0, sets:0, log:[], history:[], stats:{}, swaps:{}, q:{claimed:{}},
+  programId:'power-c', pos:{w:0, d:0}, done:{}, amrap:{}, xp:0, prs:0, sets:0, log:[], history:[], stats:{}, swaps:{}, liftSwaps:{}, q:{claimed:{}},
   schedule:[1,2,4,5], startedOn:null, hero:null};
 const clone = o => JSON.parse(JSON.stringify(o));
 
@@ -1755,7 +1755,28 @@ function curPos(){
   return {w:dl.w, d:(dl.d + dl.total - dl.left) % n};
 }
 // A day as it's trained today: lighter and shorter during a deload
-function liveDay(p, w, d){
+// Big-lift swaps: no rack, a sore shoulder, a busy gym. Each variation's weight is that share of the lift's
+// working weight (dumbbells per hand). A swapped lift is logged under its own name and never changes your max.
+const LIFT_SWAPS = {
+  squat:[['Front Squat', .8], ['Safety Bar Squat', .9], ['Box Squat', .95], ['Hack Squat', 1], ['Goblet Squat', .35]],
+  bench:[['Dumbbell Bench Press (each hand)', .4], ['Incline Bench Press', .8], ['Close-Grip Bench Press', .9], ['Machine Chest Press', .85], ['Floor Press', .9]],
+  deadlift:[['Trap Bar Deadlift', 1.05], ['Sumo Deadlift', 1], ['Romanian Deadlift', .7], ['Block Pull', 1.05], ['Dumbbell RDL (each hand)', .3]],
+  ohp:[['Dumbbell Shoulder Press (each hand)', .38], ['Push Press', 1.15], ['Seated Barbell Press', .9], ['Landmine Press (one arm)', .5], ['Machine Shoulder Press', .85]],
+  clean:[['Hang Power Clean', .95], ['High Pull', 1], ['Dumbbell Power Clean (each hand)', .35], ['Kettlebell Swing', .4]]
+};
+const liftSwap = lift => { const n = (S.liftSwaps || {})[lift]; return n && (LIFT_SWAPS[lift] || []).find(([x]) => x === n); };
+function swapLifts(day){
+  if (!day.ex.some(x => x.lift && liftSwap(x.lift))) return day;
+  return {...day, ex:day.ex.map(x => { const sw = x.lift && liftSwap(x.lift); if (!sw) return x;
+    return {...x, name:sw[0], swappedFrom:x.name, sets:x.sets.map(s => s.pct != null ? {...s, pct0:s.pct0 ?? s.pct, pct:s.pct * sw[1]} : s)}; })};
+}
+// Extras: exercises you add to one day's workout from the library (3 sets each), kept with that day of the arc
+const extraKey = (p, w, d) => `${p.id}|${w}|${d}`;
+const extraEx = x => ({...(x.kind === 'lift' ? main(x.lift, rep(3, .7, 8), x.name) : x.kind === 'pick' ? P(x.name, 3, 10)
+  : X(x.name, 3, x.unit === 'sec' ? 30 : x.unit === 'min' ? 3 : x.unit ? 40 : 10, x.unit || null)), extra:true});
+function liveDay(p, w, d){ const day = swapLifts(liveDayRaw(p, w, d)), add = (S.extra || {})[extraKey(p, w, d)];
+  return add && add.length ? {...day, ex:[...day.ex, ...add.map(extraEx)]} : day; }
+function liveDayRaw(p, w, d){
   const day = p.weeks[w].days[d]; if (!deloadOn()) return day;
   return {...day, ex:day.ex.map(x => /warm-up/i.test(x.name) ? x : {...x, sets:x.sets.slice(0, Math.max(1, Math.ceil(x.sets.length / 2)))
     .map(s => ({...s, pct:s.pct != null ? s.pct * DELOAD_W : s.pct, amrap:false}))})};
@@ -2413,7 +2434,7 @@ function renderHeader(){
 const CHECK = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>';
 
 function prHTML(lift, w, n){
-  if (!n) return '';
+  if (!n || !lift) return '';   // no lift: a swapped variation, which never changes your max
   const e = roundW(e1rm(w, n)), u = S.unit;
   if (e > S.maxes[lift]) return `<span class="pr-hit">New est. max: ${fmt(e)} ${u}</span><button class="btn btn-power btn-sm" data-act="lock" data-lift="${lift}" data-val="${e}">Lock it in · +100 XP</button>`;
   return `<span class="pr-note">Est. max from this set: ${fmt(e)} ${u}</span>`;
@@ -2426,10 +2447,10 @@ function setRow(p, ex, ei, set, si){
     const w = setWeight(p, set, ex.lift), pl = plates(w);
     load = `<span class="big num">${fmt(w)}</span><span class="u">${u}</span><span class="x">×</span><span class="big num">${set.reps}${set.amrap ? '<span class="amrap-tag">+</span>' : ''}</span>`;
     const plTxt = pl === null ? 'Under bar weight: use dumbbells' : pl.length === 0 ? 'Empty bar' : pl.map(fmt).join(' + ') + ' per side';
-    meta = `<div class="meta"><span class="pct">${Math.round(set.pct*100)}%</span><span>${plTxt}</span></div>`;
+    meta = `<div class="meta"><span class="pct">${Math.round((set.pct0 ?? set.pct)*100)}%</span><span>${plTxt}</span></div>`;
     if (set.amrap){
       const n = S.amrap[key] || '';
-      extra = `<div class="amrap"><label for="am-${ei}-${si}">Reps you got</label><input id="am-${ei}-${si}" type="number" inputmode="numeric" min="1" max="30" value="${n}" placeholder="${set.reps}+" data-amrap="${key}" data-lift="${ex.lift}" data-w="${w}"><div class="pr" data-pr="${key}">${prHTML(ex.lift, w, +n)}</div></div>`;
+      extra = `<div class="amrap"><label for="am-${ei}-${si}">Reps you got</label><input id="am-${ei}-${si}" type="number" inputmode="numeric" min="1" max="30" value="${n}" placeholder="${set.reps}+" data-amrap="${key}" data-lift="${ex.swappedFrom ? '' : ex.lift}" data-w="${w}"><div class="pr" data-pr="${key}">${prHTML(ex.swappedFrom ? '' : ex.lift, w, +n)}</div></div>`;
     }
   } else {
     const lab = set.unit || (set.reps === 1 ? 'rep' : 'reps');
@@ -3009,6 +3030,37 @@ function checkinHTML(){
     <div class="ci-body"><b>Training day check-in</b><span class="fine">Day ${c.n + 1} this week · +${g} Grind. Grows every training day you check in.</span></div>
     <button type="button" class="btn btn-power btn-sm" data-act="checkin">Claim</button></section>`;
 }
+// Rest days get their own check-in: how you slept, how sore you are, how much energy you have. It pays a little
+// Grind, and a rough answer makes the next training day suggest going lighter (a deload if it keeps happening).
+const REST_Q = [['sl', 'Sleep', ['Rough', 'Okay', 'Great']], ['so', 'Soreness', ['Very sore', 'A little', 'Fresh']], ['en', 'Energy', ['Drained', 'Okay', 'Charged']]];
+const restScore = r => r ? REST_Q.reduce((a, [k]) => a + (r[k] ?? 1), 0) : null;   // 0 (wrecked) to 6 (great)
+function restDayHTML(){
+  const t = todayIso(); if (trainsOn(t)) return '';
+  const r = (S.restLog || {})[t] || {}, done = r.claimed;
+  if (done) return `<section class="panel checkin rest-ci done" aria-label="Rest day check-in"><div class="ci-ico" aria-hidden="true">🌙</div>
+    <div class="ci-body"><b>Rest day logged</b><span class="fine">${restScore(r) <= 2 ? 'Take it easy today. Your next session will offer a lighter option.' : restScore(r) >= 5 ? 'Recovering well. Next session, bring it.' : 'Solid recovery. Rest up and come back strong.'}</span></div></section>`;
+  return `<section class="panel rest-ci" aria-label="Rest day check-in"><div class="row-between"><b>Rest day check-in</b><span class="fine">+10 Grind</span></div>
+    ${REST_Q.map(([k, l, opts]) => `<div class="rest-q"><span>${l}</span><div class="seg" role="group" aria-label="${l}">${opts.map((o, i) => `<button type="button" data-act="restPick" data-k="${k}" data-v="${i}" aria-pressed="${r[k] === i}">${o}</button>`).join('')}</div></div>`).join('')}
+    <button type="button" class="btn btn-power btn-sm" data-act="restClaim"${REST_Q.every(([k]) => r[k] != null) ? '' : ' disabled'}>Log it</button></section>`;
+}
+function restPick(k, v){ const t = todayIso(), L = S.restLog = S.restLog || {}; L[t] = {...(L[t] || {}), [k]:+v}; save(); render(); }
+function restClaim(){
+  const t = todayIso(), r = (S.restLog || {})[t]; if (!r || r.claimed || REST_Q.some(([k]) => r[k] == null)) return;
+  r.claimed = 1; if (window.TA_SHOP) TA_SHOP.addCoins(10);
+  const keep = Object.keys(S.restLog).sort().slice(-30); S.restLog = Object.fromEntries(keep.map(k => [k, S.restLog[k]]));
+  save(); render(); sfx('quest'); buzz(12); toast('Rest day logged: +10 Grind.');
+}
+// The most recent rest-day answer since your last workout, if it was rough: Today offers a lighter session
+function restWarn(){
+  const L = S.restLog || {}, last = S.log.find(l => l.iso), d = Object.keys(L).sort().reverse().find(k => L[k].claimed && (!last || k > last.iso) && k < todayIso());
+  return d && restScore(L[d]) <= 2 && !deloadOn() ? d : null;
+}
+function restWarnHTML(){
+  if (!trainsOn(todayIso()) || !restWarn() || S.restWarnSeen === restWarn()) return '';
+  return `<section class="panel deload-card" aria-label="Recovery note"><span class="eyebrow">Recovery check</span><h3>Running low?</h3>
+    <p class="dl-why">You logged poor sleep, soreness or energy on your rest day. Lifting light today still counts, and a deload week resets you fully.</p>
+    <div class="arc-btns"><button type="button" class="btn btn-ghost btn-sm" data-act="deloadStart" data-manual="1">Start a deload week</button><button type="button" class="wk-link" data-act="restWarnX">I feel fine</button></div></section>`;
+}
 function claimCheckin(){
   const t = todayIso(), c = checkinState(); if (!trainsOn(t) || c.last === t) return;
   const g = checkinGrind(c.n); c.n++; c.last = t; if (window.TA_SHOP) TA_SHOP.addCoins(g);
@@ -3097,7 +3149,7 @@ function viewToday(){
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
   const pips = Array.from({length:total}, (_, i) => `<span class="pip${i < idx ? ' on' : i === idx ? ' cur' : ''}"></span>`).join('');
   const n = sessionSets();
-  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + cheersHTML() + rivalChalsHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -4150,14 +4202,16 @@ function dropRivalChal(cid){ S.chals = (S.chals || []).filter(c => c.cid !== cid
 // One tab of the Friends & Rivals page: live people (with an account), then cards swapped by code, then sharing
 function rivalsHTML(kind){
   const rel = kind === 'rivals' ? 'rival' : 'friend', rv = Object.values(S.rivals || {}).filter(r => relOf(r.id, false) === rel).sort((a, b) => b.ri - a.ri || b.lv - a.lv);
+  // signed out with no swapped cards yet: sign-in leads, and the no-account way waits behind one tap
+  const tuck = !auth() && !rv.length;
   return `<section class="panel rivals">
-    ${netHTML(rel)}
-    <span class="rl-sec">Swapped by code</span>
+    ${netHTML(rel)}${rel === 'friend' ? duoHTML() : ''}
+    ${tuck ? '<details class="rl-nocode"><summary>No account? Swap cards by code</summary>' : '<span class="rl-sec">Swapped by code</span>'}
     ${rv.length ? `<div class="rl-list">${rv.map(r => `<button type="button" class="rl-row" data-act="rvOpen" data-id="${r.id}"><canvas class="rl-hero" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas>
       <span class="rl-who"><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}${r.title ? ` · ${esc(r.title)}` : ''}</small><small class="fine">Card from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</small></span><span class="rl-go" aria-hidden="true">›</span></button>`).join('')}</div>`
       : `<p class="fine">No account needed: send your card as a link and add theirs to compare heroes and lifts side by side.</p>`}
     <div class="rl-actions"><button type="button" class="btn btn-ghost btn-sm" data-act="rvShare">Share my card</button></div>
-    <div class="rl-add"><input id="rvCode" type="text" placeholder="Paste a code or link" aria-label="Code or link" autocomplete="off" spellcheck="false"><button type="button" class="btn btn-ghost btn-sm" data-act="rvAdd">Add</button></div></section>`;
+    <div class="rl-add"><input id="rvCode" type="text" placeholder="Paste a code or link" aria-label="Code or link" autocomplete="off" spellcheck="false"><button type="button" class="btn btn-ghost btn-sm" data-act="rvAdd">Add</button></div>${tuck ? '</details>' : ''}</section>`;
 }
 // Rivals has its own page, reached from Today's banner, the Progress header and the top bar (not the tab bar)
 const RV_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
@@ -4173,7 +4227,16 @@ function settingsBtn(){   // the gear, beside Friends & Rivals on every tab
   return `<button type="button" class="icon-btn" data-act="openSettings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>`; }
 function todayHead(){ const d = new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
   return `<div class="today-head"><span class="today-date">${d}</span><span class="sec-btns"><span id="todayRv">${rivalsBtn()}</span>${settingsBtn()}</span></div>`; }
-function openRivals(){ if (tab !== 'rivals') rvBack = tab;
+// Today keeps cheers, taunts and challenges to one tappable line; they open in full on Friends & Rivals
+function todaySocial(){
+  const ch = (S.cheerIn || []).length, tn = (S.tauntIn || []).length, cl = (S.chals || []).filter(c => !c.claimed && !c.gone).length;
+  if (!ch && !tn && !cl) return '';
+  const bits = [ch && `${ch} cheer${ch === 1 ? '' : 's'}`, tn && `${tn} taunt${tn === 1 ? '' : 's'}`, cl && `${cl} challenge${cl === 1 ? '' : 's'} going`].filter(Boolean);
+  const to = ch && !tn && !cl ? 'friends' : !ch ? 'rivals' : '';
+  return `<button type="button" class="panel checkin td-social" data-act="openRivals"${to ? ` data-v="${to}"` : ''}><span class="ci-ico" aria-hidden="true">${RV_ICON}</span>
+    <span class="ci-body"><b>${bits.join(' · ')}</b><span class="fine">${ch && !tn && !cl ? 'Your friends are rooting for you.' : 'Your rivals are waiting.'} Tap to see them.</span></span><span class="td-go" aria-hidden="true">›</span></button>`;
+}
+function openRivals(to){ if (tab !== 'rivals') rvBack = tab; if (to) rvTab = to;
   if (auth() && Date.now() - (openRivals.at || 0) > 20000){ openRivals.at = Date.now(); netLoad(); }   // fresh feed and messages, at most every 20 s
   if (!rvTab) rvTab = rivalsNew2() && !friendsNew() ? 'rivals' : 'friends'; tab = 'rivals'; render(true); window.scrollTo(0, 0); }
 function viewRivals(){
@@ -4233,7 +4296,35 @@ function rvOpen(id){ const r = (S.rivals || {})[id] || (netFriends || []).find(f
     <div class="seg seg-wide rl-relseg" role="group" aria-label="${esc(r.n)} is your"><button type="button" data-act="rvRel" data-id="${r.id}" data-v="friend" data-stay="1" aria-pressed="${rel === 'friend'}">🤝 Friend</button><button type="button" data-act="rvRel" data-id="${r.id}" data-v="rival" data-stay="1" aria-pressed="${rel === 'rival'}">⚔️ Rival</button></div>
     <div class="story-foot"><button type="button" class="wk-link" data-act="${live ? 'netDel' : 'rvDel'}" data-id="${r.id}">Remove</button><button type="button" class="wk-link" data-act="rvClose">Close</button>${rel === 'rival' ? '<button type="button" class="btn btn-power btn-sm" data-act="rvNew">Challenge</button>' : '<button type="button" class="btn btn-power btn-sm" data-act="rvCheer">Cheer</button>'}</div>`);
   drawRival(document.getElementById('rvMe'), me); }
+// Duo quests: each week you and every live friend share one goal, counted from both your synced weekly numbers.
+// Hit it together and each of you claims the reward on your own phone.
+const DUO_KINDS = [
+  {k:'wsets', text:g => `Log ${g} sets together`, goal:() => Math.max(40, Math.round(weekGoal() * 18 * 2 * .85 / 10) * 10)},
+  {k:'wwk', text:g => `Train ${g} times together`, goal:() => Math.max(4, weekGoal() * 2)},
+  {k:'wsets', text:g => `Stack ${g} sets between you`, goal:() => Math.max(30, Math.round(weekGoal() * 18 * 2 * .7 / 10) * 10)}
+];
+const DUO_XP = 150, DUO_GRIND = 60;
+function duoQuest(f){
+  const ws = weekStart(todayIso()), q = DUO_KINDS[seeded(ws + [S.socialId, f.id].sort().join(''), DUO_KINDS.length)], goal = q.goal(), mine = netCard();
+  const have = (mine[q.k] || 0) + (f.ws === ws ? f[q.k] || 0 : 0), key = `${ws}|${f.id}`;
+  return {f, key, text:q.text(goal), goal, have:Math.min(have, goal), mine:mine[q.k] || 0, theirs:f.ws === ws ? f[q.k] || 0 : 0, done:have >= goal, claimed:!!(S.duoClaimed || {})[key]};
+}
+function duoHTML(){
+  const fs = (netFriends || []).filter(f => relOf(f.id, true) === 'friend'); if (!auth() || !fs.length) return '<div id="duoBox"></div>';
+  return `<section class="panel duo" id="duoBox"><div class="row-between"><span class="rl-sec">Duo quests · this week</span><span class="fine">+${DUO_XP} XP · +${DUO_GRIND} Grind each</span></div>
+    ${fs.map(duoQuest).map(d => `<div class="duo-row"><div class="row-between"><b>${esc(d.f.n)}</b><span class="fine num">${fmt(d.have)} / ${fmt(d.goal)}</span></div>
+      <p class="fine">${d.text}: you ${fmt(d.mine)}, ${esc(d.f.n)} ${fmt(d.theirs)}</p><div class="bar"><i style="width:${Math.round(d.have / d.goal * 100)}%"></i></div>
+      ${d.claimed ? '<span class="fine duo-got">Claimed. Nice teamwork.</span>' : d.done ? `<button type="button" class="btn btn-power btn-sm" data-act="rvDuo" data-id="${d.f.id}">Claim together reward</button>` : ''}</div>`).join('')}
+    <p class="fine">Friends' numbers update when they open the app.</p></section>`;
+}
+function claimDuo(id){
+  const f = (netFriends || []).find(x => x.id === id); if (!f) return; const d = duoQuest(f); if (!d.done || d.claimed) return;
+  const old = S.xp; S.duoClaimed = Object.fromEntries(Object.entries(S.duoClaimed || {}).filter(([k]) => k >= addDays(weekStart(todayIso()), -28))); S.duoClaimed[d.key] = 1;
+  S.xp += DUO_XP; if (window.TA_SHOP) TA_SHOP.addCoins(DUO_GRIND); save(); render(); sfx('quest'); buzz(25); rankCheck(old);
+  toast(`Duo quest with ${f.n} done! +${DUO_XP} XP, +${DUO_GRIND} Grind.`);
+}
 function rvAct(a, t){
+  if (a === 'rvDuo') return claimDuo(t.dataset.id);
   if (a === 'rvShare') rvShareCard(); else if (a === 'rvNew') rvNewChal(); else if (a === 'rvMake') rvMake(t.dataset.k, t.dataset.v);
   else if (a === 'rvOpen') rvOpen(t.dataset.id); else if (a === 'rvClose') document.getElementById('rvDlg').close();
   else if (a === 'rvAdd'){ const el = document.getElementById('rvCode'); if (el && takeCode(el.value)) el.value = ''; }
@@ -4337,6 +4428,15 @@ function cloudBoot(){ const ts = document.getElementById('title'); if (!KEY || !
 document.addEventListener('visibilitychange', () => { if (!auth() || !cloud) return;
   if (document.hidden){ if (S.cloudDirty) cloudPush(); }
   else if (Date.now() - cloud.lastPull > 120000 && !document.querySelector('dialog[open]')) cloudPull().catch(e => { cloud.err = netMsg(e); }).then(netLoad); });
+// Live updates: while the app is open and you're signed in, check for new cheers, challenges, feed posts and
+// friend requests: every 15 s on Friends & Rivals, every minute elsewhere. Never while you're typing or in a dialog.
+setInterval(() => {
+  if (!auth() || document.hidden || document.querySelector('dialog[open]') || netLive.busy) return;
+  const f = document.activeElement; if (f && (f.tagName === 'INPUT' || f.tagName === 'TEXTAREA')) return;
+  if (Date.now() - (openRivals.at || 0) < (tab === 'rivals' ? 15000 : 60000)) return;
+  openRivals.at = Date.now(); netLive.busy = true; netLoad().catch(() => {}).finally(() => { netLive.busy = false; });
+}, 5000);
+const netLive = {busy:false};
 // Live friends. Your card on the server carries this week's numbers for the leaderboard.
 function netCard(){ const ws = weekStart(todayIso()), logs = S.log.filter(l => l.iso && l.iso >= ws);
   return {...myCard(), ws, wx:logs.reduce((t, l) => t + (l.xp || 0), 0), wsets:logs.reduce((t, l) => t + (l.sets || 0), 0), wwk:logs.filter(l => !l.bossFight).length,
@@ -4368,7 +4468,8 @@ async function netLoad(){ const a = auth(); if (!a) return;
     for (const o of before) if (!netReq.some(r => r.id === o.id) && (netFriends || []).some(f => f.id === o.id)) toast(`${o.n} accepted your friend request!`);
   } catch(e){ if (!netReq) netReq = []; }
   await msgLoad(); await feedLoad();   // messages leave a card on Today; the reaction note shows last so it isn't covered
-  netPaint(); acctPaint(); const tr = document.getElementById('todayRv'); if (tr) tr.innerHTML = rivalsBtn(); }
+  netPaint(); acctPaint(); const tr = document.getElementById('todayRv'); if (tr) tr.innerHTML = rivalsBtn();
+  const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = rivalsBtn() + settingsBtn(); }
 // Friend requests: answer one sent to you, or take back one you sent
 async function netAnswer(id, accept){ const r = (netReq || []).find(x => x.id === id && x.dir === 'in'); if (!r) return;
   try { await sb('/rest/v1/rpc/answer_request', {method:'POST', body:JSON.stringify({requester:id, accept})}); await netLoad();
@@ -4446,9 +4547,9 @@ function netReqHTML(){ const ins = (netReq || []).filter(r => r.dir === 'in'), o
   const row = (r, btns) => `<li class="rq-row"><span class="rl-who"><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small></span><span class="rq-btns">${btns}</span></li>`;
   return `${ins.length ? `<span class="rl-sec">Friend requests</span><ul class="rq">${ins.map(r => row(r, `<button type="button" class="btn btn-ghost btn-sm" data-act="netDecline" data-id="${r.id}">Decline</button><button type="button" class="btn btn-power btn-sm" data-act="netAccept" data-id="${r.id}">Accept</button>`)).join('')}</ul>` : ''}
     ${outs.length ? `<span class="rl-sec">Requests you sent</span><ul class="rq">${outs.map(r => row(r, `<small class="rq-wait">Waiting</small><button type="button" class="wk-link" data-act="netCancel" data-id="${r.id}">Cancel</button>`)).join('')}</ul>` : ''}`; }
-function netPaint(){ const box = document.getElementById('netBox'); if (box){ box.outerHTML = netHTML(); paintRivals(); } }
+function netPaint(){ const box = document.getElementById('netBox'); if (box){ box.outerHTML = netHTML(); paintRivals(); } const db = document.getElementById('duoBox'); if (db) db.outerHTML = rvTab === 'rivals' ? '<div id="duoBox"></div>' : duoHTML(); }
 function netHTML(rel = rvTab === 'rivals' ? 'rival' : 'friend'){
-  if (!auth()) return `<div id="netBox" class="net-box"><p class="fine">Sign in for live friends and rivals, a weekly leaderboard and a cloud backup of your progress.</p><div><button type="button" class="btn btn-ghost btn-sm" data-act="acctOpen">Sign in</button></div></div>`;
+  if (!auth()) return `<div id="netBox" class="net-box"><b class="net-hook">Train with friends</b><p class="fine">Sign in with your email to add friends, get live cheers and challenges, climb the weekly leaderboard and back up your progress.</p><div><button type="button" class="btn btn-power btn-sm" data-act="acctOpen">Sign in · free</button></div></div>`;
   const ws = weekStart(todayIso()), me = {...netCard(), id:'me', n:S.hero.name || 'Hero', isMe:true}, mine = (netFriends || []).filter(f => relOf(f.id, true) === rel);
   const by = LB_BY.some(([k]) => k === S.lbBy) ? S.lbBy : 'wx';
   const board = [me, ...mine].map(c => c.ws === ws ? c : {...c, wx:0, wsets:0, wwk:0, wv:0}).sort((x, y) => lbValue(y, by) - lbValue(x, by) || y.wx - x.wx);
@@ -4626,9 +4727,10 @@ async function drawShareCard(kind){
   // header
   x.fillStyle = power; x.font = '700 34px "Barlow Condensed", sans-serif'; x.textBaseline = 'top'; x.fillText('TRAINING ARC', 80, 78);
   x.fillStyle = '#f3effb'; x.font = '96px Anton, Impact, sans-serif';
-  x.fillText(kind === 'rank' ? `${r.k}-RANK!` : `LV ${lv.L}`, 78, 134);
+  const ws = kind === 'workout' ? wkSummary : null, wPr = ws && ws.rows.filter(q => q.pr);
+  x.fillText(ws ? (ws.bossWon ? 'BOSS DOWN!' : wPr.length ? 'NEW PR!' : 'WORKOUT CLEAR') : kind === 'rank' ? `${r.k}-RANK!` : `LV ${lv.L}`, 78, 134);
   x.fillStyle = '#a197b8'; x.font = '600 36px "Barlow Condensed", sans-serif';
-  x.fillText((kind === 'rank' ? `Ranked up to ${r.t}` : `${r.k}-Rank · ${heroTitle()}`).toUpperCase(), 82, 250);
+  x.fillText((ws ? `${ws.p.weeks[ws.w].days[ws.d].name} · ${new Date().toLocaleDateString(undefined, {month:'short', day:'numeric'})}` : kind === 'rank' ? `Ranked up to ${r.t}` : `${r.k}-Rank · ${heroTitle()}`).toUpperCase(), 82, 250);
   // the hero, pixel-perfect, standing on a floor line
   const fr = await spriteFrames(g, r.k, wornLook(g), S.hero[g].style, S.hero[g].acc);
   x.imageSmoothingEnabled = false; const sc = 3.6; x.drawImage(fr[0].bmp, 70, 1180 - 208 * sc, 128 * sc, 208 * sc);
@@ -4638,6 +4740,20 @@ async function drawShareCard(kind){
   x.fillStyle = '#f3effb'; x.font = '84px Anton, Impact, sans-serif'; const name = (S.hero.name || 'Hero').toUpperCase();
   let fs = 84; while (x.measureText(name).width > rw && fs > 40){ fs -= 4; x.font = `${fs}px Anton, Impact, sans-serif`; }
   x.fillText(name, rx, 330);
+  if (ws){   // a workout card: the session's numbers instead of the stat sheet
+    x.fillStyle = '#a197b8'; x.font = '700 32px "Barlow Condensed", sans-serif'; x.fillText(`${r.k}-RANK · LV ${lv.L}`, rx, 430);
+    x.strokeStyle = rc; x.lineWidth = 6; x.fillStyle = 'rgba(13,10,21,.85)'; x.beginPath(); x.roundRect(rx, 490, rw, 190, 22); x.fill(); x.stroke();
+    x.fillStyle = power; x.font = '92px Anton, Impact, sans-serif'; x.fillText(ws.vol ? fmt(ws.vol) : String(ws.n), rx + 24, 505);
+    x.fillStyle = '#f3effb'; x.font = '700 30px "Barlow Condensed", sans-serif'; x.fillText(ws.vol ? `${S.unit.toUpperCase()} MOVED · ${ws.n} SETS` : `SETS · +${fmt(ws.gain)} XP`, rx + 26, 622);
+    const lines = ws.rows.filter(q => q.sets && !/warm-up/i.test(q.e.base)).slice(0, 6);
+    lines.forEach((q, i) => { const y = 730 + i * 66; let nm = q.e.name.toUpperCase(); x.font = '700 30px "Barlow Condensed", sans-serif';
+      while (x.measureText(nm).width > rw - 120 && nm.length > 6) nm = nm.slice(0, -2).trimEnd() + '…';
+      x.fillStyle = q.pr ? power : '#f3effb'; x.fillText(nm, rx, y); x.fillStyle = '#a197b8'; x.textAlign = 'right'; x.fillText(q.pr ? `PR ${fmt(q.pr)}` : `${q.sets} SET${q.sets === 1 ? "" : "S"}`, rx + rw, y); x.textAlign = 'left';
+      x.fillStyle = 'rgba(255,255,255,.07)'; x.fillRect(rx, y + 46, rw, 2); });
+    x.fillStyle = '#a197b8'; x.font = '600 32px "Barlow Condensed", sans-serif';
+    x.fillText(`+${fmt(ws.gain)} XP · ${ws.p.name.toUpperCase()} · WEEK ${ws.w + 1}`, 80, 1236);
+    return c;
+  }
   x.strokeStyle = tierColor(o); x.lineWidth = 8; x.fillStyle = 'rgba(13,10,21,.85)'; x.beginPath(); x.roundRect(rx, 450, 220, 230, 26); x.fill(); x.stroke();
   x.fillStyle = tierColor(o); x.font = '120px Anton, Impact, sans-serif'; x.textAlign = 'center'; x.fillText(String(o), rx + 110, 470);
   x.fillStyle = '#f3effb'; x.font = '700 34px "Barlow Condensed", sans-serif'; x.fillText(`OVR · ${POS[p.path] || 'CUS'}`, rx + 110, 618); x.textAlign = 'left';
@@ -4651,7 +4767,7 @@ async function drawShareCard(kind){
   return c;
 }
 async function shareCard(kind){
-  await shareBlob(await drawShareCard(kind), kind === 'rank' ? `training-arc-rank-up.png` : `training-arc-card.png`, 'My training arc');
+  await shareBlob(await drawShareCard(kind), kind === 'rank' ? `training-arc-rank-up.png` : kind === 'workout' ? `training-arc-workout.png` : `training-arc-card.png`, kind === 'workout' ? "Today's training arc session" : 'My training arc');
 }
 async function shareBlob(c, filename, text){
   const blob = await new Promise(res => c.toBlob(res, 'image/png'));
@@ -5404,12 +5520,13 @@ function profileCard(p){
     <button type="button" class="pf-main" data-pf="pick" data-id="${p.id}" aria-label="Play as ${esc(name)}">
       <span class="pf-art stage-bg"><canvas id="pf-${p.id}" width="128" height="208" aria-hidden="true"></canvas></span>
       <span class="pf-info"><span class="pf-top"><b class="pf-name">${esc(name)}</b>${act ? '<span class="pf-tag">Last played</span>' : ''}</span>
-        <span class="pf-meta">${ok ? `${emblem(r.k, 'xs')}<span>${r.k}-Rank ${r.t} · <span class="nw">Lv ${levelFor(s.xp)}</span></span>` : '<span>Setup not finished</span>'}</span>
+        <span class="pf-meta">${ok ? `${emblem(r.k, 'xs')}<span>${r.k}-Rank ${r.t} · <span class="nw">Lv ${levelFor(s.xp)}</span></span>` : '<span>Setup not finished · tap to continue</span>'}</span>
         ${ok ? `<span class="pf-meta dim">${esc(arc)} · ${n} workout${n === 1 ? '' : 's'}</span>` : ''}
-        <span class="pf-meta dim">${last ? `Last workout ${fromYmd(last.iso).toLocaleDateString(undefined, {month:'short', day:'numeric'})}` : 'No workouts yet'}</span></span>
+        ${ok || last ? `<span class="pf-meta dim">${last ? `Last workout ${fromYmd(last.iso).toLocaleDateString(undefined, {month:'short', day:'numeric'})}` : 'No workouts yet'}</span>` : ''}</span>
     </button>
     <button type="button" class="icon-btn pf-more" data-pf="edit" data-id="${p.id}" aria-expanded="${ed}" aria-label="Manage ${esc(name)}">⋯</button>
-    ${ed ? `<div class="pf-manage">
+    ${!ok && !n && !ed ? `<button type="button" class="btn btn-ghost btn-sm pf-drop" data-pf="del" data-id="${p.id}">${pf.del === p.id ? 'Tap again to remove' : 'Remove'}</button>` : ''}
+    ${ed ?`<div class="pf-manage">
       <label class="f"><span>Name</span><input id="pfName" value="${esc(name)}" maxlength="14" autocomplete="off" spellcheck="false" enterkeyhint="done"></label>
       <div class="arc-btns"><button type="button" class="btn btn-ghost btn-sm" data-pf="rename" data-id="${p.id}">Save name</button>
         <button type="button" class="btn btn-danger btn-sm" data-pf="del" data-id="${p.id}">${pf.del === p.id ? 'Tap again to delete' : 'Delete profile'}</button></div>
@@ -5498,7 +5615,7 @@ document.getElementById('profiles').addEventListener('keydown', e => {
 
 /* ---------- Settings ---------- */
 // An iOS-style grouped list: training preferences, units, your character, and your data
-const REST_SCALES = [[.75, 'Shorter'], [1, 'Standard'], [1.25, 'Longer']];
+const REST_SCALES = [[.75, 'Short'], [1, 'Normal'], [1.25, 'Long']];
 function renderSettings(){
   const p = S.prefs, el = document.getElementById('stIn');
   const sw = (k, label, hint) => `<div class="st-row"><div><b>${label}</b>${hint ? `<span>${hint}</span>` : ''}</div>
@@ -5507,11 +5624,11 @@ function renderSettings(){
     <h4 class="st-h">Training</h4>
     <div class="st-group">
       ${sw('restAuto', 'Rest timer', 'Starts on its own after each set')}
-      <div class="st-row st-col"><div><b>Rest length</b><span>Heavy lifts start at 2:30 to 3:00 on Standard</span></div>
+      <div class="st-row st-col"><div><b>Rest length</b><span>Heavy lifts start at 2:30 to 3:00 on Normal</span></div>
         <div class="seg seg-wide" role="group" aria-label="Rest length">${REST_SCALES.map(([v, t]) => `<button type="button" data-act="restScale" data-v="${v}" aria-pressed="${p.restScale === v}">${t}</button>`).join('')}</div></div>
       ${sw('ramp', 'Warm-up ramp', 'Warm-up sets before the big barbell lifts')}
-      <div class="st-row st-col"><div><b>Deload weeks</b><span>A lighter week (about ${Math.round(DELOAD_W * 100)}% weight, half the sets) so your body catches up. It's also suggested early if you show signs of fatigue.</span></div>
-        <div class="seg seg-wide" role="group" aria-label="Deload schedule">${[[0, 'Off'], [4, 'Every 4th wk'], [5, 'Every 5th wk'], [6, 'Every 6th wk']].map(([v, t]) => `<button type="button" data-act="deloadEvery" data-v="${v}" aria-pressed="${p.deloadEvery === v}">${t}</button>`).join('')}</div>
+      <div class="st-row st-col"><div><b>Deload weeks</b><span>Every 4th, 5th or 6th week, a lighter week (about ${Math.round(DELOAD_W * 100)}% weight, half the sets) so your body catches up. It's also suggested early if you show signs of fatigue.</span></div>
+        <div class="seg seg-wide" role="group" aria-label="Deload schedule">${[[0, 'Off'], [4, '4th wk'], [5, '5th wk'], [6, '6th wk']].map(([v, t]) => `<button type="button" data-act="deloadEvery" data-v="${v}" aria-pressed="${p.deloadEvery === v}">${t}</button>`).join('')}</div>
         <button type="button" class="btn btn-ghost btn-sm st-dl" data-act="${deloadOn() ? 'deloadEnd' : 'deloadStart'}" data-manual="1">${deloadOn() ? 'End the deload now' : 'Start a deload week now'}</button></div>
       ${sw('sound', 'Sound effects', '8-bit sounds for sets, PRs, level-ups and rank-ups')}
       ${sw('vibrate', 'Vibration', 'A buzz when you log a set or rest is over, and a big one for PRs')}
@@ -5920,6 +6037,32 @@ function chartHTML(){
   }
   return `<section class="panel"><div class="row-between"><h3>Strength</h3></div>${tabs}${body}</section>`;
 }
+// Seasons: a fresh 10-tier track every month, filled only by training (10 points a workout plus 1 per set).
+// Each tier pays out as you reach it; the last one is one of this month's limited shop items, free.
+const SEASON_STEP = 50, SEASON_TIERS = [['c', 40], ['c', 60], ['g', 10], ['c', 80], ['g', 15], ['c', 100], ['g', 20], ['c', 120], ['g', 30], ['item']];
+const SEASON_NAMES = ['Frost Oath', 'Iron Valentine', 'Thaw Breaker', 'Bloom Arc', 'Storm Season', 'Solstice Grind', 'Heatwave', 'Dog Days', 'Harvest Moon', 'Spirit Night', 'Ember Fall', 'Winter Summit'];
+function seasonState(){ const id = todayIso().slice(0, 7); if (!S.season || S.season.id !== id) S.season = {id, pts:0, got:0}; return S.season; }
+function seasonPrize(){ const ids = window.TA_SHOP && TA_SHOP.seasonItems ? TA_SHOP.seasonItems() : []; return ids.find(id => !TA_SHOP.owns(id)) || null; }
+function seasonAdd(n){
+  const s = seasonState(); s.pts += n; const out = [];
+  while (s.got < SEASON_TIERS.length && s.pts >= (s.got + 1) * SEASON_STEP){
+    const [k, v] = SEASON_TIERS[s.got]; s.got++;
+    if (!window.TA_SHOP) continue;
+    if (k === 'c'){ TA_SHOP.addCoins(v); out.push(`+${v} Grind`); }
+    else if (k === 'g'){ TA_SHOP.addGems(v); out.push(`+${v} Glory`); }
+    else { const id = seasonPrize(); if (id && TA_SHOP.grant(id)) out.push(TA_SHOP.item(id).name); else { TA_SHOP.addGems(50); out.push('+50 Glory'); } }
+  }
+  return out;
+}
+function seasonHTML(){
+  const s = seasonState(), name = SEASON_NAMES[+s.id.slice(5) - 1], end = new Date(+s.id.slice(0, 4), +s.id.slice(5), 0), left = Math.max(0, Math.round((end - fromYmd(todayIso())) / 864e5));
+  const prize = seasonPrize(), pn = prize ? TA_SHOP.item(prize).name : '50 Glory', max = SEASON_TIERS.length * SEASON_STEP;
+  const lab = ([k, v]) => k === 'c' ? `${v}<small>Grind</small>` : k === 'g' ? `${v}<small>Glory</small>` : '★<small>Item</small>';
+  return `<section class="panel season" aria-label="Season track"><div class="row-between"><span class="eyebrow">Season · ${name}</span><span class="fine">${left} day${left === 1 ? '' : 's'} left</span></div>
+    <div class="row-between"><b class="season-tier">Tier ${s.got} of ${SEASON_TIERS.length}</b><span class="fine num">${fmt(Math.min(s.pts, max))} / ${fmt(max)} pts</span></div>
+    <div class="season-track">${SEASON_TIERS.map((t, i) => `<span class="st-tier${i < s.got ? ' got' : ''}${i === s.got ? ' next' : ''}${t[0] === 'item' ? ' top' : ''}">${lab(t)}</span>`).join('')}</div>
+    <p class="fine">Every workout fills it: 10 points plus 1 per set. Tier 10 is ${s.got >= SEASON_TIERS.length ? 'yours. Nice season' : `<b>${esc(pn)}</b>, free`}. A new season starts on the 1st.</p></section>`;
+}
 function viewProgress(){
   const r = rankFor(S.xp), n = nextRank(S.xp), lv = levelInfo(S.xp);
   const hist = S.history.slice(0, 10).map(h => `<div class="li"><div class="l">${LIFTS[h.lift]}<small>${h.date} · ${h.src}</small></div><span class="r num">${fmt(h.val)} ${h.unit}</span></div>`).join('');
@@ -5932,6 +6075,7 @@ function viewProgress(){
     <div class="stat"><b class="num">${fmt(S.sets)}</b><span>Sets done</span></div>
     <div class="stat"><b class="num">${S.prs}</b><span>PRs</span></div>
   </div>
+  ${seasonHTML()}
   ${S.log.some(l => l.iso && l.iso.startsWith(todayIso().slice(0, 4))) ? `<button class="yir-btn" data-act="openYear"><span><small>Year in review</small><b>Your ${todayIso().slice(0, 4)}</b></span><span aria-hidden="true">›</span></button>` : ''}
   ${rewardsHTML()}
   ${gatesHTML()}
@@ -6149,6 +6293,8 @@ const SWAPS = {
   'Bench Dip':['Close-Grip Push-up','Dip','Diamond Push-up']
 };
 const swapOf = name => S.swaps[name] || name;
+// what an exercise in the workout can be swapped for (original first): accessories by name, big lifts by lift
+const swapList = e => e.lift ? (LIFT_SWAPS[e.lift] ? [e.base, ...LIFT_SWAPS[e.lift].map(x => x[0])] : null) : SWAPS[e.base] ? [e.base, ...SWAPS[e.base]] : null;
 
 // Form tips, matched from most specific to most general by name
 const CUES = [
@@ -6408,6 +6554,45 @@ const TIPS = {
 };
 const tipKey = n => n.split(' · ')[0].replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
 const cuesFor = name => TIPS[tipKey(name)] || CUES.find(([re]) => re.test(name))[1];
+// Form demos: a little pixel lifter, seen from the side, moving through the lift (squat, hinge, bench, press, clean).
+// Each pose is joint positions on a 64 × 64 grid; the demo eases between them in a loop.
+const DEMO_POSES = {
+  squat:[{h:[32, 11], s:[31, 18], e:[26, 24], w:[29, 18], hp:[30, 34], k:[31, 47], a:[30, 60], b:[29, 18]},
+         {h:[36, 21], s:[33, 28], e:[27, 33], w:[30, 28], hp:[23, 44], k:[40, 48], a:[30, 60], b:[30, 28]}],
+  hinge:[{h:[41, 25], s:[36, 30], e:[36, 38], w:[36, 46], hp:[22, 40], k:[36, 49], a:[30, 60], b:[36, 47]},
+         {h:[32, 11], s:[31, 18], e:[31, 26], w:[31, 34], hp:[30, 34], k:[31, 47], a:[30, 60], b:[31, 35]}],
+  press:[{h:[30, 11], s:[31, 18], e:[37, 23], w:[36, 16], hp:[30, 34], k:[31, 47], a:[30, 60], b:[36, 15]},
+         {h:[29, 12], s:[31, 18], e:[34, 9], w:[32, 2], hp:[30, 34], k:[31, 47], a:[30, 60], b:[32, 2]}],
+  bench:[{h:[12, 38], s:[19, 39], e:[21, 29], w:[21, 20], hp:[39, 40], k:[49, 37], a:[53, 52], b:[21, 19], lying:1},
+         {h:[12, 38], s:[19, 39], e:[16, 44], w:[22, 35], hp:[39, 40], k:[49, 37], a:[53, 52], b:[22, 34], lying:1}],
+  clean:[{h:[41, 25], s:[36, 30], e:[36, 38], w:[36, 46], hp:[22, 40], k:[36, 49], a:[30, 60], b:[36, 47]},
+         {h:[33, 10], s:[32, 17], e:[34, 24], w:[32, 31], hp:[30, 32], k:[31, 46], a:[31, 58], b:[32, 32]},
+         {h:[33, 17], s:[31, 24], e:[38, 26], w:[34, 22], hp:[25, 40], k:[37, 48], a:[30, 60], b:[33, 22]}]
+};
+const demoFor = name => /bench|floor press|chest press/i.test(name) ? 'bench' : /clean|snatch|high pull/i.test(name) ? 'clean'
+  : /deadlift|rdl|good morning|block pull|swing/i.test(name) ? 'hinge' : /overhead|shoulder press|push press|landmine|military/i.test(name) ? 'press'
+  : /squat|leg press/i.test(name) ? 'squat' : null;
+function playDemo(cv){
+  const poses = DEMO_POSES[cv.dataset.demo]; if (!poses) return;
+  const x = cv.getContext('2d'), css = getComputedStyle(cv), ink = css.color || '#f3effb', bar = css.getPropertyValue('--demo-bar').trim() || '#ffd23f';
+  const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+  const line = (p, q, w) => { x.lineWidth = w; x.beginPath(); x.moveTo(p[0], p[1]); x.lineTo(q[0], q[1]); x.stroke(); };
+  const draw = (P) => {
+    x.clearRect(0, 0, 64, 64); x.lineCap = 'round'; x.strokeStyle = 'rgba(255,255,255,.15)'; line([4, 61], [60, 61], 2);
+    if (P.lying){ x.fillStyle = 'rgba(255,255,255,.25)'; x.fillRect(8, 42, 36, 4); x.fillRect(12, 46, 3, 15); x.fillRect(38, 46, 3, 15); }
+    // the plate sits on the far side of the lifter, so it goes down first; the near arm goes on top in a lighter shade
+    x.fillStyle = bar; x.globalAlpha = .55; x.beginPath(); x.arc(P.b[0], P.b[1], cv.dataset.demo === 'press' || cv.dataset.demo === 'bench' ? 5 : 6, 0, Math.PI * 2); x.fill(); x.globalAlpha = 1;
+    x.fillStyle = '#1a1230'; x.beginPath(); x.arc(P.b[0], P.b[1], 1.5, 0, Math.PI * 2); x.fill();
+    x.strokeStyle = ink; line(P.a, P.k, 4); line(P.k, P.hp, 5); line(P.hp, P.s, 6);
+    x.fillStyle = ink; x.beginPath(); x.arc(P.h[0], P.h[1], 4.5, 0, Math.PI * 2); x.fill();
+    x.strokeStyle = bar; line(P.s, P.e, 3); line(P.e, P.w, 3); x.fillStyle = '#1a1230'; x.fillRect(P.w[0] - 1.5, P.w[1] - 1.5, 3, 3);
+  };
+  const at = t => { const n = poses.length, seg = t * (n - 1 + (n > 2 ? 1 : 1)), i = Math.floor(seg) % n, j = (i + 1) % n, f = seg - Math.floor(seg), e = f < .5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2;
+    const P = {}; for (const k in poses[i]) P[k] = k === 'lying' ? poses[i][k] : lerp(poses[i][k], poses[j][k], e); return P; };
+  if (reduceMotion){ draw(poses[poses.length > 2 ? 2 : 1]); return; }
+  const t0 = performance.now(), loop = now => { if (!cv.isConnected) return; draw(at(((now - t0) / (poses.length > 2 ? 3600 : 2600)) % 1)); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
 
 // Under Form tips, a button opens YouTube searched for this exercise, for a real-person demo
 const demoVideo = name => `https://www.youtube.com/results?search_query=${encodeURIComponent(name.replace(/\(.*?\)/g, '').trim() + ' exercise proper form')}`;
@@ -6521,7 +6706,7 @@ function coachLine(plan, e, next, all, doneN, total){
 let wk = null;   // {active: exercise index, drafts: what's typed per exercise, tool: 'tips' | 'swap' | null}
 function wkPlan(){
   const p = prog(), {w, d} = curPos(), day = liveDay(p, w, d);
-  return {p, w, d, day, ex:day.ex.map((ex, ei) => ({ei, base:ex.name, name:ex.lift ? ex.name : swapOf(ex.name), acc:!!ex.acc, note:!ex.lift && S.swaps[ex.name] ? '' : ex.note, lift:ex.lift, unit:ex.sets[0].unit || null,
+  return {p, w, d, day, ex:day.ex.map((ex, ei) => ({ei, base:ex.swappedFrom || ex.name, swapped:!!ex.swappedFrom, extra:!!ex.extra, name:ex.lift ? ex.name : swapOf(ex.name), acc:!!ex.acc, note:!ex.lift && S.swaps[ex.name] ? '' : ex.note, lift:ex.lift, unit:ex.sets[0].unit || null,
     pick:!ex.lift && !!ex.sets[0].pick, weighted:!!ex.lift || !!ex.sets[0].pick,
     sets:ex.sets.map((s, si) => ({key:`${dayPrefix()}${ei}|${si}`, reps:s.reps, amrap:!!s.amrap, weight:ex.lift ? setWeight(p, s, ex.lift) : 0}))}))};
 }
@@ -6556,6 +6741,21 @@ function rankBarHTML(xp){
   const next = lv.L < MAX_LEVEL ? `${fmt(lv.toNext)} XP to Lv ${lv.L + 1}` : 'Max level';
   return {r, n, lv, pct, next, bar:`<div class="wk-bar" role="img" aria-label="${lv.L < MAX_LEVEL ? `${pct} percent of the way to level ${lv.L + 1}` : 'Max level reached'}"><div class="wk-bar-fill" style="width:${pct}%"></div></div>`};
 }
+// The add-an-exercise picker under the workout grid: search, or browse by kind
+function wkAddList(){
+  const q = wk.add.q.trim().toLowerCase(), have = new Set(wkPlan().ex.map(x => x.name));
+  const list = exLibrary().filter(x => !have.has(x.name) && (q ? x.name.toLowerCase().includes(q) : x.cat === wk.add.cat)).slice(0, 40);
+  return list.length ? list.map(x => `<button type="button" class="wk-add-res" data-wk="addEx" data-v="${esc(x.name)}"><span>${esc(x.name)}</span><small>${x.kind === 'lift' ? 'From your max' : x.kind === 'pick' ? 'Weighted' : x.unit ? UNIT_LABEL[x.unit] : 'Reps'}</small></button>`).join('')
+    : '<p class="fine">Nothing by that name. Try another word.</p>';
+}
+function wkAddHTML(){
+  if (!wk.add) return '';
+  return `<section class="wk-panel wk-addbox" aria-label="Add an exercise"><div class="row-between"><b>Add an exercise</b><button type="button" class="wk-chip" data-wk="addOpen">Close</button></div>
+    <input id="wkAddQ" type="search" placeholder="Search exercises" value="${esc(wk.add.q)}" autocomplete="off" spellcheck="false" aria-label="Search exercises">
+    <div class="wk-add-cats">${EX_CATS.map(c => `<button type="button" class="wk-chip" data-wk="addCat" data-v="${c}" aria-pressed="${!wk.add.q && wk.add.cat === c}">${c}</button>`).join('')}</div>
+    <div class="wk-add-list" id="wkAddList">${wkAddList()}</div></section>`;
+}
+document.addEventListener('input', e => { if (e.target.id !== 'wkAddQ' || !wk || !wk.add) return; wk.add.q = e.target.value; document.getElementById('wkAddList').innerHTML = wkAddList(); });
 function renderWorkout(){
   const page = document.getElementById('wkPage'), f = document.activeElement;
   const keep = f && f.dataset && (f.dataset.wk ? `[data-wk="${f.dataset.wk}"]${f.dataset.k ? `[data-k="${f.dataset.k}"]` : ''}${f.dataset.v ? `[data-v="${f.dataset.v}"]` : ''}` : null);
@@ -6588,15 +6788,15 @@ function renderWorkout(){
       <div class="wk-hp" role="img" aria-label="Boss health ${total - doneN} of ${total}"><i style="width:${(total - doneN) / total * 100}%"></i></div><p>Every set you log is a hit. Clear every set to defeat it: +${fmt(bossXp(p))} XP.</p></section>` : ''}
     ${restHTML()}
     <section class="wk-panel wk-active" aria-live="polite">
-      <div class="wk-active-top"><div><h2 class="wk-ex-name">${e.name}</h2>${S.swaps[e.base] ? `<p class="wk-swapped">Swapped from ${e.base}</p>` : ''}<p class="wk-ex-target">${wkTarget(e)}</p></div><p class="wk-big" id="wkBig">${inRamp ? `${fmt(ramp[rs][0])}<span>${S.unit}</span>` : big}</p></div>
+      <div class="wk-active-top"><div><h2 class="wk-ex-name">${e.name}</h2>${S.swaps[e.base] || e.swapped ? `<p class="wk-swapped">Swapped from ${e.base}${e.swapped ? " · weights scaled for it" : ""}</p>` : ''}<p class="wk-ex-target">${wkTarget(e)}</p></div><p class="wk-big" id="wkBig">${inRamp ? `${fmt(ramp[rs][0])}<span>${S.unit}</span>` : big}</p></div>
       ${lastLine}${sugLine}
       ${e.lift && !all ? (pv => `<p class="wk-plates">${pv.viz}<span>${pv.text}</span></p>`)(plateViz(inRamp ? ramp[rs][0] : +dr.w || 0)) : ''}
       ${rampHTML}
-      <div class="wk-tools"><button type="button" class="wk-chip" data-wk="tool" data-v="tips" aria-pressed="${wk.tool === 'tips'}">Form tips</button>${SWAPS[e.base] && !e.lift ? `<button type="button" class="wk-chip" data-wk="tool" data-v="swap" aria-pressed="${wk.tool === 'swap'}">Swap</button>` : ''}</div>
-      ${wk.tool === 'tips' ? `<div class="wk-form">
+      <div class="wk-tools"><button type="button" class="wk-chip" data-wk="tool" data-v="tips" aria-pressed="${wk.tool === 'tips'}">Form tips</button>${swapList(e) ? `<button type="button" class="wk-chip" data-wk="tool" data-v="swap" aria-pressed="${wk.tool === 'swap'}">Swap</button>` : ''}${e.extra && !e.sets.some(setDone) ? `<button type="button" class="wk-chip" data-wk="addDel">Remove from today</button>` : ''}</div>
+      ${wk.tool === 'tips' ? `<div class="wk-form">${demoFor(e.name) ? `<canvas class="wk-demo" data-demo="${demoFor(e.name)}" width="64" height="64" role="img" aria-label="Animated demo of the ${demoFor(e.name)} movement"></canvas>` : ''}
         <ul class="wk-tips">${cuesFor(e.name).map(c => `<li>${c}</li>`).join('')}</ul>
         <a class="wk-chip wk-video" href="${demoVideo(e.name)}" target="_blank" rel="noopener">Watch a video demo</a></div>` : ''}
-      ${wk.tool === 'swap' && SWAPS[e.base] && !e.lift ? `<div class="wk-swaps" role="group" aria-label="Swap ${e.base} for">${[e.base, ...SWAPS[e.base]].map(n => `<button type="button" class="wk-chip" data-wk="swapTo" data-v="${n.replace(/"/g, '&quot;')}" aria-pressed="${e.name === n}">${n === e.base ? `${n} (original)` : n}</button>`).join('')}</div>` : ''}
+      ${wk.tool === 'swap' && swapList(e) ? `<div class="wk-swaps" role="group" aria-label="Swap ${e.base} for">${swapList(e).map(n => `<button type="button" class="wk-chip" data-wk="swapTo" data-v="${n.replace(/"/g, '&quot;')}" aria-pressed="${e.name === n}">${n === e.base ? `${n} (original)` : n}</button>`).join('')}</div>` : ''}
       ${inRamp ? `<p class="wk-status">Warm-up ${rs + 1} of ${ramp.length}. Light and smooth, then your first set of ${fmt(e.sets[0].weight)}.</p>
       <button type="button" class="wk-btn" data-wk="rampLog">Done · ${rs ? fmt(ramp[rs][0]) : 'Bar'} × ${ramp[rs][1]}</button>
       <button type="button" class="wk-link" data-wk="rampSkip">Skip warm-up</button>` : `<div class="wk-dots" aria-hidden="true">${dots}</div>
@@ -6606,10 +6806,12 @@ function renderWorkout(){
       ${n ? '<button type="button" class="wk-link" data-wk="undo">Undo last set</button>' : ''}`}
     </section>
     <div class="wk-coach${rest ? ' resting' : ''}"><span class="wk-fig"><canvas id="coachImg" width="128" height="208" role="img"></canvas></span><p class="wk-panel wk-say" aria-live="polite">${coachLine(plan, e, next, all, doneN, total)}</p></div>
-    <div class="wk-grid">${grid}</div>
+    <div class="wk-grid">${grid}<button type="button" class="wk-ex-btn wk-add" data-wk="addOpen" aria-expanded="${!!wk.add}"><span class="nm">+ Add an exercise</span><span class="mt">3 sets, just for today</span></button></div>
+    ${wkAddHTML()}
     <button type="button" class="wk-btn" data-wk="finish"${doneN ? '' : ' disabled'}>Finish workout (${doneN} of ${total} sets)</button>
     <p class="wk-style">Today's style: ${theme.name}</p>`;
   setSprite('coachImg', rankIdx(), S.hero.gender);
+  page.querySelectorAll('.wk-demo').forEach(playDemo);
   if (keep){ const el = page.querySelector(keep); if (el && !el.disabled) el.focus({preventScroll:true}); }
 }
 function openWorkout(){
@@ -6653,7 +6855,7 @@ function completeWorkout(){
   const rows = plan.ex.map(e => {
     const done = e.sets.filter(setDone), acts = done.map(setActual);
     let pr = 0;   // a rep-out set whose estimated max beats the current one
-    if (e.lift) for (const s of done.filter(s => s.amrap)){ const a = setActual(s), est = roundW(e1rm(a.w, a.r)); if (est > S.maxes[e.lift] && est > pr) pr = est; }
+    if (e.lift && !e.swapped) for (const s of done.filter(s => s.amrap)){ const a = setActual(s), est = roundW(e1rm(a.w, a.r)); if (est > S.maxes[e.lift] && est > pr) pr = est; }
     return {e, sets:done.length, vol:e.weighted ? acts.reduce((a, x) => a + x.w * x.r, 0) : 0, amount:acts.reduce((a, x) => a + x.r, 0), pr};
   });
   // Remember each exercise's sets for "last time" and auto-progression (the general warm-up aside). hit:
@@ -6684,6 +6886,7 @@ function completeWorkout(){
   const gain = base + streakXp + auraXp + recoveryXp + petXpB + (bossWon ? bossXp(p) : 0) + prs.length * 100 + questXp;
   entry.xp = gain;
   S.xp += gain; S.sets += n; S.prs += prs.length;
+  const seasonGot = seasonAdd(10 + n), seasonTier = seasonState().got;   // the monthly season track
   const stats = statGain(p.statW || p.path, p.rank, n / total), statsBefore = Object.fromEntries(STAT_KEYS.map(([k]) => [k, statVal(k)])), ovrBefore = ovr(p.path);
   for (const [k, v] of Object.entries(stats)) S.stats[k] = (S.stats[k] || 0) + v;
   const pre = dayPrefix();
@@ -6727,7 +6930,7 @@ function completeWorkout(){
   parts.push(...quests);
   const items = checkItems();   // gear this workout just unlocked
   const pay = shopPay({n, total, rank:p.rank, prs:prs.length, bossDay:bossWon, arcDone, oldXp:old, quests:quests.reduce((a, q) => a + (q[2] || 0), 0)});
-  wkSummary = {p, w, d, rows, n, total, vol, gain, parts, old, arcDone, boss, bossWon, stats, statsBefore, ovrBefore, quests, items, pay, achs, boosts, rewards:rewardsBetween(old, S.xp),
+  wkSummary = {p, w, d, rows, n, total, vol, gain, parts, old, arcDone, boss, bossWon, stats, statsBefore, ovrBefore, quests, items, pay, achs, boosts, seasonGot, seasonTier, rewards:rewardsBetween(old, S.xp),
     rankedUp:rankFor(old).k !== rankFor(S.xp).k, theme, flairs:announceFlairs()};
   S.wkTheme = null; save();   // the next workout gets a new style
   openWkDone();
@@ -6757,6 +6960,7 @@ function openWkDone(){
     </div>
     <details class="wk-exp"><summary>How you earned it</summary><ul>${s.parts.map(([l, v]) => `<li><span>${l}</span><span>+${fmt(v)}</span></li>`).join('')}</ul></details>
     ${payHTML(s.pay)}
+    ${s.seasonGot && s.seasonGot.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">Season tier ${s.seasonTier} reached</p><p>${s.seasonGot.join(" · ")}</p></div>` : ''}
     ${s.quests.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">Quest complete</p>${s.quests.map(([t, x, g]) => `<p>${t.replace(/^(Daily|Weekly) quest: /, '')} <b>+${fmt(x)} XP${g ? ` · +${fmt(g)} Grind` : ''}</b></p>`).join('')}</div>` : ''}
     ${s.rewards.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">Unlocked</p>${s.rewards.map(r => `<p>Lv ${r.lv}: ${rewardLabel(r)}</p>`).join('')}<p class="wk-gains-f">Equip it in the character editor.</p></div>` : ''}
     ${s.items.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">New gear</p>${s.items.map(a => `<p>${a.name} <b>${RARITY[a.rarity]}</b></p>`).join('')}<p class="wk-gains-f">Put it on in the character editor.</p></div>` : ''}
@@ -6766,6 +6970,7 @@ function openWkDone(){
     <p class="wk-statline">${(o => `<span>OVR ${o}${o > s.ovrBefore ? ` ▲${o - s.ovrBefore}` : ''}</span>`)(ovr(s.p.path))}${STAT_KEYS.filter(([k]) => s.stats[k]).map(([k, ab]) => { const v = statVal(k), up = v - s.statsBefore[k]; return `<span>${ab} ${v}${up ? ` ▲${up}` : ''}</span>`; }).join('')}</p>
     ${rb.bar}${note}
     ${S.prefs.quotes ? (w => `<div class="wk-closing"><p class="wk-closing-q">“${w.text}”</p><p class="wk-closing-by">${w.by}</p></div>`)(s.closing = s.closing || closingWords(s)) : ''}
+    <button type="button" class="wk-chip wk-share" data-wk="shareWk">Share this workout</button>
     <button type="button" class="wk-btn" data-wk="continue">${s.theme.button}</button>
   </div>`;
   if (typeof dlg.showModal === 'function'){ if (!dlg.open) dlg.showModal(); } else dlg.setAttribute('open', '');
@@ -6807,11 +7012,21 @@ document.addEventListener('click', e => {
   const t = e.target.closest('[data-wk]'); if (!t) return;
   const a = t.dataset.wk;
   if (a === 'continue') return closeWkDone();
+  if (a === 'shareWk') return wkSummary && shareCard('workout');
   if (!wk) return;
   if (a === 'back') closeWorkout();
   else if (a === 'pick'){ wk.active = +t.dataset.v; wk.tool = null; renderWorkout(); }
   else if (a === 'tool'){ wk.tool = wk.tool === t.dataset.v ? null : t.dataset.v; renderWorkout(); }
-  else if (a === 'swapTo'){ const e = wkPlan().ex[wk.active]; if (t.dataset.v === e.base) delete S.swaps[e.base]; else S.swaps[e.base] = t.dataset.v; delete wk.drafts[e.ei]; save(); renderWorkout(); }
+  else if (a === 'addOpen'){ wk.add = wk.add ? null : {cat:'Push', q:''}; renderWorkout(); document.getElementById('wkAddQ')?.focus({preventScroll:true}); }
+  else if (a === 'addCat'){ wk.add.cat = t.dataset.v; wk.add.q = ''; renderWorkout(); }
+  else if (a === 'addEx'){ const x = exLibrary().find(z => z.name === t.dataset.v); if (!x) return;
+    const {p, w, d} = wkPlan(), k = extraKey(p, w, d), bag = S.extra = S.extra || {};
+    bag[k] = [...(bag[k] || []), {name:x.name, kind:x.kind, lift:x.lift, unit:x.unit || null}].slice(0, 8);
+    wk.add = null; save(); wk.active = wkPlan().ex.length - 1; wk.tool = null; renderWorkout(); toast(`${x.name} added: 3 sets.`); buzz(10); }
+  else if (a === 'addDel'){ const plan = wkPlan(), e = plan.ex[wk.active], {p, w, d} = plan, k = extraKey(p, w, d), base = plan.ex.length - (S.extra[k] || []).length;
+    if (!e.extra || plan.ex.slice(e.ei).some(x => x.sets.some(setDone))) return;   // set keys go by position: only drop what isn't started
+    S.extra[k].splice(e.ei - base, 1); if (!S.extra[k].length) delete S.extra[k]; wk.active = Math.max(0, e.ei - 1); save(); renderWorkout(); }
+  else if (a === 'swapTo'){ const e = wkPlan().ex[wk.active], bag = e.lift ? (S.liftSwaps = S.liftSwaps || {}) : S.swaps, k = e.lift || e.base; if (t.dataset.v === e.base) delete bag[k]; else bag[k] = t.dataset.v; delete wk.drafts[e.ei]; save(); renderWorkout(); }
   else if (a === 'restAdd'){ if (rest){ rest.end += 15000; rest.total += 15; tickRest(); } }
   else if (a === 'restSkip'){ stopRest(); renderWorkout(); }
   else if (a === 'rampLog'){ const plan = wkPlan(), e = plan.ex[wk.active], st = rampFor(plan, e); if (!st) return; const at = rampAt(e, st) + 1; S.ramp[rampKey(e)] = at; save(); startRest(at < st.length ? 45 : 90); renderWorkout(); buzz(8); }
@@ -7007,7 +7222,7 @@ document.addEventListener('click', e => {
   else if (a.startsWith('rv') && rvAct(a, t)){}
   else if (/^(acct|cloud|net)[A-Z]/.test(a) && acctAct(a, t)){}
   else if (a === 'petCard'){ e.stopPropagation(); openPetCard(t.dataset.id); } else if (a === 'petPoke') petPoke(); else if (a === 'petClose') petClose();
-  else if (a === 'openRivals') openRivals();
+  else if (a === 'openRivals') openRivals(t.dataset.v);
   else if (a === 'openYear') openYear(); else if (a === 'yirNext') yirNext(); else if (a === 'yirClose') yirClose(); else if (a === 'yirShare') shareYear();
   else if (a === 'startWkPlain') openWorkout();
   else if (a === 'checkQuest'){   // daily check-ins are on your honor: tap when you've done it
@@ -7034,6 +7249,9 @@ document.addEventListener('click', e => {
   else if (a === 'restScale'){ S.prefs.restScale = +t.dataset.v; save(); renderSettings(); }
   else if (a === 'chalClaim') claimChallenge();
   else if (a === 'checkin') claimCheckin();
+  else if (a === 'restPick') restPick(t.dataset.k, t.dataset.v);
+  else if (a === 'restClaim') restClaim();
+  else if (a === 'restWarnX'){ S.restWarnSeen = restWarn(); save(); render(); }
   else if (a === 'deloadEvery'){ S.prefs.deloadEvery = +t.dataset.v; save(); renderSettings(); }
   else if (a === 'deloadStart'){ startDeload(t.dataset.manual ? 'manual' : (S.deloadAsk && S.deloadAsk.reason) || 'manual'); save(); render();
     if (t.closest('#stIn')) renderSettings(); toast(`Deload week started: ${S.deload.total} lighter sessions. Your arc is paused until it's done.`); }

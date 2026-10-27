@@ -160,6 +160,11 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
       }
       // 2 wildcards from the other shops, so their stock turns up too
       for (const id of shuffle(everywhere.filter(id => !(sh.wear || []).includes(id) && !sh.pool.includes(id) && !daily.includes(id))).slice(0, 2)) daily.push(id);
+    } else {
+      // the Night Market sells for Glory, which comes slowly, so it also keeps 2 things a night of training pays for in Grind
+      const grind = [...new Set(d.rotation.flatMap(s => [...(d.shops[s].wear || []), ...d.shops[s].pool]))]
+        .filter(id => d.items[id] && !d.items[id].drop && d.items[id].cur === 'c' && d.items[id].price <= 600 && !daily.includes(id));
+      daily.push(...shuffle(grind).slice(0, 2));
     }
     // day shops also carry: this week's featured item + one limited item from this month's season
     const tags = {}, extra = [], di = dayIndex(date);
@@ -210,6 +215,10 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
       ST.gems += gems; changed();
       return { items: got, gems, complete, have: ids.filter(id => ST.owned.includes(id)).length, total: ids.length };
     },
+    // give an item outright (a season reward); false if it doesn't exist or you have it
+    grant(id) { if (!D().items[id] || ST.owned.includes(id)) return false; ST.owned.push(id); changed(); return true; },
+    seasonItems(date) { const s = seasonFor(date || new Date()); return s ? s.items.filter(id => D().items[id]) : []; },
+    owns: id => ST.owned.includes(id),
     bossProgress: bossId => { const ids = ((D().drops || {})[bossId] || []); return { have: ids.filter(id => ST.owned.includes(id)).length, total: ids.length, wins: (ST.bossWins || {})[bossId] || 0 }; },
     // put an owned item on, or take it off if it's already on (one per slot); returns whether it's on now
     equip(id) { const it = D().items[id]; if (!it || !ST.owned.includes(id)) return false; const on = ST.equipped[it.type] !== id;

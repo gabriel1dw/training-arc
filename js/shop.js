@@ -139,20 +139,27 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     return Object.assign({}, all[0], { items: [...new Set(all.flatMap(s => s.items))] }); };
   function untilHour(now, hour) { const e = new Date(now); e.setHours(hour, 0, 0, 0); if (e <= now) e.setDate(e.getDate() + 1); return e; }
   function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-  const CHEAP = 300;   // a new player starts with 500 Grind
+  const AFFORD = 350;   // "affordable": about what one or two workouts pay (a new player starts with 500 Grind)
   function stockFor(shopId, date) {
     const d = D(), sh = d.shops[shopId], seed = sh.special ? (nightKey(date) ?? dayIndex(date)) * 613 : dayIndex(date) * 977, r = rng(seed + shopId.length * 131);
     const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-    // every day: 3 things to wear (outfit / hair dye / shoes / cape) + 3 extras (aura / pet / battle fx / title)
-    const daily = shuffle(shuffle(sh.wear || []).slice(0, 3).concat(shuffle(sh.pool).slice(0, 3)));
-    // every day shop carries at least one cheap Grind item, so a brand-new player always has something to buy
+    // every day: 6 things to wear (outfit / hair dye / shoes / cape) + 6 extras (aura / pet / battle fx / title);
+    // the Night Market keeps a smaller, rarer table
+    const nWear = sh.special ? 4 : 6, nPool = sh.special ? 6 : 6;
+    const daily = shuffle(shuffle(sh.wear || []).slice(0, nWear).concat(shuffle(sh.pool).slice(0, nPool)));
     if (!sh.special) {
-      const cheap = id => d.items[id] && d.items[id].cur === 'c' && d.items[id].price <= CHEAP;
-      if (!daily.some(cheap)) {
-        let pool = [...(sh.wear || []), ...sh.pool].filter(cheap);
-        if (!pool.length) pool = d.rotation.flatMap(s => [...(d.shops[s].wear || []), ...d.shops[s].pool]).filter(cheap);
-        if (pool.length) daily[daily.length - 1] = shuffle(pool)[0];
+      const everywhere = [...new Set(d.rotation.flatMap(s => [...(d.shops[s].wear || []), ...d.shops[s].pool]))].filter(id => d.items[id] && !d.items[id].drop);
+      // an affordable mix: at least 4 things a workout or two pays for, each a different kind (gear, hair, aura, title...)
+      const cheap = id => d.items[id] && d.items[id].cur === 'c' && d.items[id].price <= AFFORD;
+      const kinds = new Set(daily.filter(cheap).map(id => d.items[id].type));
+      for (const id of shuffle([...(sh.wear || []), ...sh.pool].filter(cheap)).concat(shuffle(everywhere.filter(cheap)))) {
+        if (kinds.size >= 4) break;
+        const t = d.items[id].type; if (kinds.has(t) || daily.includes(id)) continue;
+        let k = -1; for (let j = daily.length - 1; j >= 0; j--) if (!cheap(daily[j])) { k = j; break; }   // trade out a pricier item
+        if (k < 0) break; daily[k] = id; kinds.add(t);
       }
+      // 2 wildcards from the other shops, so their stock turns up too
+      for (const id of shuffle(everywhere.filter(id => !(sh.wear || []).includes(id) && !sh.pool.includes(id) && !daily.includes(id))).slice(0, 2)) daily.push(id);
     }
     // day shops also carry: this week's featured item + one limited item from this month's season
     const tags = {}, extra = [], di = dayIndex(date);
@@ -306,6 +313,46 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
 .tsh-intro p{margin:0;font:700 8px/12px var(--ff);color:#e6dcff;max-width:200px}
 .tsh-intro button{margin-top:4px;height:26px;padding:0 16px;border:0;border-radius:6px;background:#7a5cff;color:#fff;font:900 10px/1 var(--ff)}
 .tsh-kp{}@media (prefers-reduced-motion: reduce){.tsh-kp,.tsh-body,.tsh-pet,.tsh-next,.tsh-bundle:after,.tsh-card .spk{animation:none}}
+/* ---- Layout: grid first, try-on in a sheet. The stage grows to the phone's height (fit() sets it), the scene
+   becomes a shorter strip, the grid fills the rest in 3 columns, and tapping an item slides up the try-on sheet. ---- */
+.tsh-scene{height:132px}
+.tsh-scene img,.tsh-scene canvas,.tsh-scene .tsh-kp{margin-top:-28px}
+.tsh-bub{top:42px;width:128px;min-height:34px;padding:10px 7px 5px}
+.tsh-chips{top:96px}
+.tsh-tabs{top:132px}
+.tsh-tab{padding:0 9px;font-size:7.5px}
+.tsh-bar{position:absolute;left:6px;right:6px;top:164px;height:18px;display:flex;align-items:center;gap:6px;color:var(--muted);font:800 7px/1 var(--ff)}
+.tsh-bar .n{flex:1}
+.tsh-bar button{height:16px;padding:0 6px;border-radius:4px;border:1px solid var(--edge2);background:var(--panel);color:var(--muted);font:800 7px/1 var(--ff);position:relative}
+.tsh-bar button.on{color:var(--accent);border-color:var(--accent)}
+.tsh-bar button::after{content:"";position:absolute;inset:-6px -2px}
+.tsh-grid{left:6px;top:186px;width:258px;height:auto;bottom:6px;grid-template-columns:repeat(3,1fr);grid-auto-rows:78px;gap:5px}
+.tsh-card{height:78px}
+.tsh-card img.ic{left:50%;top:6px;width:36px;height:36px;transform:translateX(-50%)}
+.tsh-card .ped{left:50%;top:38px;width:44px;transform:translateX(-50%)}
+.tsh-card .nm{top:47px;font-size:7.5px}
+.tsh-card .tsh-pr{top:61px}
+.tsh-card .tg.own{left:auto;right:3px;top:3px;width:12px;height:12px;padding:0;border-radius:50%;font:900 8px/12px var(--ff);text-align:center}
+.tsh-bundle,.tsh-stick,.tsh-slots{display:none}
+/* the try-on sheet */
+.tsh-shade{position:absolute;inset:0;z-index:7;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:opacity .2s}
+.tsh-sheet{position:absolute;left:0;right:0;bottom:0;height:262px;z-index:8;border-top:2px solid var(--accent);border-radius:10px 10px 0 0;background:var(--panel);transform:translateY(105%);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.tsh-open .tsh-shade{opacity:1;pointer-events:auto}
+.tsh-open .tsh-sheet{transform:none}
+.tsh-sheet .tsh-try{left:6px;top:12px}
+/* a title previews as a nameplate at the hero's feet, not across the face; the pet steps up out of its way */
+.tsh-plate{top:auto;bottom:20px;z-index:2}
+.tsh-pet{top:128px}
+.tsh-x{position:absolute;right:6px;top:6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--edge);background:var(--pill);color:var(--accent);font:900 10px/1 var(--ff);padding:0;z-index:2}
+.tsh-x::after{content:"";position:absolute;inset:-8px}
+.tsh-sheet .tsh-buy{left:128px;top:30px;width:136px;height:186px;border:0;background:none}
+.tsh-sheet .tsh-buy>img{left:0;top:0;width:34px;height:34px}
+.tsh-sheet .tsh-buy .bn{left:0;top:40px;max-width:136px;font-size:11px;line-height:13px;white-space:normal}
+.tsh-sheet .tsh-buy .br{left:0;top:70px;max-width:136px;font-size:7.5px;line-height:10px;white-space:normal}
+.tsh-sheet .tsh-buy .bd{left:0;top:94px;max-width:136px;font-size:7.5px;line-height:10px;white-space:normal;max-height:60px;overflow:hidden}
+.tsh-sheet .tsh-btn{left:128px;right:6px;top:222px;width:auto;height:30px;font-size:11px}
+.tsh-sheet .tsh-btn img{width:11px;height:12px}
+@media (prefers-reduced-motion: reduce){.tsh-sheet,.tsh-shade{transition:none}}
 `;
   let styled = false;
   const FONTS = { serif: 'Georgia,"Times New Roman",serif', mono: 'ui-monospace,Menlo,Consolas,"DejaVu Sans Mono",monospace', sans: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif' };
@@ -354,11 +401,14 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     ${{ nm: '<button class="tsh-chip tsh-sw"><i class="moon"></i>◂ BACK TO DAY SHOP</button>', open: '<button class="tsh-chip tsh-sw tsh-glowc"><i class="moon"></i>NIGHT MARKET IS OPEN ▸</button>',
         locked: '<div class="tsh-chip"><i class="moon"></i>NIGHT MARKET: TRAIN NOW TO UNLOCK</div>', day: '' }[mode]}</div>
   <div class="tsh-tabs"></div>
+  <div class="tsh-bar"><span class="n"></span><button class="tsh-own" aria-pressed="false"></button><button class="tsh-sort"></button></div>
+  <div class="tsh-grid" role="list"></div>
+  <div class="tsh-shade"></div>
+  <div class="tsh-sheet" role="dialog" aria-label="Try on"><button class="tsh-x" aria-label="Close">✕</button>
   <div class="tsh-try"><div class="tsh-beam"></div><div class="tsh-floor"></div>${liveLook ? '<canvas class="tsh-hero" role="img" aria-label="Your hero"></canvas>' : `<img class="tsh-hero" alt="Your hero" src="${heroSrc}">`}
     <img class="tsh-pet" alt="" hidden><canvas class="tsh-fx" width="116" height="202"></canvas><div class="tsh-plate" hidden></div>
     <div class="tsh-trylabel">TRY ON</div><div class="tsh-slots"></div><div class="tsh-trying"></div></div>
-  <div class="tsh-grid" role="list"></div>
-  <div class="tsh-buy"><img alt=""><div class="bn"></div><div class="br"></div><div class="bd"></div><button class="tsh-btn"></button></div>
+  <div class="tsh-buy"><img alt=""><div class="bn"></div><div class="br"></div><div class="bd"></div></div><button class="tsh-btn"></button></div>
   <div class="tsh-stick">${esc(bundle.sticker)}</div>
   <button class="tsh-bundle"><img src="${data.chestIcon}" alt=""><span class="t1">${esc(bundle.title)}</span><span class="t2">${esc(bundle.sub)}</span><span class="bp">${esc(bundle.price)}</span></button>
   <div class="tsh-toast"></div>
@@ -366,7 +416,9 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     <p>You trained after dark, so the market lets you in. Rare, epic and legendary goods, tonight only.</p><button class="tsh-enter">ENTER</button></div>`;
     wrap.appendChild(stage); el.appendChild(wrap);
     const $ = s => stage.querySelector(s);
-    function fit() { const s = Math.min(wrap.clientWidth / W, wrap.clientHeight / H) || 1; stage.style.transform = `scale(${s})`; }
+    // the stage keeps its 270-wide design but grows as tall as the screen allows, so the grid gets the extra room
+    function fit() { const w = wrap.clientWidth, h = wrap.clientHeight, Hd = Math.max(H, Math.min(720, Math.round(W * h / Math.max(1, w))));
+      stage.style.height = Hd + 'px'; const s = Math.min(w / W, h / Hd) || 1; stage.style.transform = `scale(${s})`; }
     const ro = window.ResizeObserver ? new ResizeObserver(fit) : null; ro ? ro.observe(wrap) : addEventListener('resize', fit); fit();
     $('.tsh-enter').onclick = () => { $('.tsh-intro').hidden = true; ST.nightIntro = nightKey(ctl.now()); persist(ST); };
     const sw = $('.tsh-sw'); if (sw) sw.onclick = () => { ctl.preferDay = shop.special; ctl.remount(); };
@@ -386,21 +438,35 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     $('.tsh-bub').onclick = () => { li = (li + 1) % lines.length; say(lines[li]); };
 
     // ---------- tabs ----------
-    const TABS = [['FEATURED', null], ['OUTFITS', 'outfit'], ['HAIR', 'hair'], ['SHOES', 'shoes'], ['CAPES', 'cape'], ['AURAS', 'aura'], ['PETS', 'pet'], ['FX', 'fx'], ['TITLES', 'title']];
+    // five tabs: everything today, things you wear, things that glow, companions, titles
+    const TABS = [['FEATURED', null], ['LOOK', ['outfit', 'hair', 'shoes', 'cape']], ['POWER', ['aura', 'fx']], ['PETS', ['pet']], ['TITLES', ['title']]];
+    const SORTS = ['FEATURED', 'PRICE', 'RARITY'], RANK_R = { L: 0, E: 1, R: 2, C: 3 };
     const heroLook = opts.hero ? opts.hero($('.tsh-hero')) : liveLook ? TA_LOOK.create($('.tsh-hero'), { body: opts.body || 'm', rank: opts.rank || 'B' }) : null;
-    let tab = 0, selId = stock.items[0];
-    const allDrops = () => Object.values(data.drops || {}).flat().filter(id => data.items[id]);
+    let tab = 0, selId = stock.items[0], showOwned = false, sortBy = 0;
+    const inTab = id => { const t = TABS[tab][1]; return !t || t.includes(data.items[id].type); };
     function renderTabs() {
       $('.tsh-tabs').innerHTML = TABS.map(([n, t], i) => {
-        const cnt = t && t !== 'mine' && t !== 'loot' ? stock.items.filter(id => data.items[id].type === t && !ST.owned.includes(id)).length : 0;
+        const cnt = t ? stock.items.filter(id => t.includes(data.items[id].type) && !ST.owned.includes(id)).length : 0;
         return `<button class="tsh-tab${i === tab ? ' on' : ''}" data-i="${i}">${n}${cnt && i !== tab ? `<b>${cnt}</b>` : ''}</button>`;
       }).join('');
-      stage.querySelectorAll('.tsh-tab').forEach(b => b.onclick = () => { tab = +b.dataset.i; const v = visible(); if (v.length) selId = v[0]; render(); });
+      stage.querySelectorAll('.tsh-tab').forEach(b => b.onclick = () => { tab = +b.dataset.i; render(); });
+      const own = stock.items.filter(id => inTab(id) && ST.owned.includes(id)).length, shown = visible().length;
+      $('.tsh-bar .n').textContent = `${shown} ITEM${shown === 1 ? '' : 'S'}${!showOwned && own ? ` · ${own} OWNED HIDDEN` : ''}`;
+      const ob = $('.tsh-own'); ob.textContent = showOwned ? '✓ OWNED' : 'SHOW OWNED'; ob.classList.toggle('on', showOwned); ob.setAttribute('aria-pressed', showOwned); ob.hidden = !own;
+      $('.tsh-sort').textContent = 'SORT: ' + SORTS[sortBy];
     }
-    const visible = () => { const t = TABS[tab][1];
-      if (t === 'mine') return ST.owned.filter(id => data.items[id]).slice().reverse();
-      if (t === 'loot') return allDrops();
-      return stock.items.filter(id => !t || data.items[id].type === t); };
+    // today's stock in this tab; things you own are hidden unless you ask; sorted the way you picked
+    const visible = () => { const v = stock.items.filter(id => inTab(id) && (showOwned || !ST.owned.includes(id)));
+      if (sortBy === 1) v.sort((a, b) => (data.items[a].cur === 'g') - (data.items[b].cur === 'g') || priceOf(a) - priceOf(b));
+      if (sortBy === 2) v.sort((a, b) => RANK_R[data.items[a].r] - RANK_R[data.items[b].r]);
+      return v; };
+    $('.tsh-own').onclick = () => { showOwned = !showOwned; render(); };
+    $('.tsh-sort').onclick = () => { sortBy = (sortBy + 1) % SORTS.length; render(); };
+    // the try-on sheet: opens when you tap an item, closes with ✕, the shade, or Back
+    const sheetOpen = () => stage.classList.contains('tsh-open');
+    const openSheet = () => { stage.classList.add('tsh-open'); $('.tsh-sheet').removeAttribute('aria-hidden'); setTimeout(() => $('.tsh-btn').focus({ preventScroll: true }), 50); };
+    const closeSheet = () => { stage.classList.remove('tsh-open'); $('.tsh-sheet').setAttribute('aria-hidden', 'true'); };
+    $('.tsh-x').onclick = closeSheet; $('.tsh-shade').onclick = closeSheet; closeSheet();
     const bossOf = it => it.drop ? (it.bossName || it.drop) : null;
     const priceOf = id => { const it = data.items[id], i = stock.items.indexOf(id); return i === stock.deal ? Math.round(it.price * .7 / 10) * 10 : it.price; };
 
@@ -420,11 +486,11 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
         return `<button class="tsh-card${selId === id ? ' sel' : ''}" role="listitem" data-id="${id}" style="--rc:${data.rarity[it.r]}" aria-label="${esc(it.name)}, ${data.rarityName[it.r]}, ${priceOf(id)} ${it.cur === 'c' ? 'Grind' : 'Glory'}">
           <span class="rk"></span><span class="ped"></span><img class="ic" src="${it.icon}" alt="">${spk}<span class="nm">${esc(it.name)}</span>
           <span class="tsh-pr"><img src="${it.cur === 'c' ? data.coinIcon : data.gemIcon}" alt="">${deal ? `<s>${fmt(it.price)}</s>` : ''}${fmt(priceOf(id))}</span>
-          ${deal ? '<span class="sale"></span><span class="salet">-30%</span>' : eq ? '<span class="tg eq">ON</span>' : owned ? '<span class="tg own">OWNED</span>' : stock.tags[id] === 'week' ? '<span class="tg tsh-wk">WEEKLY</span>' : stock.tags[id] === 'season' ? '<span class="tg tsh-ss">LIMITED</span>' : (sty.card === 'vend' ? `<span class="code">${code}</span>` : '')}
+          ${deal ? '<span class="sale"></span><span class="salet">-30%</span>' : eq ? '<span class="tg eq">ON</span>' : owned ? '<span class="tg own" title="Owned">✓</span>' : stock.tags[id] === 'week' ? '<span class="tg tsh-wk">WEEKLY</span>' : stock.tags[id] === 'season' ? '<span class="tg tsh-ss">LIMITED</span>' : (sty.card === 'vend' ? `<span class="code">${code}</span>` : '')}
         </button>`;
-      }).join('') : `<div class="tsh-empty">${TABS[tab][1] === 'mine' ? 'Nothing here yet.<br>Buy items or beat bosses<br>to fill your gear.' : 'Nothing in this tab today.<br>Check back tomorrow!'}</div>`;
+      }).join('') : `<div class="tsh-empty">${stock.items.some(inTab) ? 'You own everything here today.<br>Tap SHOW OWNED to see it,<br>or check back tomorrow!' : 'Nothing in this tab today.<br>Check back tomorrow!'}</div>`;
       stage.querySelectorAll('.tsh-card').forEach(b => b.onclick = () => { selId = b.dataset.id; const it = data.items[selId];
-        say(it.drop && !ST.owned.includes(selId) ? `That one only drops from the ${bossOf(it)}. Beat it and maybe it's yours.` : it.drop ? `The ${it.name}... you took that from the ${bossOf(it)}? Impressive.` : `Ah, the ${it.name}. ${it.desc}`); render(); });
+        say(it.drop && !ST.owned.includes(selId) ? `That one only drops from the ${bossOf(it)}. Beat it and maybe it's yours.` : it.drop ? `The ${it.name}... you took that from the ${bossOf(it)}? Impressive.` : `Ah, the ${it.name}. ${it.desc}`); render(); openSheet(); });
     }
 
     // ---------- try-on stage ----------
@@ -485,7 +551,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     $('.tsh-getgems').onclick = () => (opts.onGetGems ? opts.onGetGems() : toast(opts.gemHint || 'Gem store opens here.'));
     $('.tsh-getcoins').onclick = () => toast(opts.coinHint || 'Earn coins by beating bosses and finishing workouts!');
     $('.tsh-bundle').onclick = () => (opts.onBundle ? opts.onBundle(bundle) : toast(bundle.title + ' · ' + bundle.price));
-    $('.tsh-back').onclick = () => opts.onClose && opts.onClose();
+    $('.tsh-back').onclick = () => sheetOpen() ? closeSheet() : opts.onClose && opts.onClose();
     const sig = () => ctl.pick() + '|' + (nightKey(ctl.now()) != null) + '|' + nightUnlocked(ctl.now());
     const sig0 = sig();
     const onSt = () => { renderMoney(); if (sig() !== sig0) setTimeout(ctl.remount, 0); }; listeners.add(onSt);

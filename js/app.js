@@ -2091,7 +2091,7 @@ const PET_VOICE = {
   dr_spotter_angel:['coos and holds up two fingers.', 'is hovering by the bench, waiting to spot you.', 'is asleep under its halo.', 'smiles. "All you."', 'glows with a soft, proud light.']
 };
 // kind: 'mood' (what it's doing right now), 'pr' or 'boss'
-function petLine(id, kind = 'mood'){ const v = PET_VOICE[id], m = petMood(); if (!v) return `${petName(id)} ${m === 'sleep' ? 'is napping.' : m === 'bored' ? 'is waiting for your next workout.' : 'is happy to see you.'}`;
+function petLine(id, kind = 'mood'){ const v = PET_VOICE[id] || PET_VOICE[String(id).replace(/^sh_/, '')], m = petMood();   /* a shiny pet acts like its regular self */ if (!v) return `${petName(id)} ${m === 'sleep' ? 'is napping.' : m === 'bored' ? 'is waiting for your next workout.' : 'is happy to see you.'}`;
   const i = kind === 'pr' ? 3 : kind === 'boss' ? 4 : m === 'bored' ? 1 : m === 'sleep' ? 2 : 0; return `${petName(id)} ${v[i]}`; }
 // Each form adds +1% Grind and unlocks its own bonus, on top of the pet's base perk
 const PET_FORM_PERK = ['', '+5 Grind on every training-day check-in', 'Weekly challenges pay 20% more Grind', '+5% XP from every workout'];

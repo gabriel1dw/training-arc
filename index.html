@@ -273,6 +273,7 @@ function render(draw, o = {}){
     const c = out[i] === 1 ? r[0] : out[i] === 2 ? r[1] : out[i] === 3 ? r[Math.max(1, tone[i] - 2)] : r[tone[i]];
     d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
   Pn.decals.forEach(f => f(B));
+  if (draw.shiny) shinyTint(d, draw.shiny);   // shiny variants: the same pet, recolored toward one theme
   if ((o.form || 0) >= 3){   // legendary aura: a warm glow hugging the outline, plus a few sparkles
     const a = new Float32Array(N * N);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){ if (d[(y * N + x) * 4 + 3] > 200) continue; let m = 9;
@@ -285,6 +286,13 @@ function render(draw, o = {}){
   const c = document.createElement('canvas'); c.width = c.height = N; c.getContext('2d').putImageData(new ImageData(d, N, N), 0, 0);
   return c;
 }
+// Every colored pixel takes the theme's hue; saturation and lightness are nudged by the theme. Whites, blacks
+// and greys (eye shines, ink, outlines of grey parts) are left alone so the pet keeps its face and contrast.
+function shinyTint(d, t){
+  for (let i = 0; i < d.length; i += 4){ if (d[i + 3] < 8) continue;
+    const [h, s, l] = rgbHsl([d[i], d[i + 1], d[i + 2]]); if (s < .14 || l < .06 || l > .95) continue;
+    const c = hslRgb(t.h + (h - 180) * (t.spread || 0), clamp(s * (t.sm || 1) + (t.sa || 0), 0, 1), clamp(l + (t.la || 0), .03, .97));
+    d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; } }
 function sparkleOn(B, x, y){ for (let i = -2; i <= 2; i++){ B.set(x + i, y, '#fff6c8', 1 - Math.abs(i) / 3); B.set(x, y + i, '#fff6c8', 1 - Math.abs(i) / 3); } B.set(x, y, '#ffffff'); }
 function zzz(B, x, y){ const z = (x0, y0, s) => { for (let i = 0; i < s; i++){ B.set(x0 + i, y0, '#e8e4ff'); B.set(x0 + i, y0 + s - 1, '#e8e4ff'); B.set(x0 + s - 1 - i, y0 + i, '#e8e4ff'); } }; z(x, y, 4); z(x + 5, y - 6, 3); }
 function bounds(s){ const g = s.geo;
@@ -737,6 +745,111 @@ A.dr_dragon_egg = P => { P.shadow(48, 90, 22);
   P.dec(B => { const c = '#b8f0ff'; [[40, 30, 46, 40], [46, 40, 42, 50], [42, 50, 50, 58], [56, 24, 60, 34], [60, 34, 56, 44]].forEach(([a, b, x, y]) => B.line(a, b, x, y, c)); });
   if (P.mood !== 'sleep') { P.eye(42, 46, 4, '#b8f0ff', {glow:1}); P.eye(54, 46, 4, '#b8f0ff', {glow:1}); }
   P.anchor('neck', 48, 70, 38).anchor('brow', 48, 26, 30).anchor('top', 48, 18); };
+})();
+
+</script>
+<script id="variety-pack">
+/* Variety pack: about 40 more titles, 62 gear colorways and a shiny version of every shop pet. Gear icons are the
+   original pixel art recolored to the new colors, so they match the rest of the shop; shiny pets are the pet art
+   recolored toward one theme. Built when the app loads and merged into the shop like any other item pack. */
+(() => {
+  const packs = window.TA_ITEM_PACKS || [], core = window.TA_SHOP_DATA;
+  const all = () => [...Object.values(core.items), ...packs.flatMap(p => Object.values(p.items || {}))];
+  const DAY = ['dojo-supply', 'vend-o-matic', 'sky-bazaar', 'neon-gear', 'camp-supply'];
+  const items = {}, wear = {}, pools = {}; DAY.forEach(s => { wear[s] = []; pools[s] = []; }); pools['night-market'] = [];
+  let turn = 0; const place = (id, isWear) => { const s = DAY[turn++ % DAY.length]; (isWear ? wear : pools)[s].push(id); };
+  const taken = new Set(all().map(i => i.name.toLowerCase()));
+  const add = (it, isWear) => { if (taken.has(it.name.toLowerCase())) return; taken.add(it.name.toLowerCase()); items[it.id] = it; place(it.id, isWear); };
+  const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+  // ---------- titles: text on a scroll, reusing a title scroll of the same rarity ----------
+  const scroll = r => (all().find(i => i.type === 'title' && i.r === r && i.icon) || all().find(i => i.type === 'title' && i.icon) || {}).icon;
+  const TITLE_COLORS = {C:['#e6ad22', '#9fd3ff', '#9fe3c8', '#f4b3c8'], R:['#4cc3ff', '#ff8a3d', '#8ad86a', '#c8a0ff'], E:['#b98cff', '#ff4d7d', '#3ddc97', '#ffd23f'], L:['#ffd23f', '#f4f2ff', '#ff6a9a', '#7af0ff']};
+  const TITLES = {
+    C:['Rep Counter', 'Early Riser', 'Chalk Hands', 'Gym Regular', 'Warm-Up Champ', 'Bench Regular', 'Stretch Master', 'Leg Day Survivor', 'Protein Shake', 'Foam Roller', 'Rest Day Ready', 'Spotter', 'Morning Session', 'Clean Reps', 'Hydrated', 'Gym Rat'],
+    R:['PR Hunter', 'Deadlift Demon', 'Squat Samurai', 'Bench Baron', 'Iron Ascetic', 'Cardio Ninja', 'Kettlebell Knight', 'Plate Collector', 'Streak Keeper', 'Form Police', 'Sprint Specter', 'Barbell Bard'],
+    E:["Gravity's Rival", 'Unbreakable', 'The Last Rep', 'Arc Walker', 'Dojo Legend', 'Steel Spirit', 'Thunder Thighs', 'Peak Seeker'],
+    L:['Mythic Lifter', 'Endless Arc', "Heaven's Barbell", 'The Final Form']};
+  const TITLE_PRICE = {C:[160, 'c'], R:[420, 'c'], E:[1000, 'c'], L:[80, 'g']};
+  for (const [r, names] of Object.entries(TITLES)) names.forEach((n, i) => add({id:'vt_' + slug(n), type:'title', name:n, r, price:TITLE_PRICE[r][0] + (i % 3) * 20, cur:TITLE_PRICE[r][1],
+    text:n.toUpperCase(), color:TITLE_COLORS[r][i % 4], icon:scroll(r), desc:'A title for your character card.'}), false);
+
+  // ---------- gear colorways: a base item's look in new colors ----------
+  const recolorJobs = [];   // [item, base icon, [[fromHex, toHex], ...]]
+  const gear = (base, id, name, r, price, extra, map, isWear = true) => { if (!base || !base.icon) return;
+    const it = {id, type:base.type, name, r, price, cur:'c', icon:base.icon, desc:base.desc || '', ...extra}; add(it, isWear);
+    if (items[id]) recolorJobs.push([it, base.icon, map]); };
+  const lastWord = n => n.split(' ').pop();
+  const bases = t => all().filter(i => i.type === t && !i.drop && i.icon).sort((a, b) => a.id.localeCompare(b.id));
+  const OUTFIT_PAL = [['Midnight', '#1d2550', '#12162a', '#8ec8ff', '#8ec8ff'], ['Ember', '#d84a1f', '#2a1a14', '#ffcf4a', '#ffcf4a'], ['Forest', '#2f6b3a', '#1c2a1e', '#d8c27a', '#d8c27a'],
+    ['Sakura', '#f2a6c4', '#3a2a3a', '#ffffff', '#c8406a'], ['Arctic', '#e8f2fa', '#6a8aa8', '#4cc3ff', '#4cc3ff'], ['Royal', '#5a2fb0', '#1e1438', '#f2c94c', '#f2c94c'],
+    ['Desert', '#d8b07a', '#6a4a2a', '#8a3a1a', '#8a3a1a'], ['Ocean', '#1f7ab0', '#0e2a40', '#9fe7ff', '#ffffff'], ['Volt', '#2a2a34', '#1a1a20', '#c8ff3a', '#c8ff3a'],
+    ['Cherry', '#c8203a', '#f4f0ea', '#ffffff', '#2a2a34'], ['Storm', '#4a5a72', '#23293a', '#c8d4e8', '#ffe14a'], ['Mint', '#6ad8b0', '#24504a', '#ffffff', '#f2fff8']];
+  // 10 outfit styles x 2 colorways (one cheap, one rare)
+  const styles = []; for (const b of bases('outfit')) if (b.outfit && !styles.some(s => lastWord(s.name) === lastWord(b.name))) styles.push(b);
+  styles.slice(0, 10).forEach((b, i) => [0, 1].forEach(j => { const p = OUTFIT_PAL[(i * 2 + j * 5) % OUTFIT_PAL.length], cheap = j === 0;
+    gear(b, `vo_${slug(p[0])}_${slug(lastWord(b.name))}`, `${p[0]} ${lastWord(b.name)}`, cheap ? 'C' : 'R', cheap ? 280 + (i % 3) * 20 : 560 + (i % 3) * 40,
+      {outfit:{shirt:p[1], pants:p[2], stripe:p[3], emb:p[4]}},
+      [[b.outfit.shirt, p[1]], [b.outfit.pants, p[2]], [b.outfit.stripe, p[3]], [b.outfit.emb, p[4]]]); }));
+  // 12 hair dyes
+  const hairBase = bases('hair').find(b => b.color);
+  [['Mint', '#7ae8c0'], ['Lavender', '#b9a0ff'], ['Copper', '#c8642a'], ['Rose Gold', '#e8a090'], ['Ash Gray', '#9a9aa8'], ['Sunset', '#ff8a3a'], ['Electric Blue', '#3a8aff'],
+    ['Neon Lime', '#a8ff3a'], ['Cherry Red', '#d8203a'], ['Ice White', '#eef6ff'], ['Plum', '#6a2a6a'], ['Deep Teal', '#1fa3a3']]
+    .forEach(([n, c], i) => gear(hairBase, 'vh_' + slug(n), `${n} Dye`, i % 4 === 3 ? 'R' : 'C', i % 4 === 3 ? 480 : 180 + (i % 3) * 30, {color:c}, [[hairBase.color, c]]));
+  // 10 shoes
+  const shoeBases = bases('shoes').filter(b => b.shoes);
+  [['Volt', '#c8ff3a', '#1a1a20'], ['Ice', '#e8f4ff', '#4c9aff'], ['Ember', '#ff5a1f', '#2a1a14'], ['Royal', '#6a3ad8', '#f2c94c'], ['Mint', '#7ae8c0', '#ffffff'],
+    ['Shadow', '#2a2a34', '#c8203a'], ['Sakura', '#f6a6c1', '#ffffff'], ['Desert', '#d8b07a', '#6a4a2a'], ['Ocean', '#1f7ab0', '#e8f4ff'], ['Cherry', '#c8203a', '#f4f0ea']]
+    .forEach(([n, s, so], i) => { const b = shoeBases[i % shoeBases.length]; if (!b) return;
+      gear(b, `vs_${slug(n)}_${slug(lastWord(b.name))}`, `${n} ${lastWord(b.name)}`, i % 3 === 2 ? 'R' : 'C', i % 3 === 2 ? 460 : 220 + (i % 2) * 40,
+        {shoes:{...b.shoes, shoe:s, sole:so}}, [[b.shoes.shoe, s], ...(b.shoes.sole ? [[b.shoes.sole, so]] : [])]); });
+  // 10 capes
+  const capeBase = bases('cape').find(b => b.color);
+  [['Midnight', '#1d2550'], ['Ember', '#d84a1f'], ['Forest', '#2f6b3a'], ['Royal', '#5a2fb0'], ['Ocean', '#1f7ab0'], ['Sakura', '#f2a6c4'], ['Storm', '#4a5a72'], ['Gilded', '#e8b43a'], ['Ivory', '#f0e8d8'], ['Obsidian', '#1a1820']]
+    .forEach(([n, c], i) => gear(capeBase, 'vc_' + slug(n), `${n} Cape`, i % 3 === 2 ? 'R' : 'C', i % 3 === 2 ? 620 : 300 + (i % 2) * 40, {color:c}, [[capeBase.color, c]]));
+  // 10 auras (a little XP perk each, by rarity)
+  const auraBase = bases('aura').find(b => b.color);
+  [['Mint Ki', '#6af0c0'], ['Sakura Ki', '#ff8ac8'], ['Solar Flare', '#ffcf3a'], ['Void Pulse', '#6a3ad8'], ['Frost Mist', '#9fe7ff'], ['Toxic Haze', '#a8ff3a'], ['Ember Glow', '#ff6a2a'], ['Tidal Ki', '#3a9aff'], ['Rose Flame', '#ff4a6a'], ['Silver Ki', '#e0e4f0']]
+    .forEach(([n, c], i) => gear(auraBase, 'va_' + slug(n), n, i % 3 === 0 ? 'C' : i % 3 === 1 ? 'R' : 'E', i % 3 === 0 ? 320 : i % 3 === 1 ? 760 : 1200, {color:c}, [[auraBase.color, c]], false));
+
+  // ---------- shiny pets: every shop pet, recolored toward a theme; rare, sold in the Night Market ----------
+  const THEMES = [{n:'Golden', h:45, sm:1.1, sa:.15, la:.04}, {n:'Frost', h:195, sm:.7, sa:.05, la:.1}, {n:'Shadow', h:270, sm:.6, sa:.05, la:-.12},
+    {n:'Crimson', h:355, sm:1, sa:.15, la:-.03}, {n:'Jade', h:150, sm:.9, sa:.1, la:0}, {n:'Sakura', h:330, sm:.7, sa:.1, la:.1}];
+  const AVOID = {Crimson:/ember|phoenix|crab|fox|tiger|jack|koi|gobbles/, Golden:/duck|jack|sun|tiger|fox|bulk|harvest/, Frost:/snow|sky|blue|wisp|penguin|sea|moon_slime/,
+    Jade:/frog|slime|turtle|golem|snake/, Shadow:/shadow|crow|count|bat|data/, Sakura:/heart|bunny|ghost|neon|puff/};
+  const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7);
+  const PA = window.PETART;
+  if (PA) for (const b of all().filter(i => i.type === 'pet' && /^pet_/.test(i.id) && PA.PETS[i.id])){
+    let t = THEMES[Math.abs(hash(b.id)) % THEMES.length]; for (let k = 0; AVOID[t.n] && AVOID[t.n].test(b.id) && k < THEMES.length; k++) t = THEMES[(THEMES.indexOf(t) + 1) % THEMES.length];
+    const id = 'sh_' + b.id, draw = Object.assign((P, o) => PA.PETS[b.id](P, o), {shiny:t}); PA.PETS[id] = draw;
+    const it = {id, type:'pet', name:`${t.n} ${b.name}`, r:'L', price:90 + Math.abs(hash(id)) % 4 * 10, cur:'g', icon:b.icon, shiny:true,
+      desc:`A rare shiny ${b.name}. ${String(b.desc || '').replace(/\s*Perk:.*$/, '')}`.trim()};
+    if (!taken.has(it.name.toLowerCase())){ taken.add(it.name.toLowerCase()); items[id] = it; pools['night-market'].push(id); }
+  }
+
+  (window.TA_ITEM_PACKS = window.TA_ITEM_PACKS || []).push({id:'pack-variety', name:'Variety Pack', items, wear, pools});
+
+  // ---------- recolor the gear icons (async: each base icon is an image; cards pick up the new art when ready) ----------
+  const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  function rgbHsl(r, g, b){ r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let h = 0, s = 0;
+    if (mx !== mn){ const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; } return [h, s, l]; }
+  function hslRgb(h, s, l){ h = ((h % 360) + 360) % 360 / 360; if (!s) return [l, l, l].map(v => Math.round(v * 255));
+    const q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q, f = t => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+    return [f(h + 1 / 3), f(h), f(h - 1 / 3)].map(v => Math.round(v * 255)); }
+  // each pixel goes to its nearest base color (hue first for colorful ones, lightness for greys); the shade it had
+  // relative to that color carries over to the new color, so highlights and shadows stay put
+  function dist(a, b){ const sat = Math.min(a[1], b[1]); if (sat < .12) return Math.abs(a[2] - b[2]) * .9 + Math.abs(a[1] - b[1]);
+    const dh = Math.min(Math.abs(a[0] - b[0]), 360 - Math.abs(a[0] - b[0])) / 180; return dh * 2.2 + Math.abs(a[1] - b[1]) * .7 + Math.abs(a[2] - b[2]) * .35; }
+  function recolor([it, src, map]){ return new Promise(res => { const img = new Image(); img.onload = () => {
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height), px = d.data, m = map.filter(([f, t]) => f && t).map(([f, t]) => [rgbHsl(...hexRgb(f)), rgbHsl(...hexRgb(t))]);
+    for (let i = 0; i < px.length; i += 4){ if (px[i + 3] < 10) continue; const p = rgbHsl(px[i], px[i + 1], px[i + 2]); if (p[2] < .07) continue;
+      let best = null, bd = .42; for (const pair of m){ const dd = dist(p, pair[0]); if (dd < bd){ bd = dd; best = pair; } }
+      if (!best){ continue; } const [F, T] = best;
+      const s = F[1] > .06 ? Math.min(1, T[1] * (p[1] / F[1])) : T[1], l = Math.min(.97, Math.max(.03, T[2] + (p[2] - F[2])));
+      const out = hslRgb(T[0], s, l); px[i] = out[0]; px[i + 1] = out[1]; px[i + 2] = out[2]; }
+    x.putImageData(d, 0, 0); it.icon = c.toDataURL(); res(); }; img.onerror = () => res(); img.src = src; }); }
+  window.TA_VARIETY_READY = (async () => { for (const j of recolorJobs) await recolor(j); })();
 })();
 
 </script>

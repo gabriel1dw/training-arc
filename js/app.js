@@ -4056,14 +4056,16 @@ function rivalsHTML(kind){
 const RV_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
 let rvBack = 'today';
 var rvTab;   // 'friends' or 'rivals' on the Friends & Rivals page
-const friendsNew = () => (S.cheerIn || []).length;
+const reqsIn = () => (netReq || []).filter(r => r.dir === 'in').length;
+const friendsNew = () => (S.cheerIn || []).length + reqsIn();
 const rivalsNew2 = () => (S.chals || []).filter(c => !c.claimed && !c.gone && (c.k === 'lift' || !chalState(c).gone)).length + (S.tauntIn || []).length;
 const rivalsNew = () => friendsNew() + rivalsNew2();
 const rivalsBtn = () => { const n = rivalsNew(); return `<button type="button" class="icon-btn rv-btn" data-act="openRivals" aria-label="Friends and rivals${n ? `, ${n} new` : ''}">${RV_ICON}${n ? `<i class="rv-dot num">${n}</i>` : ''}</button>`; };
 // Today: a slim bar under the banner that says what's going on with your friends and rivals
 function rivalsBar(){ const f = friendsNew(), r = rivalsNew2(), n = f + r, ws = weekStart(todayIso());
   let sub = 'Cheer on friends, challenge rivals';
-  if (n) sub = [f ? `${f} cheer${f === 1 ? '' : 's'}` : '', r ? `${r} challenge${r === 1 ? '' : 's'} or taunt${r === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
+  const q = reqsIn(), c = f - q;
+  if (n) sub = [q ? `${q} friend request${q === 1 ? '' : 's'}` : '', c ? `${c} cheer${c === 1 ? '' : 's'}` : '', r ? `${r} challenge${r === 1 ? '' : 's'} or taunt${r === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
   else if (auth() && netFriends && netFriends.length){ const me = netCard().wx, place = 1 + netFriends.filter(x => x.ws === ws && x.wx > me).length; sub = `You're #${place} of ${netFriends.length + 1} this week`; }
   return `<button type="button" class="rv-bar" data-act="openRivals"><span class="rv-bar-ico">${RV_ICON}${n ? `<i class="rv-dot num">${n}</i>` : ''}</span><span class="rv-bar-t"><b>Friends &amp; Rivals</b><small>${sub}</small></span><span aria-hidden="true">›</span></button>`; }
 function openRivals(){ if (tab !== 'rivals') rvBack = tab; if (!rvTab) rvTab = rivalsNew2() && !friendsNew() ? 'rivals' : 'friends'; tab = 'rivals'; render(true); window.scrollTo(0, 0); }
@@ -4152,7 +4154,7 @@ function rvAct(a, t){
 // supabase/schema.sql keep each person's data to themselves. Each profile on the device has its own sign-in.
 // The state below is var on purpose: save() runs during startup, before this part of the script.
 const SB_URL = 'https://cozbkvpiedqoxabdsovb.supabase.co', SB_KEY = 'sb_publishable_2hJrncpjszI5rw6wFxcctQ_jIpKQBSk';
-var authMem, refreshing, cloud, netFriends, netMe, netErr, acct;
+var authMem, refreshing, cloud, netFriends, netMe, netErr, acct, netReq;   // netReq: friend requests, in (to you) and out (sent by you)
 function authKey(){ return KEY ? KEY + ':auth' : null; }
 function auth(){ const k = authKey(); if (!authMem || authMem.k !== k){ let a = null; try { a = k && JSON.parse(localStorage.getItem(k)); } catch(e){} authMem = {k, a}; } return authMem.a; }
 function setAuth(a){ const k = authKey(); authMem = {k, a}; try { if (a) localStorage.setItem(k, JSON.stringify(a)); else localStorage.removeItem(k); } catch(e){} }
@@ -4227,23 +4229,41 @@ async function netLoad(){ const a = auth(); if (!a) return;
     netFriends = rows.filter(r => r.id !== a.user.id).map(r => { const c = r.card && typeof r.card === 'object' ? r.card : {};
       return {...cleanCard(c, {id:r.id, n:String(r.name || 'Friend').replace(/[\u0000-\u001f]/g, '').slice(0, 20), u:c.u === 'kg' ? 'kg' : 'lb'}), at:r.updated_at}; });
     netErr = ''; } catch(e){ netErr = netMsg(e); if (!netFriends) netFriends = []; }
-  netPaint(); acctPaint(); }
+  // requests: someone you asked who's now on your list said yes
+  try { const before = (netReq || []).filter(r => r.dir === 'out'), rows = await sb('/rest/v1/rpc/my_requests', {method:'POST', body:'{}'}) || [];
+    netReq = rows.map(r => ({id:String(r.id), dir:r.dir === 'in' ? 'in' : 'out', n:String(r.name || 'Player').replace(/[\u0000-\u001f]/g, '').slice(0, 20),
+      ri:Math.min(RANKS.length - 1, Math.max(0, Math.round(+r.ri) || 0)), lv:Math.min(MAX_LEVEL, Math.max(1, Math.round(+r.lv) || 1))}));
+    for (const o of before) if (!netReq.some(r => r.id === o.id) && (netFriends || []).some(f => f.id === o.id)) toast(`${o.n} accepted your friend request!`);
+  } catch(e){ if (!netReq) netReq = []; }
+  netPaint(); acctPaint(); if (tab === 'today') { const b = document.querySelector('.rv-bar'); if (b) b.outerHTML = rivalsBar(); } }
+// Friend requests: answer one sent to you, or take back one you sent
+async function netAnswer(id, accept){ const r = (netReq || []).find(x => x.id === id && x.dir === 'in'); if (!r) return;
+  try { await sb('/rest/v1/rpc/answer_request', {method:'POST', body:JSON.stringify({requester:id, accept})}); await netLoad();
+    if (accept) relAsk(id, r.n); else toast(`Declined ${r.n}'s request.`); } catch(e){ toast(netMsg(e)); await netLoad(); } }
+async function netCancel(id){ const r = (netReq || []).find(x => x.id === id && x.dir === 'out'); if (!r) return;
+  try { await sb('/rest/v1/rpc/cancel_request', {method:'POST', body:JSON.stringify({target:id})}); toast(`Request to ${r.n} cancelled.`); await netLoad(); } catch(e){ toast(netMsg(e)); } }
+function netReqHTML(){ const ins = (netReq || []).filter(r => r.dir === 'in'), outs = (netReq || []).filter(r => r.dir === 'out'); if (!ins.length && !outs.length) return '';
+  const row = (r, btns) => `<li class="rq-row"><span class="rl-who"><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small></span><span class="rq-btns">${btns}</span></li>`;
+  return `${ins.length ? `<span class="rl-sec">Friend requests</span><ul class="rq">${ins.map(r => row(r, `<button type="button" class="btn btn-ghost btn-sm" data-act="netDecline" data-id="${r.id}">Decline</button><button type="button" class="btn btn-power btn-sm" data-act="netAccept" data-id="${r.id}">Accept</button>`)).join('')}</ul>` : ''}
+    ${outs.length ? `<span class="rl-sec">Requests you sent</span><ul class="rq">${outs.map(r => row(r, `<small class="rq-wait">Waiting</small><button type="button" class="wk-link" data-act="netCancel" data-id="${r.id}">Cancel</button>`)).join('')}</ul>` : ''}`; }
 function netPaint(){ const box = document.getElementById('netBox'); if (box){ box.outerHTML = netHTML(); paintRivals(); } }
 function netHTML(rel = rvTab === 'rivals' ? 'rival' : 'friend'){
   if (!auth()) return `<div id="netBox" class="net-box"><p class="fine">Sign in for live friends and rivals, a weekly leaderboard and a cloud backup of your progress.</p><div><button type="button" class="btn btn-ghost btn-sm" data-act="acctOpen">Sign in</button></div></div>`;
   const ws = weekStart(todayIso()), me = {...netCard(), id:'me', n:S.hero.name || 'Hero', isMe:true}, mine = (netFriends || []).filter(f => relOf(f.id, true) === rel);
   const board = [me, ...mine].map(c => c.ws === ws ? c : {...c, wx:0, wsets:0, wwk:0}).sort((x, y) => y.wx - x.wx || y.wsets - x.wsets);
-  return `<div id="netBox" class="net-box"><div class="row-between"><span class="rl-sec">${rel === 'rival' ? 'Rivals' : 'Friends'} · this week</span><button type="button" class="wk-link" data-act="netCopy">Your code <b class="num">${netMe ? netMe.friend_code : '…'}</b></button></div>
+  return `<div id="netBox" class="net-box">${netReqHTML()}<div class="row-between"><span class="rl-sec">${rel === 'rival' ? 'Rivals' : 'Friends'} · this week</span><button type="button" class="wk-link" data-act="netCopy">Your code <b class="num">${netMe ? netMe.friend_code : '…'}</b></button></div>
     ${netFriends === null ? '<p class="fine">Loading friends…</p>' : ''}${netErr ? `<p class="fine">${esc(netErr)}</p>` : ''}
     <ol class="lb">${board.map((c, i) => `<li><button type="button" class="lb-row${c.isMe ? ' me' : ''}"${c.isMe ? ' disabled' : ` data-act="rvOpen" data-id="${c.id}"`}><span class="lb-n num">${i + 1}</span><canvas class="rl-hero" data-rv="${c.id}" width="128" height="208" aria-hidden="true"></canvas>
-      <span class="rl-who"><b>${esc(c.n)}${c.isMe ? ' (you)' : ''}</b><small>${RANKS[c.ri].k}-Rank · Lv ${c.lv}</small></span><span class="lb-xp"><b class="num">${fmt(c.wx)} XP</b><small>${c.wwk} workout${c.wwk === 1 ? '' : 's'} · ${fmt(c.wsets)} sets</small></span></button></li>`).join('')}</ol>
+      <span class="rl-who"><b>${esc(c.n)}</b><small>${c.isMe ? 'You · ' : ''}${RANKS[c.ri].k}-Rank · Lv ${c.lv}</small></span><span class="lb-xp"><b class="num">${fmt(c.wx)} XP</b><small>${c.wwk} workout${c.wwk === 1 ? '' : 's'} · ${fmt(c.wsets)} sets</small></span></button></li>`).join('')}</ol>
     ${netFriends && !mine.length ? `<p class="fine">${rel === 'rival' ? 'No live rivals yet. Add someone by their code and pick Rival.' : 'No live friends yet. Send them your code, or type theirs below.'}</p>` : ''}
-    <div class="rl-add"><input id="netCode" type="text" placeholder="Friend's 8-character code" aria-label="Friend's code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10"><button type="button" class="btn btn-ghost btn-sm" data-act="netAdd">Add friend</button></div></div>`;
+    <div class="rl-add"><input id="netCode" type="text" placeholder="Friend's code" aria-label="Friend's 8-character code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="10"><button type="button" class="btn btn-ghost btn-sm" data-act="netAdd">Send request</button></div></div>`;
 }
 async function netAdd(){ const el = document.getElementById('netCode'), code = (el && el.value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
   if (code.length !== 8){ toast('Friend codes are 8 letters and numbers.'); return; }
-  try { const r = await sb('/rest/v1/rpc/add_friend', {method:'POST', body:JSON.stringify({code})}); if (el) el.value = '';
-    await netLoad(); if (r && r.id) relAsk(r.id, r.name || 'Friend'); else toast('Added.'); } catch(e){ toast(netMsg(e)); } }
+  try { const r = await sb('/rest/v1/rpc/send_request', {method:'POST', body:JSON.stringify({code})}) || {}; if (el) el.value = '';
+    await netLoad();
+    if (r.status === 'friends') relAsk(r.id, r.name || 'Friend');   // they had already asked you
+    else toast(`Friend request sent to ${r.name || 'them'}. They'll see it on their Friends tab.`); } catch(e){ toast(netMsg(e)); } }
 // The account sheet: sign in, then cloud save status, your friend code, sign out and delete
 function acctState(){ if (!acct) acct = {step:'email', email:'', busy:false, err:'', sent:0, delArmed:false}; return acct; }
 function acctDlg(html, sticky){ const d = document.getElementById('acctDlg'); d.innerHTML = `<div class="pc-card rl-card ac-card" style="--rc:var(--power)">${html}</div>`; d.dataset.sticky = sticky ? 1 : ''; if (!d.open) d.showModal(); }
@@ -4260,7 +4280,7 @@ function acctShow(){
   const status = cloud && cloud.busy ? 'Syncing…' : cloud && cloud.err ? `Not synced: ${esc(cloud.err)}` : S.cloudAt ? `Saved to your account ${agoText(S.cloudAt)}` : 'Not synced yet';
   acctDlg(`<b class="rl-h">Account</b><p class="fine">Signed in as <b>${esc(a.user.email)}</b> on ${esc(S.hero.name || 'Hero')}'s profile.</p>
     <div class="ac-row"><div><b>Cloud save</b><small>${status}</small></div><button type="button" class="btn btn-ghost btn-sm" data-act="acctSync"${cloud && cloud.busy ? ' disabled' : ''}>Sync now</button></div>
-    <div class="ac-row"><div><b>Your friend code</b><small>Friends type it under Progress › Rivals.</small></div><button type="button" class="btn btn-ghost btn-sm num" data-act="netCopy">${netMe ? netMe.friend_code : '…'}</button></div>
+    <div class="ac-row"><div><b>Your friend code</b><small>Friends type it on their Friends &amp; Rivals page to send you a request.</small></div><button type="button" class="btn btn-ghost btn-sm num" data-act="netCopy">${netMe ? netMe.friend_code : '…'}</button></div>
     <div class="ac-row"><div><b>Sign out</b><small>This device keeps its progress.</small></div><button type="button" class="btn btn-ghost btn-sm" data-act="acctOut">Sign out</button></div>
     <div class="ac-row ac-danger"><div><b>Delete account</b><small>Deletes your account, cloud save and friend list for good. Progress on this device stays.</small></div><button type="button" class="btn btn-danger btn-sm" data-act="acctDel">${st.delArmed ? 'Tap again to delete' : 'Delete'}</button></div>
     <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="acctClose">Done</button></div>`);
@@ -4279,7 +4299,7 @@ async function acctVerify(){ const st = acctState(), code = (document.getElement
     acct = null; acctState(); if (cloud) cloud.booted = null; netFriends = null; netMe = null;
     document.getElementById('acctDlg').close(); toast('Signed in.'); render(); cloudBoot(); }
   catch(e){ st.busy = false; st.err = e.status === 403 || /expired|invalid/i.test(e.message) ? 'That code didn\'t work or has run out. Send a new one.' : netMsg(e); acctShow(); } }
-function acctSignedOut(msg){ setAuth(null); delete S.cloudAt; delete S.cloudDirty; quietSave(); netFriends = null; netMe = null; if (cloud) cloud.booted = null; acct = null;
+function acctSignedOut(msg){ setAuth(null); delete S.cloudAt; delete S.cloudDirty; quietSave(); netFriends = null; netMe = null; netReq = null; if (cloud) cloud.booted = null; acct = null;
   document.getElementById('acctDlg').close(); render(); if (settingsOpen()) renderSettings(); toast(msg); }
 function acctAct(a, t){
   if (a === 'acctOpen') acctOpen(); else if (a === 'acctClose') document.getElementById('acctDlg').close();
@@ -4293,6 +4313,8 @@ function acctAct(a, t){
     if (q) try { localStorage.setItem(undoKey(), JSON.stringify(q.data)); undoAvail = true; } catch(e){}
     cloudPush().then(() => toast('Kept this device\'s progress and saved it to your account.')); }
   else if (a === 'netAdd') netAdd();
+  else if (a === 'netAccept' || a === 'netDecline'){ t.disabled = true; netAnswer(t.dataset.id, a === 'netAccept'); }
+  else if (a === 'netCancel') netCancel(t.dataset.id);
   else if (a === 'netCopy'){ const c = netMe && netMe.friend_code; if (!c) return true; (navigator.clipboard ? navigator.clipboard.writeText(c) : Promise.reject()).then(() => toast(`Copied your code: ${c}`), () => toast(`Your code: ${c}`)); }
   else if (a === 'netDel'){ const f = (netFriends || []).find(x => x.id === t.dataset.id); if (!f) return true;
     if (!t.dataset.sure){ t.dataset.sure = 1; t.textContent = `Remove ${f.n}?`; return true; }

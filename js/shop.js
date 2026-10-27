@@ -224,6 +224,9 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     equip(id) { const it = D().items[id]; if (!it || !ST.owned.includes(id)) return false; const on = ST.equipped[it.type] !== id;
       if (on) ST.equipped[it.type] = id; else delete ST.equipped[it.type]; changed(); return on; },
     reset(s) { ST = Object.assign(JSON.parse(JSON.stringify(START)), s || {}); changed(); },
+    // Grind put up as a showdown stake: false (and nothing taken) if you don't have that much
+    spendCoins(n) { n = Math.max(0, n | 0); if (ST.coins < n) return false; ST.coins -= n; changed(); return true; },
+    coins: () => ST.coins,
     // load the wallet of the profile now in use (new profiles get the welcome gift)
     bind() { const s = load(); ST = s ? Object.assign(JSON.parse(JSON.stringify(START)), s) : JSON.parse(JSON.stringify(START)); if (!s) persist(ST); listeners.forEach(f => f()); },
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }

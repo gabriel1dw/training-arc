@@ -4070,16 +4070,21 @@ function cleanCard(o, base){
   const acc = {}; for (const s of SLOT_ORDER){ const a = (o.acc || {})[s]; if (ACCESSORIES.some(x => x.id === a && x.slot === s)) acc[s] = a; }
   const pet = o.pet && typeof o.pet.id === 'string' && own(TA_SHOP_DATA.items, o.pet.id) && shopItem(o.pet.id).type === 'pet' ? {id:o.pet.id, f:int(o.pet.f, 0, 3)} : null;
   const iso = v => /^\d{4}-\d\d-\d\d$/.test(v) ? v : null;
+  const lifts = s => Object.fromEntries(Object.keys(LIFTS).map(l => ['e_' + l, int((s || {})['e_' + l], 0, 3000)]));
   return {...base, t:'f', g, ri:int(o.ri, 0, RANKS.length - 1), lv:int(o.lv, 1, MAX_LEVEL), title:str(o.title, 28),
     m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, int((o.m || {})[l], 0, 2000)])), md:int(o.md, 0, 999), st:int(o.st, 0, 999), wk:int(o.wk, 0, 99999),
     look, style:styleById(o.style) ? o.style : (g === 'male' ? 'spiky' : (FEMALE_HAIR_STYLES[0] || {}).id), acc, pet, d:iso(o.d) || todayIso(),
     ws:iso(o.ws), wx:int(o.wx, 0, 1e6), wsets:int(o.wsets, 0, 5000), wwk:int(o.wwk, 0, 50), wv:int(o.wv, 0, 1e8),   // this week, for the leaderboard
-    wh:typeof o.wh === 'string' && /^[01]{1,52}$/.test(o.wh) ? o.wh : ''};   // weeks that hit the goal, for a streak together
+    wh:typeof o.wh === 'string' && /^[01]{1,52}$/.test(o.wh) ? o.wh : '',   // weeks that hit the goal, for a streak together
+    ...lifts(o),   // this week's best estimated max per lift, for lift duels
+    pw:(Array.isArray(o.pw) ? o.pw : []).slice(0, 3).filter(p => p && iso(p.ws)).map(p => ({ws:p.ws, wx:int(p.wx, 0, 1e6), wsets:int(p.wsets, 0, 5000), wwk:int(p.wwk, 0, 50), wv:int(p.wv, 0, 1e8), ...lifts(p)})),   // the last 3 finished weeks, for showdowns
+    tr:(Array.isArray(o.tr) ? o.tr : []).filter(id => TROPHIES.some(x => x[0] === id)).slice(0, TROPHIES.length),
+    cr:o.cr && /^[a-z0-9]{6,24}$/i.test(o.cr.id || '') ? {id:o.cr.id, n:str(o.cr.n, 20).replace(/[<>]/g, '') || 'Crew'} : null};
 }
 function myCard(){ const g = S.hero.gender, h = S.hero[g], pid = shopEq().pet;
   return {t:'f', id:socialId(), n:S.hero.name || 'Hero', g, ri:rankIdx(), lv:levelInfo(S.xp).L, title:heroTitle(), u:S.unit,
     m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, Math.round(bestMax(l))])), md:Object.keys(S.ach).length, st:weekStreak(), wk:S.log.length,
-    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso(), wh:weekHits()}; }
+    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso(), wh:weekHits(), tr:S.trophies || [], cr:S.crew ? {id:S.crew.id, n:S.crew.n} : null}; }
 const inMyUnit = (v, u) => u === S.unit ? v : S.unit === 'kg' ? v / 2.20462 : v * 2.20462;
 // Opening a code: a card adds or updates a rival, a challenge goes on Today
 function takeCode(text, quiet){
@@ -4205,7 +4210,7 @@ function rivalsHTML(kind){
   // signed out with no swapped cards yet: sign-in leads, and the no-account way waits behind one tap
   const tuck = !auth() && !rv.length;
   return `<section class="panel rivals">
-    ${netHTML(rel)}${rel === 'friend' ? duoHTML() : ''}
+    ${rel === 'rival' ? nemesisHTML() : ''}${netHTML(rel)}${sdHTML(rel)}${rel === 'friend' ? duoHTML() + crewHTML() : ''}${auth() && rel === 'rival' ? `<section class="panel trophies"><div class="row-between"><span class="rl-sec">Your trophies</span><span class="fine">${(S.trophies || []).length} of ${TROPHIES.length}</span></div>${trophyShelf(S.trophies, true)}</section>` : ''}
     ${tuck ? '<details class="rl-nocode"><summary>No account? Swap cards by code</summary>' : '<span class="rl-sec">Swapped by code</span>'}
     ${rv.length ? `<div class="rl-list">${rv.map(r => `<button type="button" class="rl-row" data-act="rvOpen" data-id="${r.id}"><canvas class="rl-hero" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas>
       <span class="rl-who"><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}${r.title ? ` · ${esc(r.title)}` : ''}</small><small class="fine">Card from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</small></span><span class="rl-go" aria-hidden="true">›</span></button>`).join('')}</div>`
@@ -4218,8 +4223,8 @@ const RV_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" str
 let rvBack = 'today';
 var rvTab;   // 'friends' or 'rivals' on the Friends & Rivals page
 const reqsIn = () => (netReq || []).filter(r => r.dir === 'in').length;
-const friendsNew = () => (S.cheerIn || []).length + reqsIn();
-const rivalsNew2 = () => (S.chals || []).filter(c => !c.claimed && !c.gone && (c.k === 'lift' || !chalState(c).gone)).length + (S.tauntIn || []).length;
+const friendsNew = () => (S.cheerIn || []).length + reqsIn() + (S.crewInv || []).length;
+const rivalsNew2 = () => (S.chals || []).filter(c => !c.claimed && !c.gone && (c.k === 'lift' || !chalState(c).gone)).length + (S.tauntIn || []).length + Object.values(S.sd || {}).filter(s => s.status === 'invite').length;
 const rivalsNew = () => friendsNew() + rivalsNew2();
 const rivalsBtn = () => { const n = rivalsNew(); return `<button type="button" class="icon-btn rv-btn" data-act="openRivals" aria-label="Friends and rivals${n ? `, ${n} new` : ''}">${RV_ICON}${n ? `<i class="rv-dot num">${n}</i>` : ''}</button>`; };
 // Today: a thin header with the date, and Friends & Rivals in the top-right corner (red count when something's new)
@@ -4230,9 +4235,10 @@ function todayHead(){ const d = new Date().toLocaleDateString(undefined, {weekda
 // Today keeps cheers, taunts and challenges to one tappable line; they open in full on Friends & Rivals
 function todaySocial(){
   const ch = (S.cheerIn || []).length, tn = (S.tauntIn || []).length, cl = (S.chals || []).filter(c => !c.claimed && !c.gone).length;
-  if (!ch && !tn && !cl) return '';
-  const bits = [ch && `${ch} cheer${ch === 1 ? '' : 's'}`, tn && `${tn} taunt${tn === 1 ? '' : 's'}`, cl && `${cl} challenge${cl === 1 ? '' : 's'} going`].filter(Boolean);
-  const to = ch && !tn && !cl ? 'friends' : !ch ? 'rivals' : '';
+  const sv = Object.values(S.sd || {}), si = sv.filter(s => s.status === 'invite').length, so = sv.filter(s => s.status === 'on' && todayIso() >= s.ws).length;
+  if (!ch && !tn && !cl && !si && !so) return '';
+  const bits = [si && `${si} showdown invite${si === 1 ? '' : 's'}`, so && `${so} showdown${so === 1 ? '' : 's'} live`, ch && `${ch} cheer${ch === 1 ? '' : 's'}`, tn && `${tn} taunt${tn === 1 ? '' : 's'}`, cl && `${cl} challenge${cl === 1 ? '' : 's'} going`].filter(Boolean);
+  const to = ch && !tn && !cl && !si && !so ? 'friends' : !ch && (tn || cl) && !si && !so ? 'rivals' : '';
   return `<button type="button" class="panel checkin td-social" data-act="openRivals"${to ? ` data-v="${to}"` : ''}><span class="ci-ico" aria-hidden="true">${RV_ICON}</span>
     <span class="ci-body"><b>${bits.join(' · ')}</b><span class="fine">${ch && !tn && !cl ? 'Your friends are rooting for you.' : 'Your rivals are waiting.'} Tap to see them.</span></span><span class="td-go" aria-hidden="true">›</span></button>`;
 }
@@ -4290,6 +4296,10 @@ function rvOpen(id){ const r = (S.rivals || {})[id] || (netFriends || []).find(f
       <span class="rl-vs-x">VS</span>
       <div><canvas class="rl-big" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small>${r.pet ? `<img class="rl-pet" src="${petArt(r.pet.id, r.pet.f) || ''}" alt="">` : ''}</div></div>
     ${(d => d ? `<p class="rl-duo">🔥 <b>${d}-week streak together</b> · you both hit your goal ${d} week${d === 1 ? '' : 's'} in a row</p>` : `<p class="rl-duo off">Hit your weekly goal together to start a streak.</p>`)(duoStreak(r))}
+    ${live && nemesisId() === r.id ? '<p class="rl-duo nem-line">😈 <b>Your nemesis.</b> They\'ve beaten you more than anyone.</p>' : ''}
+    ${live ? (rc => `<div class="rl-sdrow"><span>${rc ? `Showdowns: <b>${rc.w}W</b> · ${rc.l}L${rc.t ? ` · ${rc.t}T` : ''}` : 'No showdowns yet'}</span><button type="button" class="btn btn-power btn-sm" data-act="rvSdNew" data-id="${r.id}">Showdown</button></div>`)((S.sdRec || {})[r.id]) : ''}
+    ${live ? `<div class="rl-sdrow"><span>${r.cr ? `Crew: <b>${esc(r.cr.n)}</b>` : 'Not in a crew'}</span><button type="button" class="btn btn-ghost btn-sm" data-act="rvGift" data-id="${r.id}"${giftedToday(r.id) ? ' disabled' : ''}>${giftedToday(r.id) ? 'Gift sent today' : `Gift ${GIFT} Grind`}</button></div>` : ''}
+    ${(r.tr || []).length ? `<span class="rl-sec">${esc(r.n)}'s trophies</span>${trophyShelf(r.tr, false)}` : ''}
     <div class="rl-cmp">${Object.keys(LIFTS).map(l => row(LIFTS[l], me.m[l], Math.round(inMyUnit(r.m[l], r.u)), ` ${S.unit}`)).join('')}
       ${row('Level', me.lv, r.lv)}${row('Medals', me.md, r.md)}${row('Week streak', me.st, r.st)}${row('Workouts', me.wk, r.wk)}</div>
     <p class="fine">${live ? `Live card · updated ${agoText(r.at)}.` : `${esc(r.n)}'s card is from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. Ask for a new one to see their latest.`}</p>
@@ -4320,11 +4330,230 @@ function duoHTML(){
 function claimDuo(id){
   const f = (netFriends || []).find(x => x.id === id); if (!f) return; const d = duoQuest(f); if (!d.done || d.claimed) return;
   const old = S.xp; S.duoClaimed = Object.fromEntries(Object.entries(S.duoClaimed || {}).filter(([k]) => k >= addDays(weekStart(todayIso()), -28))); S.duoClaimed[d.key] = 1;
-  S.xp += DUO_XP; if (window.TA_SHOP) TA_SHOP.addCoins(DUO_GRIND); save(); render(); sfx('quest'); buzz(25); rankCheck(old);
+  S.xp += DUO_XP; if (window.TA_SHOP) TA_SHOP.addCoins(DUO_GRIND); sdStats().duo = (sdStats().duo || 0) + 1; trophyCheck(); save(); render(); sfx('quest'); buzz(25); rankCheck(old);
   toast(`Duo quest with ${f.n} done! +${DUO_XP} XP, +${DUO_GRIND} Grind.`);
+}
+// Showdowns: a one-week, head-to-head race with a live friend or rival on one number (sets, workouts, weight
+// moved or XP). Both put up the same Grind; the winner takes the whole pot plus 200 XP, the loser gets nothing,
+// a tie hands both stakes back. Invites ride on challenge messages. Each phone judges from its own finished week
+// and the other's final numbers for that week (their synced card keeps its last three weeks), so both agree.
+var SD_M = {wsets:['Most sets', 'sets'], wwk:['Most workouts', 'workouts'], wv:['Most weight moved', 'lb'], wx:['Most XP', 'XP']}, SD_ST = [0, 50, 100, 250], SD_XP = 200;
+function weekNums(ws){ const L = S.log.filter(l => l.iso && weekStart(l.iso) === ws);
+  return {wx:L.reduce((t, l) => t + (l.xp || 0), 0), wsets:L.reduce((t, l) => t + (l.sets || 0), 0), wwk:L.filter(l => !l.bossFight).length, wv:Math.round(L.reduce((t, l) => t + volLb(l), 0)), ...liftBests(ws)}; }
+const sdWeek = () => { const t = todayIso(), ws = weekStart(t); return dayNum(t) - dayNum(ws) <= 2 ? ws : addDays(ws, 7); };   // Mon to Wed: this week; later: next week
+const sdVal = (k, v) => k === 'wv' || k.startsWith('e_') ? `${fmt(Math.round(inMyUnit(v, 'lb')))} ${S.unit}` : `${fmt(v)} ${SD_M[k][1]}`;
+const sdList = () => Object.values(S.sd || {});
+function sdTheirs(f, sd){   // the opponent's number for that week, and whether it's final
+  if (!f) return null; const p = (f.pw || []).find(x => x.ws === sd.ws);
+  if (p) return {v:p[sd.m] || 0, final:true};
+  if (f.ws === sd.ws) return {v:f[sd.m] || 0, final:todayIso() >= addDays(sd.ws, 9)};   // two quiet days after the week: they didn't train more
+  if (f.ws && f.ws > sd.ws) return {v:0, final:true};
+  return {v:0, final:false};
+}
+function sdTick(loaded){
+  const t = todayIso(), out = []; let changed = false;
+  for (const sd of sdList()){
+    const end = addDays(sd.ws, 7), f = (netFriends || []).find(x => x.id === sd.opp);
+    if (sd.status === 'invite' && t > addDays(sd.ws, 2)){ delete S.sd[sd.id]; changed = true; continue; }
+    if (sd.status === 'sent' && loaded && t >= end){ if (window.TA_SHOP) TA_SHOP.addCoins(sd.st); sd.status = 'void'; sd.why = 'No answer in time. Stake returned.'; changed = true; continue; }
+    if (sd.status !== 'on' || t < end) continue;
+    if (!f){ if (loaded && t >= addDays(sd.ws, 14)){ if (window.TA_SHOP) TA_SHOP.addCoins(sd.st); sd.status = 'void'; sd.why = 'They left your list. Stake returned.'; changed = true; } continue; }
+    const th = sdTheirs(f, sd); if (!th || !th.final) continue;
+    const mine = weekNums(sd.ws)[sd.m]; sd.mine = mine; sd.theirs = th.v; sd.status = 'done'; sd.res = mine > th.v ? 'win' : mine < th.v ? 'loss' : 'tie'; changed = true;
+    const rec = (S.sdRec = S.sdRec || {})[sd.opp] = S.sdRec[sd.opp] || {w:0, l:0, t:0}; rec[sd.res[0]]++;
+    { const st = sdStats(); if (sd.res === 'win'){ st.w++; st.streak = (st.streak || 0) + 1; st.best = Math.max(st.best || 0, st.streak); if (f.ri > rankIdx()) st.giant = 1; if (sd.st >= 250) st.high = 1; } else if (sd.res === 'loss') st.streak = 0; trophyCheck(); }
+    if (sd.res === 'win'){ if (window.TA_SHOP) TA_SHOP.addCoins(sd.st * 2); const old = S.xp; S.xp += SD_XP; rankCheck(old); out.push(`You won the showdown with ${sd.n}! +${SD_XP} XP${sd.st ? `, +${sd.st * 2} Grind` : ''}.`); }
+    else if (sd.res === 'tie'){ if (window.TA_SHOP) TA_SHOP.addCoins(sd.st); S.xp += 50; out.push(`Your showdown with ${sd.n} was a tie. Stakes returned, +50 XP.`); }
+    else out.push(`${sd.n} won your showdown. Run it back?`);
+  }
+  // keep finished ones for two weeks so you can see how they went
+  for (const sd of sdList()) if ((sd.status === 'done' || sd.status === 'void') && t >= addDays(sd.ws, 21)){ delete S.sd[sd.id]; changed = true; }
+  if (changed){ save(); out.forEach((m, i) => setTimeout(() => toast(m), i * 3200)); }
+  return changed;
+}
+// incoming: an invite, or an answer to one you sent
+function sdTake(from, d, name){
+  const id = String(d.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 20); if (!id) return;
+  const S2 = S.sd = S.sd || {};
+  if (d.sd === 1){ if (!SD_M[d.m] || !SD_ST.includes(+d.st) || !/^\d{4}-\d\d-\d\d$/.test(d.ws) || weekStart(d.ws) !== d.ws || S2[id] || todayIso() > addDays(d.ws, 2)) return;
+    S2[id] = {id, opp:from, n:name, m:d.m, st:+d.st, ws:d.ws, status:'invite', mine0:'to'}; toast(`${name} challenged you to a showdown!`); }
+  else if (d.sd === 2){ const sd = S2[id]; if (!sd || sd.opp !== from || sd.status !== 'sent') return;
+    if (d.ok){ sd.status = 'on'; toast(`${name} accepted your showdown. Game on!`); }
+    else { if (window.TA_SHOP) TA_SHOP.addCoins(sd.st); sd.status = 'void'; sd.why = 'They passed this time. Stake returned.'; toast(`${name} passed on the showdown. Your stake is back.`); } }
+  save();
+}
+function sdNew(id){ const f = (netFriends || []).find(x => x.id === id); if (!f) return;
+  sdDraft = {id, m:sdDraft && sdDraft.id === id ? sdDraft.m : 'wsets', st:sdDraft && sdDraft.id === id ? sdDraft.st : 50}; sdPaintNew(); }
+var sdDraft = null;
+function sdPaintNew(){ const f = (netFriends || []).find(x => x.id === sdDraft.id); if (!f) return; const ws = sdWeek(), have = window.TA_SHOP ? TA_SHOP.coins() : 0;
+  const busy = sdList().some(s => s.opp === f.id && s.ws === ws && ['sent', 'invite', 'on'].includes(s.status));
+  rvDlg(`<b class="rl-h">Showdown with ${esc(f.n)}</b><p class="fine">One week, ${fromYmd(ws).toLocaleDateString(undefined, {month:'short', day:'numeric'})} to ${fromYmd(addDays(ws, 6)).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. Winner takes the pot and +${SD_XP} XP. Loser gets nothing.</p>
+    <span class="rl-sec">Win by</span><div class="rl-pick">${Object.entries(SD_M).map(([k, [l]]) => `<button type="button" class="opt" data-act="rvSdM" data-v="${k}" aria-pressed="${sdDraft.m === k}">${l}</button>`).join('')}</div>
+    <span class="rl-sec">Each puts up</span><div class="rl-pick">${SD_ST.map(v => `<button type="button" class="opt" data-act="rvSdSt" data-v="${v}" aria-pressed="${sdDraft.st === v}"${v > have ? ' disabled' : ''}>${v ? `${v} Grind` : 'Just pride'}</button>`).join('')}</div>
+    <p class="fine">${sdDraft.st ? `Pot: ${sdDraft.st * 2} Grind. Your ${sdDraft.st} is held until they answer; it comes back if they pass or don't answer by ${fromYmd(addDays(ws, 2)).toLocaleDateString(undefined, {weekday:'long'})}.` : 'No Grind on the line, just bragging rights and XP.'}</p>
+    ${busy ? `<p class="fine">You already have a showdown with ${esc(f.n)} that week.</p>` : ''}
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Cancel</button><button type="button" class="btn btn-power btn-sm" data-act="rvSdSend"${busy ? ' disabled' : ''}>Send challenge</button></div>`); }
+async function sdSend(){
+  const dr = sdDraft, f = dr && (netFriends || []).find(x => x.id === dr.id); if (!f) return;
+  if (dr.st && !(window.TA_SHOP && TA_SHOP.spendCoins(dr.st))){ toast('Not enough Grind for that stake.'); return; }
+  const id = 'sd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ws = sdWeek();
+  try { await sb('/rest/v1/messages', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify({to_id:f.id, kind:'challenge', data:{sd:1, id, m:dr.m, st:dr.st, ws}})}); }
+  catch(e){ if (dr.st && window.TA_SHOP) TA_SHOP.addCoins(dr.st); toast(netMsg(e)); return; }
+  (S.sd = S.sd || {})[id] = {id, opp:f.id, n:f.n, m:dr.m, st:dr.st, ws, status:'sent'}; sdDraft = null; save();
+  document.getElementById('rvDlg').close(); render(); toast(`Showdown sent to ${f.n}.`); buzz(15);
+}
+async function sdAnswer(id, ok){
+  const sd = (S.sd || {})[id]; if (!sd || sd.status !== 'invite') return;
+  if (ok && todayIso() > addDays(sd.ws, 2)){ toast('That invite ran out.'); delete S.sd[id]; save(); render(); return; }
+  if (ok && sd.st && !(window.TA_SHOP && TA_SHOP.spendCoins(sd.st))){ toast(`You need ${sd.st} Grind to accept. Train a little and try again.`); return; }
+  try { await sb('/rest/v1/messages', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify({to_id:sd.opp, kind:'challenge', data:{sd:2, id, ok:ok ? 1 : 0}})}); }
+  catch(e){ if (ok && sd.st && window.TA_SHOP) TA_SHOP.addCoins(sd.st); toast(netMsg(e)); return; }
+  if (ok){ sd.status = 'on'; toast(`Showdown on with ${sd.n}. Win the week!`); buzz(15); } else delete S.sd[id];
+  save(); render();
+}
+function sdHTML(rel){
+  if (!auth()) return '<div id="sdBox"></div>';
+  const t = todayIso(), mine = sdList().filter(s => relOf(s.opp, true) === rel || !(netFriends || []).some(f => f.id === s.opp));
+  if (!mine.length) return '<div id="sdBox"></div>';
+  const order = {invite:0, on:1, sent:2, done:3, void:4};
+  const row = sd => { const f = (netFriends || []).find(x => x.id === sd.opp), [label] = SD_M[sd.m], pot = sd.st ? ` · pot ${sd.st * 2} Grind` : '';
+    if (sd.status === 'invite') return `<div class="sd-row sd-inv"><b>${esc(sd.n)} challenged you</b><p class="fine">${label}, week of ${fromYmd(sd.ws).toLocaleDateString(undefined, {month:'short', day:'numeric'})}${sd.st ? ` · ${sd.st} Grind each, winner takes ${sd.st * 2}` : ' · for pride'} · +${SD_XP} XP to the winner</p>
+      <div class="arc-btns"><button type="button" class="btn btn-ghost btn-sm" data-act="rvSdNo" data-id="${sd.id}">Pass</button><button type="button" class="btn btn-power btn-sm" data-act="rvSdOk" data-id="${sd.id}">Accept</button></div></div>`;
+    if (sd.status === 'sent') return `<div class="sd-row"><b>Waiting on ${esc(sd.n)}</b><p class="fine">${label}${pot}. Your stake comes back if they pass.</p></div>`;
+    if (sd.status === 'void') return `<div class="sd-row sd-old"><b>Showdown with ${esc(sd.n)}</b><p class="fine">${sd.why || 'Called off.'}</p></div>`;
+    if (sd.status === 'done') return `<div class="sd-row sd-old sd-${sd.res}"><b>${sd.res === 'win' ? `You beat ${esc(sd.n)}` : sd.res === 'loss' ? `${esc(sd.n)} won` : `Tie with ${esc(sd.n)}`}</b><p class="fine">${label}: you ${sdVal(sd.m, sd.mine)}, ${esc(sd.n)} ${sdVal(sd.m, sd.theirs)}</p>
+      ${sd.res !== 'win' && f ? `<button type="button" class="wk-link" data-act="rvSdNew" data-id="${sd.opp}">Rematch</button>` : ''}</div>`;
+    // on: live score
+    const started = t >= sd.ws, me = weekNums(sd.ws)[sd.m], th = sdTheirs(f, sd), them = th ? th.v : 0, end = addDays(sd.ws, 7), left = Math.max(0, dayNum(end) - dayNum(t));
+    const lead = me > them ? 'You lead' : me < them ? `${esc(sd.n)} leads` : 'All tied', pct = me + them ? Math.round(me / (me + them) * 100) : 50;
+    return `<div class="sd-row"><div class="row-between"><b>vs ${esc(sd.n)}</b><span class="fine">${started ? (t >= end ? 'Final scores coming in' : `${left} day${left === 1 ? '' : 's'} left`) : `Starts ${fromYmd(sd.ws).toLocaleDateString(undefined, {weekday:'short'})}`}</span></div>
+      <p class="fine">${label}${pot} · ${lead}</p><div class="sd-bar" role="img" aria-label="You ${me}, ${esc(sd.n)} ${them}"><i style="width:${pct}%"></i></div>
+      <div class="row-between sd-nums"><span>You ${sdVal(sd.m, me)}</span><span>${esc(sd.n)} ${sdVal(sd.m, them)}</span></div></div>`; };
+  return `<section class="panel sd" id="sdBox"><span class="rl-sec">Showdowns</span>${mine.sort((a, b) => order[a.status] - order[b.status]).map(row).join('')}</section>`;
+}
+// Lift duels: the best estimated max you hit on one big lift that week (from any set of 12 reps or fewer), in lb
+var LIFT_BY_NAME = Object.fromEntries(Object.entries(LIFTS).map(([k, v]) => [v, k]));
+function liftBests(ws){ const out = Object.fromEntries(Object.keys(LIFTS).map(l => ['e_' + l, 0]));
+  for (const l of S.log) if (l.iso && weekStart(l.iso) === ws) for (const x of l.ex || []){ const lift = LIFT_BY_NAME[x.name]; if (!lift) continue;
+    for (const [w, r] of x.sets || []) if (w > 0 && r >= 1 && r <= 12){ const e = Math.round(e1rm(w, r) * (l.unit === 'kg' ? 2.20462 : 1)); if (e > out['e_' + lift]) out['e_' + lift] = e; } }
+  return out; }
+for (const [l, n] of Object.entries(LIFTS)) SD_M['e_' + l] = [`Best ${n} (est. max)`, 'lb'];
+
+// Trophies: showdown and duo milestones. They show on your card, so friends see your shelf.
+var TROPHIES = [
+  ['first', '🥇', 'First Blood', 'Win your first showdown', st => st.w >= 1],
+  ['three', '🎩', 'Hat Trick', 'Win 3 showdowns', st => st.w >= 3],
+  ['ten', '🏛️', 'Arena Legend', 'Win 10 showdowns', st => st.w >= 10],
+  ['streak', '⚡', 'Unstoppable', 'Win 5 showdowns in a row', st => st.best >= 5],
+  ['giant', '🗡️', 'Giant Slayer', 'Beat someone a rank above you', st => !!st.giant],
+  ['high', '💰', 'High Roller', 'Win a 500 Grind pot', st => !!st.high],
+  ['duo', '🤝', 'Dynamic Duo', 'Finish 5 duo quests', st => st.duo >= 5],
+  ['carry', '🛡️', 'Crew Carry', 'Top your crew for a week', st => !!st.carry]
+];
+const sdStats = () => S.sdStats = S.sdStats || {w:0, streak:0, best:0, duo:0};
+function trophyCheck(){ const st = sdStats(), have = S.trophies = S.trophies || [];
+  for (const [id, ico, name] of TROPHIES) if (!have.includes(id) && TROPHIES.find(x => x[0] === id)[4](st)){ have.push(id); setTimeout(() => { toast(`Trophy unlocked: ${ico} ${name}`); sfx('quest'); }, 900); } }
+const trophyShelf = (ids, mine) => `<div class="tr-shelf">${TROPHIES.map(([id, ico, name, how]) => { const got = (ids || []).includes(id);
+  return mine || got ? `<span class="tr${got ? ' got' : ''}" title="${esc(name)}: ${esc(how)}"><i aria-hidden="true">${got ? ico : '🔒'}</i><small>${esc(name)}</small></span>` : ''; }).join('')}</div>`;
+
+// Nemesis: the person who has beaten you most in showdowns (at least twice, and more than you've beaten them)
+function nemesisId(){ let best = null, n = 1;
+  for (const [id, r] of Object.entries(S.sdRec || {})) if (r.l > n && r.l > r.w && (netFriends || []).some(f => f.id === id)){ best = id; n = r.l; }
+  return best; }
+var NEMESIS_LINES = ['They think last time settled it. It didn\'t.', 'Every rep this week is a reply.', 'Revenge is a training plan.', 'Lose to them once, fine. Twice? Fix it.', 'They\'re ahead. For now.'];
+function nemesisHTML(){ const id = auth() && nemesisId(), f = id && (netFriends || []).find(x => x.id === id); if (!f) return '<div id="nemBox"></div>';
+  const r = S.sdRec[id], ws = weekStart(todayIso()), me = netCard(), ahead = f.ws === ws && (f.wx || 0) > (me.wx || 0);
+  return `<section class="panel nem" id="nemBox"><div class="row-between"><span class="eyebrow nem-tag">😈 Nemesis</span><span class="fine">${r.w}W · ${r.l}L</span></div>
+    <b class="nem-name">${esc(f.n)}</b><p class="fine">${ahead ? `Ahead of you this week: ${fmt(f.wx)} XP to your ${fmt(me.wx || 0)}. ` : ''}${NEMESIS_LINES[seeded(ws + id, NEMESIS_LINES.length)]}</p>
+    <div><button type="button" class="btn btn-power btn-sm" data-act="rvSdNew" data-id="${id}">Get revenge</button></div></section>`; }
+
+// Gifts: 25 Grind to a live friend, once per friend per day, riding on a cheer
+var GIFT = 25;
+const giftedToday = id => { const g = S.gifts || {}; return g.d === todayIso() && (g.ids || []).includes(id); };
+async function sendGift(id){ const f = (netFriends || []).find(x => x.id === id); if (!f || giftedToday(id)) return;
+  if (!(window.TA_SHOP && TA_SHOP.spendCoins(GIFT))){ toast(`You need ${GIFT} Grind to send a gift.`); return; }
+  try { await sb('/rest/v1/messages', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify({to_id:id, kind:'cheer', data:{ch:seeded(todayIso() + id, CHEERS.length), gf:GIFT}})}); }
+  catch(e){ TA_SHOP.addCoins(GIFT); toast(netMsg(e)); return; }
+  const g = S.gifts = S.gifts && S.gifts.d === todayIso() ? S.gifts : {d:todayIso(), ids:[]}; g.ids.push(id); save();
+  rvOpen(id); toast(`Sent ${f.n} ${GIFT} Grind and a cheer.`); buzz(15); }
+function giftTake(name, d){ if (+d.gf !== GIFT || !window.TA_SHOP) return; TA_SHOP.addCoins(GIFT); setTimeout(() => toast(`${name} sent you ${GIFT} Grind!`), 400); }
+
+// Crews: up to 5 friends under one name. Your crew rides on your card; members are the friends whose cards carry the
+// same crew. The crew's weekly XP adds up, and crews among your friends rank against each other.
+var CREW_MAX = 5;
+const crewMates = () => S.crew ? (netFriends || []).filter(f => f.cr && f.cr.id === S.crew.id) : [];
+const crewWeek = (list, ws) => list.reduce((t, c) => t + (c.ws === ws ? c.wx || 0 : 0), 0);
+function crewHTML(){
+  if (!auth()) return '<div id="crewBox"></div>';
+  const ws = weekStart(todayIso()), inv = (S.crewInv || []).filter(i => !S.crew || i.id !== S.crew.id);
+  const invHTML = inv.map(i => `<div class="sd-row sd-inv"><b>${esc(i.fn)} invited you to ${esc(i.n)}</b><div class="arc-btns"><button type="button" class="btn btn-ghost btn-sm" data-act="rvCrewNo" data-id="${i.id}">No thanks</button><button type="button" class="btn btn-power btn-sm" data-act="rvCrewJoin" data-id="${i.id}">Join</button></div></div>`).join('');
+  if (!S.crew) return `<section class="panel crew" id="crewBox"><span class="rl-sec">Crew</span>${invHTML}
+    <p class="fine">Team up with up to ${CREW_MAX - 1} friends. Your crew's weekly XP adds up and goes head to head with other crews.</p>
+    <div class="rl-add"><input id="crewName" type="text" maxlength="20" placeholder="Crew name" aria-label="Crew name" autocomplete="off"><button type="button" class="btn btn-power btn-sm" data-act="rvCrewNew">Start a crew</button></div></section>`;
+  const me = {...netCard(), n:S.hero.name || 'Hero', isMe:true}, mates = crewMates(), all = [me, ...mates].sort((a, b) => (b.ws === ws ? b.wx : 0) - (a.ws === ws ? a.wx : 0));
+  const others = {}; for (const f of netFriends || []) if (f.cr && f.cr.id !== S.crew.id){ const o = others[f.cr.id] = others[f.cr.id] || {n:f.cr.n, list:[]}; o.list.push(f); }
+  const board = [{n:S.crew.n, mine:true, xp:crewWeek(all, ws), k:all.length}, ...Object.values(others).map(o => ({n:o.n, xp:crewWeek(o.list, ws), k:o.list.length}))].sort((a, b) => b.xp - a.xp);
+  return `<section class="panel crew" id="crewBox">${invHTML}<div class="row-between"><span class="rl-sec">Crew · ${esc(S.crew.n)}</span><span class="fine num">${fmt(crewWeek(all, ws))} XP this week</span></div>
+    <ol class="crew-list">${all.map((c, i) => `<li><span class="lb-n num">${i + 1}</span><b>${esc(c.n)}${c.isMe ? ' (you)' : ''}</b><span class="fine num">${fmt(c.ws === ws ? c.wx || 0 : 0)} XP</span></li>`).join('')}</ol>
+    ${board.length > 1 ? `<span class="rl-sec">Crew leaderboard</span><ol class="crew-list">${board.map((b, i) => `<li${b.mine ? ' class="me"' : ''}><span class="lb-n num">${i + 1}</span><b>${esc(b.n)}</b><span class="fine num">${fmt(b.xp)} XP · ${b.k}</span></li>`).join('')}</ol>` : ''}
+    <div class="arc-btns">${all.length < CREW_MAX ? '<button type="button" class="btn btn-ghost btn-sm" data-act="rvCrewInv">Invite a friend</button>' : ''}<button type="button" class="wk-link" data-act="rvCrewLeave">${S.crewLeaveArm ? 'Tap again to leave' : 'Leave crew'}</button></div></section>`;
+}
+function crewNew(){ const el = document.getElementById('crewName'), n = (el && el.value || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 20);
+  if (n.length < 2){ toast('Give your crew a name first.'); el && el.focus(); return; }
+  S.crew = {id:'cr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), n}; save(); cloudMark && cloudMark(); render(); toast(`${n} is formed. Invite your friends.`); }
+function crewInvPick(){ const have = new Set(crewMates().map(f => f.id)), list = (netFriends || []).filter(f => !have.has(f.id));
+  if (!list.length){ toast('Everyone on your list is already in your crew.'); return; }
+  rvDlg(`<b class="rl-h">Invite to ${esc(S.crew.n)}</b><div class="rl-pick">${list.map(f => `<button type="button" class="opt" data-act="rvCrewSend" data-id="${f.id}">${esc(f.n)}${f.cr ? `<small class="fd-rel">in ${esc(f.cr.n)}</small>` : ''}</button>`).join('')}</div>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button></div>`); }
+async function crewSend(id){ const f = (netFriends || []).find(x => x.id === id); if (!f || !S.crew) return;
+  try { await sb('/rest/v1/messages', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify({to_id:id, kind:'challenge', data:{cr:1, id:S.crew.id, n:S.crew.n}})}); }
+  catch(e){ toast(netMsg(e)); return; }
+  document.getElementById('rvDlg').close(); toast(`Invite sent to ${f.n}.`); buzz(12); }
+function crewTake(from, d, name){ const id = String(d.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 24), n = String(d.n || '').replace(/[\u0000-\u001f<>]/g, '').slice(0, 20);
+  if (!id || !n || (S.crew && S.crew.id === id)) return; S.crewInv = [...(S.crewInv || []).filter(i => i.id !== id), {id, n, fn:name, from}].slice(-5); save(); toast(`${name} invited you to the crew ${n}!`); }
+function crewJoin(id){ const i = (S.crewInv || []).find(x => x.id === id); if (!i) return;
+  const count = (netFriends || []).filter(f => f.cr && f.cr.id === id).length + 1; if (count >= CREW_MAX){ toast(`${i.n} is full (${CREW_MAX} max).`); return; }
+  S.crew = {id:i.id, n:i.n}; S.crewInv = (S.crewInv || []).filter(x => x.id !== id); save(); cloudMark && cloudMark(); render(); toast(`You joined ${i.n}!`); buzz(15); }
+
+// Weekly recap: the first time you open the app in a new week, a look back at the last one
+function recapData(){
+  const lw = addDays(weekStart(todayIso()), -7), me = weekNums(lw), vol = Math.round(inMyUnit(me.wv, 'lb'));
+  const peers = (netFriends || []).map(f => ({n:f.n, v:((f.pw || []).find(p => p.ws === lw) || (f.ws === lw ? f : {})).wx || 0})).filter(p => p.v > 0);
+  const place = peers.length ? 1 + peers.filter(p => p.v > me.wx).length : 0;
+  const sds = Object.values(S.sd || {}).filter(s => s.ws === lw && s.status === 'done'), duos = Object.keys(S.duoClaimed || {}).filter(k => k.startsWith(lw + '|')).length;
+  let crew = null; if (S.crew){ const mates = crewMates().map(f => ({n:f.n, v:((f.pw || []).find(p => p.ws === lw) || {}).wx || 0})), all = [{n:'You', v:me.wx, me:true}, ...mates].sort((a, b) => b.v - a.v);
+    crew = {n:S.crew.n, total:all.reduce((t, c) => t + c.v, 0), top:all[0] && all[0].me && mates.length > 0 && me.wx > 0}; }
+  return {lw, me, vol, place, of:peers.length + 1, sds, duos, crew};
+}
+function maybeRecap(){
+  const ws = weekStart(todayIso()); if (S.recapSeen === ws || document.querySelector('dialog[open]')) return;
+  if (!S.recapSeen){ S.recapSeen = ws; save(); return; }   // first week with this feature: start counting from now
+  const r = recapData(); S.recapSeen = ws;
+  if (r.crew && r.crew.top){ sdStats().carry = 1; trophyCheck(); }
+  save(); if (!r.me.wwk && !r.sds.length) return;
+  rvDlg(`<b class="rl-h">Last week's recap</b><p class="fine">${fromYmd(r.lw).toLocaleDateString(undefined, {month:'short', day:'numeric'})} to ${fromYmd(addDays(r.lw, 6)).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</p>
+    <div class="rc-grid"><div><b class="num">${r.me.wwk}</b><small>Workouts</small></div><div><b class="num">${fmt(r.me.wsets)}</b><small>Sets</small></div><div><b class="num">${fmt(r.me.wx)}</b><small>XP</small></div><div><b class="num">${fmt(r.vol)}</b><small>${S.unit} moved</small></div></div>
+    ${r.place ? `<p class="rc-line">🏆 You finished <b>${r.place === 1 ? '1st' : r.place === 2 ? '2nd' : r.place === 3 ? '3rd' : r.place + 'th'}</b> of ${r.of} on your friends' XP board.</p>` : ''}
+    ${r.sds.map(s => `<p class="rc-line">${s.res === 'win' ? '⚔️ Beat' : s.res === 'loss' ? '💥 Lost to' : '🤝 Tied'} <b>${esc(s.n)}</b> in a showdown (${esc(SD_M[s.m][0].replace(' (est. max)', '').toLowerCase())}).</p>`).join('')}
+    ${r.duos ? `<p class="rc-line">🤝 ${r.duos} duo quest${r.duos === 1 ? '' : 's'} done.</p>` : ''}
+    ${r.crew ? `<p class="rc-line">🛡️ ${esc(r.crew.n)} earned ${fmt(r.crew.total)} XP together.${r.crew.top ? ' You carried the crew!' : ''}</p>` : ''}
+    <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="rvClose">New week. Let's go</button></div>`);
 }
 function rvAct(a, t){
   if (a === 'rvDuo') return claimDuo(t.dataset.id);
+  if (a === 'rvGift') return sendGift(t.dataset.id);
+  if (a === 'rvCrewNew') return crewNew();
+  if (a === 'rvCrewInv') return crewInvPick();
+  if (a === 'rvCrewSend') return crewSend(t.dataset.id);
+  if (a === 'rvCrewJoin') return crewJoin(t.dataset.id);
+  if (a === 'rvCrewNo'){ S.crewInv = (S.crewInv || []).filter(x => x.id !== t.dataset.id); save(); return render(); }
+  if (a === 'rvCrewLeave'){ if (!S.crewLeaveArm){ S.crewLeaveArm = 1; setTimeout(() => { S.crewLeaveArm = 0; }, 4000); return netPaint(); } S.crewLeaveArm = 0; const n = S.crew && S.crew.n; S.crew = null; save(); cloudMark && cloudMark(); render(); return toast(`You left ${n}.`); }
+  if (a === 'rvSdNew') return sdNew(t.dataset.id);
+  if (a === 'rvSdM'){ sdDraft.m = t.dataset.v; return sdPaintNew(); }
+  if (a === 'rvSdSt'){ sdDraft.st = +t.dataset.v; return sdPaintNew(); }
+  if (a === 'rvSdSend') return sdSend();
+  if (a === 'rvSdOk') return sdAnswer(t.dataset.id, true);
+  if (a === 'rvSdNo') return sdAnswer(t.dataset.id, false);
   if (a === 'rvShare') rvShareCard(); else if (a === 'rvNew') rvNewChal(); else if (a === 'rvMake') rvMake(t.dataset.k, t.dataset.v);
   else if (a === 'rvOpen') rvOpen(t.dataset.id); else if (a === 'rvClose') document.getElementById('rvDlg').close();
   else if (a === 'rvAdd'){ const el = document.getElementById('rvCode'); if (el && takeCode(el.value)) el.value = ''; }
@@ -4440,7 +4669,7 @@ const netLive = {busy:false};
 // Live friends. Your card on the server carries this week's numbers for the leaderboard.
 function netCard(){ const ws = weekStart(todayIso()), logs = S.log.filter(l => l.iso && l.iso >= ws);
   return {...myCard(), ws, wx:logs.reduce((t, l) => t + (l.xp || 0), 0), wsets:logs.reduce((t, l) => t + (l.sets || 0), 0), wwk:logs.filter(l => !l.bossFight).length,
-    wv:Math.round(logs.reduce((t, l) => t + volLb(l), 0))}; }
+    wv:Math.round(logs.reduce((t, l) => t + volLb(l), 0)), ...liftBests(ws), pw:[7, 14, 21].map(n => { const w = addDays(ws, -n); return {ws:w, ...weekNums(w)}; })}; }
 // Which of the last 52 weeks hit your training goal, newest first ('1' hit, '0' missed): friends compare these for a streak together
 function weekHits(n = 52){ const goal = weekGoal(), c = {}; for (const l of S.log) if (l.iso){ const k = weekStart(l.iso); c[k] = (c[k] || 0) + 1; }
   const w0 = weekStart(todayIso()); let s = ''; for (let i = 0; i < n; i++) s += (c[addDays(w0, -7 * i)] || 0) >= goal ? '1' : '0'; return s; }
@@ -4468,6 +4697,8 @@ async function netLoad(){ const a = auth(); if (!a) return;
     for (const o of before) if (!netReq.some(r => r.id === o.id) && (netFriends || []).some(f => f.id === o.id)) toast(`${o.n} accepted your friend request!`);
   } catch(e){ if (!netReq) netReq = []; }
   await msgLoad(); await feedLoad();   // messages leave a card on Today; the reaction note shows last so it isn't covered
+  if (sdTick(true) && tab !== 'rivals') render();
+  setTimeout(maybeRecap, 900);   // the Monday look back, once friends' numbers are in
   netPaint(); acctPaint(); const tr = document.getElementById('todayRv'); if (tr) tr.innerHTML = rivalsBtn();
   const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = rivalsBtn() + settingsBtn(); }
 // Friend requests: answer one sent to you, or take back one you sent
@@ -4528,7 +4759,10 @@ async function msgLoad(){ const a = auth(); if (!a) return;
   let rows; try { rows = await sb(`/rest/v1/messages?select=id,from_id,kind,data&to_id=eq.${a.user.id}&order=created_at.asc&limit=20`) || []; } catch(e){ return; }
   const names = new Map((netFriends || []).map(f => [f.id, f.n]));   // looked up first: taking a message redraws the screen
   for (const m of rows){ const d = m.data && typeof m.data === 'object' ? m.data : {}, from = String(m.from_id), t = m.kind === 'cheer' ? 'h' : m.kind === 'taunt' ? 't' : m.kind === 'challenge' ? 'c' : null;
-    if (t){ const raw = {...d, t, id:from.replace(/-/g, '').slice(0, 16), n:names.get(from) || 'A friend', cid:('m' + m.id).padEnd(6, '0').slice(0, 16)};
+    if (m.kind === 'cheer' && d.gf) giftTake(names.get(from) || 'A friend', d);   // a cheer can carry a Grind gift (the cheer still shows)
+    if (m.kind === 'challenge' && d.cr === 1) crewTake(from, d, names.get(from) || 'A friend');   // a crew invite
+    else if (m.kind === 'challenge' && (d.sd === 1 || d.sd === 2)) sdTake(from, d, names.get(from) || 'A friend');   // a showdown invite or answer
+    else if (t){ const raw = {...d, t, id:from.replace(/-/g, '').slice(0, 16), n:names.get(from) || 'A friend', cid:('m' + m.id).padEnd(6, '0').slice(0, 16)};
       if (t === 'c' && raw.k === 'lift' && !raw.u) raw.u = 'lb';
       takeCode(toCode(raw), true); }
     try { await sb(`/rest/v1/messages?id=eq.${+m.id}`, {method:'DELETE'}); } catch(e){} } }
@@ -4547,7 +4781,7 @@ function netReqHTML(){ const ins = (netReq || []).filter(r => r.dir === 'in'), o
   const row = (r, btns) => `<li class="rq-row"><span class="rl-who"><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small></span><span class="rq-btns">${btns}</span></li>`;
   return `${ins.length ? `<span class="rl-sec">Friend requests</span><ul class="rq">${ins.map(r => row(r, `<button type="button" class="btn btn-ghost btn-sm" data-act="netDecline" data-id="${r.id}">Decline</button><button type="button" class="btn btn-power btn-sm" data-act="netAccept" data-id="${r.id}">Accept</button>`)).join('')}</ul>` : ''}
     ${outs.length ? `<span class="rl-sec">Requests you sent</span><ul class="rq">${outs.map(r => row(r, `<small class="rq-wait">Waiting</small><button type="button" class="wk-link" data-act="netCancel" data-id="${r.id}">Cancel</button>`)).join('')}</ul>` : ''}`; }
-function netPaint(){ const box = document.getElementById('netBox'); if (box){ box.outerHTML = netHTML(); paintRivals(); } const db = document.getElementById('duoBox'); if (db) db.outerHTML = rvTab === 'rivals' ? '<div id="duoBox"></div>' : duoHTML(); }
+function netPaint(){ const box = document.getElementById('netBox'); if (box){ box.outerHTML = netHTML(); paintRivals(); } const sx = document.getElementById('sdBox'); if (sx) sx.outerHTML = sdHTML(rvTab === 'rivals' ? 'rival' : 'friend'); const cx = document.getElementById('crewBox'); if (cx) cx.outerHTML = crewHTML(); const nx = document.getElementById('nemBox'); if (nx) nx.outerHTML = nemesisHTML(); const db = document.getElementById('duoBox'); if (db) db.outerHTML = rvTab === 'rivals' ? '<div id="duoBox"></div>' : duoHTML(); }
 function netHTML(rel = rvTab === 'rivals' ? 'rival' : 'friend'){
   if (!auth()) return `<div id="netBox" class="net-box"><b class="net-hook">Train with friends</b><p class="fine">Sign in with your email to add friends, get live cheers and challenges, climb the weekly leaderboard and back up your progress.</p><div><button type="button" class="btn btn-power btn-sm" data-act="acctOpen">Sign in · free</button></div></div>`;
   const ws = weekStart(todayIso()), me = {...netCard(), id:'me', n:S.hero.name || 'Hero', isMe:true}, mine = (netFriends || []).filter(f => relOf(f.id, true) === rel);
@@ -4558,7 +4792,7 @@ function netHTML(rel = rvTab === 'rivals' ? 'rival' : 'friend'){
     ${netFriends === null ? '<p class="fine">Loading friends…</p>' : ''}${netErr ? `<p class="fine">${esc(netErr)}</p>` : ''}
     <ol class="lb">${board.map((c, i) => { const duo = c.isMe ? 0 : duoStreak(c);
       return `<li><button type="button" class="lb-row${c.isMe ? ' me' : ''}"${c.isMe ? ' disabled' : ` data-act="rvOpen" data-id="${c.id}"`}><span class="lb-n num">${i + 1}</span><canvas class="rl-hero" data-rv="${c.id}" width="128" height="208" aria-hidden="true"></canvas>
-      <span class="rl-who"><b>${esc(c.n)}</b><small>${c.isMe ? 'You · ' : ''}${RANKS[c.ri].k}-Rank · Lv ${c.lv}</small>${duo ? `<small class="lb-duo" title="Weeks in a row you both hit your goal">🔥 ${duo}-week streak together</small>` : ''}</span><span class="lb-xp"><b class="num">${lbLabel(c, by)}</b>${by === 'wx' ? `<small>${c.wwk} workout${c.wwk === 1 ? '' : 's'} · ${fmt(c.wsets)} sets</small>` : ''}</span></button></li>`; }).join('')}</ol>
+      <span class="rl-who"><b>${esc(c.n)}</b><small>${c.isMe ? 'You · ' : ''}${RANKS[c.ri].k}-Rank · Lv ${c.lv}</small>${duo ? `<small class="lb-duo" title="Weeks in a row you both hit your goal">🔥 ${duo}-week streak together</small>` : ''}${!c.isMe && c.id === nemesisId() ? '<small class="lb-nem">😈 Nemesis</small>' : ''}${c.cr && S.crew && c.cr.id === S.crew.id ? '<small class="lb-crew">🛡️ Crew</small>' : ''}</span><span class="lb-xp"><b class="num">${lbLabel(c, by)}</b>${by === 'wx' ? `<small>${c.wwk} workout${c.wwk === 1 ? '' : 's'} · ${fmt(c.wsets)} sets</small>` : ''}</span></button></li>`; }).join('')}</ol>
     ${netFriends && !mine.length ? `<p class="fine">${rel === 'rival' ? 'No live rivals yet. Add someone by their code and pick Rival.' : 'No live friends yet. Send them your code, or type theirs below.'}</p>` : ''}
     ${feedHTML(rel)}
     <div class="rl-actions"><button type="button" class="btn btn-power btn-sm" data-act="rvInvite">Invite a friend</button></div>
@@ -7059,6 +7293,7 @@ function render(animate){
   document.querySelector('.hud').hidden = tab === 'today' || tab === 'progress' || tab === 'rivals';   // the banner and the card carry the character there
   v.innerHTML =tab === 'rivals' ? viewRivals() : tab === 'today' ? viewToday() : tab === 'calendar' ? viewCalendar() : tab === 'maxes' ? viewMaxes() : tab === 'arcs' ? viewArcs() : viewProgress();
   paintRivals(); landPendingCode(); cloudBoot(); inviteCheck();
+  if (!auth() && tab === 'today') setTimeout(maybeRecap, 1500);   // signed in, it waits for friends' numbers (netLoad)
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
   if (animate) [...v.children].forEach((c, i) => c.style.setProperty('--i', Math.min(i, 6)));
   if (tab === 'maxes') updateEstimate();

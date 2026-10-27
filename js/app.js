@@ -3010,7 +3010,7 @@ function viewToday(){
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
   const pips = Array.from({length:total}, (_, i) => `<span class="pip${i < idx ? ' on' : i === idx ? ' cur' : ''}"></span>`).join('');
   const n = sessionSets();
-  let h = gateCardHTML() + bannerHTML() + rivalsBar() + checkinHTML() + cheersHTML() + rivalChalsHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + cheersHTML() + rivalChalsHTML() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -4061,13 +4061,9 @@ const friendsNew = () => (S.cheerIn || []).length + reqsIn();
 const rivalsNew2 = () => (S.chals || []).filter(c => !c.claimed && !c.gone && (c.k === 'lift' || !chalState(c).gone)).length + (S.tauntIn || []).length;
 const rivalsNew = () => friendsNew() + rivalsNew2();
 const rivalsBtn = () => { const n = rivalsNew(); return `<button type="button" class="icon-btn rv-btn" data-act="openRivals" aria-label="Friends and rivals${n ? `, ${n} new` : ''}">${RV_ICON}${n ? `<i class="rv-dot num">${n}</i>` : ''}</button>`; };
-// Today: a slim bar under the banner that says what's going on with your friends and rivals
-function rivalsBar(){ const f = friendsNew(), r = rivalsNew2(), n = f + r, ws = weekStart(todayIso());
-  let sub = 'Cheer on friends, challenge rivals';
-  const q = reqsIn(), c = f - q;
-  if (n) sub = [q ? `${q} friend request${q === 1 ? '' : 's'}` : '', c ? `${c} cheer${c === 1 ? '' : 's'}` : '', r ? `${r} challenge${r === 1 ? '' : 's'} or taunt${r === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
-  else if (auth() && netFriends && netFriends.length){ const me = netCard().wx, place = 1 + netFriends.filter(x => x.ws === ws && x.wx > me).length; sub = `You're #${place} of ${netFriends.length + 1} this week`; }
-  return `<button type="button" class="rv-bar" data-act="openRivals"><span class="rv-bar-ico">${RV_ICON}${n ? `<i class="rv-dot num">${n}</i>` : ''}</span><span class="rv-bar-t"><b>Friends &amp; Rivals</b><small>${sub}</small></span><span aria-hidden="true">›</span></button>`; }
+// Today: a thin header with the date, and Friends & Rivals in the top-right corner (red count when something's new)
+function todayHead(){ const d = new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
+  return `<div class="today-head"><span class="today-date">${d}</span><span id="todayRv">${rivalsBtn()}</span></div>`; }
 function openRivals(){ if (tab !== 'rivals') rvBack = tab; if (!rvTab) rvTab = rivalsNew2() && !friendsNew() ? 'rivals' : 'friends'; tab = 'rivals'; render(true); window.scrollTo(0, 0); }
 function viewRivals(){
   const t = rvTab || 'friends', f = friendsNew(), r = rivalsNew2(), dot = n => n ? ` <i class="rv-dot num">${n}</i>` : '';
@@ -4235,7 +4231,7 @@ async function netLoad(){ const a = auth(); if (!a) return;
       ri:Math.min(RANKS.length - 1, Math.max(0, Math.round(+r.ri) || 0)), lv:Math.min(MAX_LEVEL, Math.max(1, Math.round(+r.lv) || 1))}));
     for (const o of before) if (!netReq.some(r => r.id === o.id) && (netFriends || []).some(f => f.id === o.id)) toast(`${o.n} accepted your friend request!`);
   } catch(e){ if (!netReq) netReq = []; }
-  netPaint(); acctPaint(); if (tab === 'today') { const b = document.querySelector('.rv-bar'); if (b) b.outerHTML = rivalsBar(); } }
+  netPaint(); acctPaint(); const tr = document.getElementById('todayRv'); if (tr) tr.innerHTML = rivalsBtn(); }
 // Friend requests: answer one sent to you, or take back one you sent
 async function netAnswer(id, accept){ const r = (netReq || []).find(x => x.id === id && x.dir === 'in'); if (!r) return;
   try { await sb('/rest/v1/rpc/answer_request', {method:'POST', body:JSON.stringify({requester:id, accept})}); await netLoad();

@@ -432,14 +432,11 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .rl-cheers .opt{min-height:52px}
 .rivals>.rl-actions{margin-top:2px}
 #view>.rl-actions{margin:0 0 14px}
+.today-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;margin:0 0 8px}
+.today-date{font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+#todayRv .icon-btn{width:44px;height:44px}
 .rv-btn{position:relative}
 .rv-dot{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#ff4d6a;color:#fff;font-style:normal;font-size:11px;font-weight:800;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--bg)}
-.rv-bar{display:flex;align-items:center;gap:12px;width:100%;margin:0 0 14px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);font:inherit;text-align:left;cursor:pointer}
-.rv-bar-ico{position:relative;display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:10px;background:color-mix(in srgb,var(--power) 16%,transparent);color:var(--power)}
-.rv-bar-t{display:flex;flex-direction:column;flex:1;min-width:0}
-.rv-bar-t b{font-family:var(--display);font-size:18px;text-transform:uppercase}
-.rv-bar-t small{color:var(--dim);font-size:13px}
-.rv-bar>span:last-child{font-size:24px;color:var(--dim)}
 .sec-btns{display:flex;gap:8px;align-items:center}
 .rv-head{margin-bottom:6px}
 .rv-head-pad{width:44px;flex:none}

@@ -222,6 +222,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     bossProgress: bossId => { const ids = ((D().drops || {})[bossId] || []); return { have: ids.filter(id => ST.owned.includes(id)).length, total: ids.length, wins: (ST.bossWins || {})[bossId] || 0 }; },
     // put an owned item on, or take it off if it's already on (one per slot); returns whether it's on now
     equip(id) { const it = D().items[id]; if (!it || !ST.owned.includes(id)) return false; const on = ST.equipped[it.type] !== id;
+      if (on && window.TA_WEAR_GATE && TA_WEAR_GATE(it)) return false;   // the app's rank rule (capes, auras)
       if (on) ST.equipped[it.type] = id; else delete ST.equipped[it.type]; changed(); return on; },
     reset(s) { ST = Object.assign(JSON.parse(JSON.stringify(START)), s || {}); changed(); },
     // Grind put up as a showdown stake: false (and nothing taken) if you don't have that much
@@ -492,7 +493,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
           const lock = it.drop && !owned;
           return `<button class="tsh-card${selId === id ? ' sel' : ''}${lock ? ' lock' : ''}" role="listitem" data-id="${id}" style="--rc:${data.rarity[it.r]}" aria-label="${esc(it.name)}, ${lock ? 'locked, beat the ' + esc(bossOf(it)) : eq ? 'equipped' : 'owned'}">
             <span class="rk"></span><span class="ped"></span><img class="ic" src="${it.icon}" alt=""><span class="nm">${esc(lock ? '???' : it.name)}</span>
-            <span class="tsh-pr gear">${lock ? '🔒 ' + esc(bossOf(it).toUpperCase()) : eq ? 'EQUIPPED' : 'EQUIP'}</span>${eq ? '<span class="tg eq">ON</span>' : it.drop && !lock ? '<span class="tg dr">DROP</span>' : ''}</button>`;
+            <span class="tsh-pr gear">${lock ? '🔒 ' + esc(bossOf(it).toUpperCase()) : eq ? 'EQUIPPED' : window.TA_WEAR_GATE && TA_WEAR_GATE(it, 1) ? '🔒 ' + TA_WEAR_GATE(it, 1) : 'EQUIP'}</span>${eq ? '<span class="tg eq">ON</span>' : it.drop && !lock ? '<span class="tg dr">DROP</span>' : ''}</button>`;
         }
         const spk = it.r === 'L' ? '<i class="spk" style="left:12px;top:8px"></i><i class="spk" style="left:50px;top:20px;animation-delay:.6s"></i>' : '';
         return `<button class="tsh-card${selId === id ? ' sel' : ''}" role="listitem" data-id="${id}" style="--rc:${data.rarity[it.r]}" aria-label="${esc(it.name)}, ${data.rarityName[it.r]}, ${priceOf(id)} ${it.cur === 'c' ? 'Grind' : 'Glory'}">
@@ -543,7 +544,9 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     $('.tsh-btn').onclick = () => {
       const id = selId, it = data.items[id];
       if (!ST.owned.includes(id) && it.drop) { toast(`Beat the ${bossOf(it)} to get this!`); return; }
+      const gate = window.TA_WEAR_GATE ? TA_WEAR_GATE(it) : null;
       if (ST.owned.includes(id)) {
+        if (ST.equipped[it.type] !== id && gate) { toast(gate); return; }
         if (ST.equipped[it.type] === id) delete ST.equipped[it.type]; else ST.equipped[it.type] = id;
         changed(); render(); opts.onChange && opts.onChange(TA_SHOP.state()); return;
       }
@@ -555,9 +558,9 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
         return;
       }
       if (it.cur === 'c') ST.coins -= price; else ST.gems -= price;
-      ST.owned.push(id); ST.equipped[it.type] = id; changed();
+      ST.owned.push(id); if (!gate) ST.equipped[it.type] = id; changed();
       say(['A fine choice!', 'Wear it with pride.', 'It suits you, hero.'][ST.owned.length % 3]);
-      toast(`${it.name} unlocked and equipped!`); try { navigator.vibrate && navigator.vibrate(30); } catch (e) {}
+      toast(gate ? `${it.name} is yours! ${gate}` : `${it.name} unlocked and equipped!`); try { navigator.vibrate && navigator.vibrate(30); } catch (e) {}
       render(); opts.onChange && opts.onChange(TA_SHOP.state());
     };
     $('.tsh-getgems').onclick = () => (opts.onGetGems ? opts.onGetGems() : toast(opts.gemHint || 'Gem store opens here.'));

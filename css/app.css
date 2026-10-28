@@ -2933,6 +2933,7 @@ html.ts-lock,html.ts-lock body{overflow:hidden}
 /* header: the coin badge never wraps; on the narrowest phones the "Training Arc" label gives it room and the XP line stacks */
 .coin-badge{white-space:nowrap;flex:none}
 .inv-perk{font:700 10px/1.3 var(--label);letter-spacing:.04em;color:#7ee0a8}
+.inv-lock{font:700 10px/1.3 var(--label);letter-spacing:.06em;color:var(--dim)}
 .ob-cur{display:flex;flex-direction:column;gap:8px;margin-top:12px;text-align:left}
 /* the page-turn wipe slides past the edge; it must never make setup scroll sideways */
 #welcome.ob{overflow-x:hidden}

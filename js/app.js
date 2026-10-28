@@ -1132,8 +1132,8 @@ const LOOK_PARTS = [
   {k:'top',    label:'Shirt', colors:CLOTH_COLORS},
   {k:'bottom', label:'Pants', colors:CLOTH_COLORS},
   {k:'shoes',  label:'Shoes', colors:CLOTH_COLORS},
-  {k:'cape',   label:'Cape', note:'S-Rank and up', colors:CLOTH_COLORS},
-  {k:'aura',   label:'Aura', note:'S-Rank and up', colors:[['#ffd23f','Gold'],['#ff4d7d','Crimson'],['#ff8a3d','Flame'],['#3ddc97','Jade'],['#4cc3ff','Ice'],['#b98cff','Violet'],['#ffffff','White']]}
+  {k:'cape',   label:'Cape', note:'D-Rank and up', colors:CLOTH_COLORS},
+  {k:'aura',   label:'Aura', note:'C-Rank and up', colors:[['#ffd23f','Gold'],['#ff4d7d','Crimson'],['#ff8a3d','Flame'],['#3ddc97','Jade'],['#4cc3ff','Ice'],['#b98cff','Violet'],['#ffffff','White']]}
 ];
 const STAGES = ['Arena','Dusk','Gym','Neon','Dojo','Rooftop','Blossom','Volcano','Storm','Cosmos','Throne'];   // past Neon, each unlocks at a level
 const hexRgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
@@ -2048,8 +2048,18 @@ function shopLook(base, w, aura){
   if (aura) look.aura = aura;
   return look;
 }
-function wornLook(g){ return window.TA_SHOP ? shopLook(S.hero[g].look, TA_SHOP.look(), (shopItem(shopEq().aura) || {}).color) : S.hero[g].look; }
-const shopGlow = () => { const a = shopItem(shopEq().aura); return a ? ` style="filter:drop-shadow(0 0 2px ${a.color}) drop-shadow(0 0 7px ${a.color})"` : ''; };
+function wornLook(g){ const cape = canWear('cape'), aura = canWear('aura');   // a cape or aura below its rank stays in your items, not on you
+  const L = window.TA_SHOP ? shopLook(S.hero[g].look, Object.assign(TA_SHOP.look(), cape ? {} : {cape:null}), aura ? (shopItem(shopEq().aura) || {}).color : null) : Object.assign({}, S.hero[g].look);
+  if (!cape) delete L.cape; return L; }
+// Your aura on every hero picture: the one from the shop, or the color picked in the editor on ranks whose art has none of its own
+// Capes and auras are earned: you can buy them any time, and wear them from D-Rank (capes) and C-Rank (auras)
+var WEAR_RANK = {cape:'D', aura:'C'};
+const canWear = (type, ri = rankIdx()) => !WEAR_RANK[type] || ri >= RANKS.findIndex(r => r.k === WEAR_RANK[type]);
+window.TA_WEAR_GATE = (it, short) => { if (!it || canWear(it.type)) return null; const k = WEAR_RANK[it.type], r = RANKS.find(x => x.k === k);
+  return short ? `${k}-RANK` : `${it.type === 'cape' ? 'Capes' : 'Auras'} can be worn from ${k}-Rank (Lv ${r.lv}). You're Lv ${curLevel()}.`; };
+const auraColor = (ri = rankIdx(), g = S.hero.gender) => { if (!canWear('aura', ri)) return null; const a = shopItem(shopEq().aura); if (a) return a.color; const c = (S.hero[g].look || {}).aura; return c && ri < RANKS.findIndex(r => r.k === 'S') ? c : null; };
+const glowCss = c => c ? `drop-shadow(0 0 2px ${c}) drop-shadow(0 0 7px ${c})` : '';
+const shopGlow = () => { const c = auraColor(); return c ? ` style="filter:${glowCss(c)}"` : ''; };
 // Pets that grow: the pet you have out earns a point for every set you log. It levels up to 30 and changes
 // form at levels 5, 15 and 25: bigger, glowing brighter, sparkling at Legendary, and a little better perk each time.
 const PET_FORMS = [[1, 'Hatchling'], [5, 'Young'], [15, 'Trained'], [25, 'Legendary']], PET_MAX = 30;
@@ -2145,7 +2155,7 @@ function perkOf(it){
   if (it.type === 'aura'){ const pct = AURA_PCT[it.r] || 1; return {kind:'xp', pct, text:`+${pct}% XP`}; }
   return null;
 }
-const petPerk = () => perkOf(shopItem(shopEq().pet)), auraPerk = () => perkOf(shopItem(shopEq().aura));
+const petPerk = () => perkOf(shopItem(shopEq().pet)), auraPerk = () => canWear('aura') ? perkOf(shopItem(shopEq().aura)) : null;
 // Your own hero in the shop's try-on, wearing what you preview
 function shopHero(cv){
   const g = S.hero.gender, h = S.hero[g], k = rankFor(S.xp).k, ctx = cv.getContext('2d');
@@ -2266,7 +2276,7 @@ function invEditorHTML(){
   const sel = invSel && item(invSel);
   const tile = id => { const it = item(id), on = eq[it.type] === id;
     return `<button type="button" class="inv-item${on ? ' on' : ''}" data-act="invItem" data-id="${id}" aria-pressed="${on}" style="--rc:${D.rarity[it.r]}">
-      <img src="${it.icon}" alt=""><b>${esc(it.name)}</b><span class="inv-r" style="color:${D.rarity[it.r]}">${D.rarityName[it.r]}</span>${(pk => pk ? `<span class="inv-perk">${pk.text}</span>` : '')(perkOf(it))}${it.type === 'pet' ? `<span class="inv-pet num">Lv ${petLv(id)} · ${PET_FORMS[petForm(id)][1]}${petLv(id) < PET_MAX ? ` · ${petLvPts(petLv(id) + 1) - petPts(id)} sets to Lv ${petLv(id) + 1}` : ''}</span>` : ''}${on ? `<span class="inv-on">${invWord(it.type)}</span>` : ''}</button>`; };
+      <img src="${it.icon}" alt=""><b>${esc(it.name)}</b><span class="inv-r" style="color:${D.rarity[it.r]}">${D.rarityName[it.r]}</span>${TA_WEAR_GATE(it) ? `<span class="inv-lock">🔒 ${TA_WEAR_GATE(it, 1)}</span>` : ''}${(pk => pk ? `<span class="inv-perk">${pk.text}</span>` : '')(perkOf(it))}${it.type === 'pet' ? `<span class="inv-pet num">Lv ${petLv(id)} · ${PET_FORMS[petForm(id)][1]}${petLv(id) < PET_MAX ? ` · ${petLvPts(petLv(id) + 1) - petPts(id)} sets to Lv ${petLv(id) + 1}` : ''}</span>` : ''}${on ? `<span class="inv-on">${invWord(it.type)}</span>` : ''}</button>`; };
   return `<div class="he-group inv-group"><h4>Shop &amp; boss items <span class="he-note">bought with Grind or Glory, or dropped by bosses · ${owned.length} owned · tap to put on or take off</span></h4>
     <div class="opt-chips inv-tabs" role="group" aria-label="Show">${INV_SLOTS.filter(([k]) => k === 'all' || n(k)).map(([k, l]) =>
       `<button type="button" class="opt" data-act="invTab" data-v="${k}" aria-pressed="${invTab === k}">${l} <span class="num">${k === 'all' ? owned.length : n(k)}</span></button>`).join('')}</div>
@@ -2277,13 +2287,14 @@ function invEditorHTML(){
 function paintEditorExtras(){
   const st = document.querySelector('.he-stage'), img = document.getElementById('heImg'); if (!st || !img) return;
   const fl = st.querySelector('.he-flairs'); if (fl) fl.innerHTML = flairLayer();   // the backdrops you picked, behind the hero
-  const a = shopItem(shopEq().aura), p = shopItem(shopEq().pet);
-  img.style.filter = a ? `drop-shadow(0 0 2px ${a.color}) drop-shadow(0 0 7px ${a.color})` : '';
+  const p = shopItem(shopEq().pet);
+  img.style.filter = glowCss(auraColor(previewRank, editG));
   let pe = st.querySelector('.he-pet');
   if (p){ if (!pe){ pe = document.createElement('img'); pe.alt = `${petName(p.id)}: open its profile`; pe.dataset.act = 'petCard'; st.appendChild(pe); } pe.dataset.id = p.id; pe.className = 'he-pet pet-f' + petForm(p.id); pe.src = petIcon(p.id); } else if (pe) pe.remove();
 }
 function invToggle(id){
   const it = TA_SHOP_DATA.items[id]; if (!it) return;
+  const gate = TA_WEAR_GATE(it); if (gate && shopEq()[it.type] !== id){ invSel = id; toast(gate); return; }   // not until its rank
   const on = TA_SHOP.equip(id); invSel = id;
   if (on && it.type === 'pet' && !(S.petSince || {})[id]){ S.petSince = {...(S.petSince || {}), [id]:todayIso()}; save(); }
   renderHeroEditor(); paintHeroes(); buzz(10);
@@ -8648,6 +8659,7 @@ function paintHeroes(){
   const g = S.hero.gender;
   document.documentElement.dataset.stage = STAGES[S.hero[g].stage].toLowerCase();
   for (const id of ['heroImg', 'ruImg', 'bannerImg', 'cardImg', 'coachImg']) if (document.getElementById(id)) setSprite(id, rankIdx(), g);
+  for (const id of ['heroImg', 'bannerImg', 'cardImg']){ const el = document.getElementById(id); if (el) el.style.filter = glowCss(auraColor()); }   // your aura, at any rank
   if (hasArt(editG)) setSprite('heImg', previewRank, editG);
   paintEditorExtras(); paintMe();
 }
@@ -8681,7 +8693,7 @@ function renderHeroEditor(){
   const sw = part => `<div class="swatches" role="group" aria-label="${part.label}">`
     + `<button class="sw-btn sw-default" data-act="heroLook" data-k="${part.k}" data-v="" aria-pressed="${!look[part.k]}" aria-label="${part.label}: rank default" title="Rank default"></button>`
     + [...part.colors, ...REWARDS.filter(r => r.kind === (part.k === 'hair' ? 'hair' : part.k === 'aura' ? 'aura' : part.k === 'skin' ? '-' : 'cloth')).map(r => [r.color, r.name, r.lv])]
-      .map(([c, name, lv]) => lv && curLevel() < lv
+      .map(([c, name, lv]) => (lv = Math.max(lv || 0, canWear(part.k) ? 0 : RANKS.find(x => x.k === WEAR_RANK[part.k]).lv)) && curLevel() < lv   // capes and auras wait for their rank too
         ? `<button class="sw-btn locked" style="--c:${c}" disabled aria-label="${part.label}: ${name}, unlocks at level ${lv}" title="${name}: unlocks at Lv ${lv}"></button>`
         : `<button class="sw-btn" style="--c:${c}" data-act="heroLook" data-k="${part.k}" data-v="${c}" aria-pressed="${look[part.k] === c}" aria-label="${part.label}: ${name}" title="${name}"></button>`).join('')
     + '</div>';

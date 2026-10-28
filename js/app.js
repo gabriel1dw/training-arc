@@ -3149,17 +3149,34 @@ function questsHTML(){
     <p class="fine shield-line">${shieldHTML(streakInfo(logsByDay(), todayIso()))} Rest days never break your session streak, and a shield covers one missed training day each week. It refills Monday.</p>
   </section>`;
 }
+// Days of the arc you've finished this time through (by log id), so going back to one shows it as done.
+// A new pass through the arc, a restart or a deleted log entry clears it.
+function clearedDay(p, w, d){ const id = ((S.cleared || {})[p.id] || {})[w + '|' + d]; return id ? S.log.find(l => l.id === id) || null : null; }
+function markCleared(p, w, d, id){ if (!id) return; S.cleared = S.cleared || {}; S.cleared[p.id] = {...(S.cleared[p.id] || {}), [w + '|' + d]:id}; }
+function clearCleared(id){ if (S.cleared) delete S.cleared[id]; }
+// Workouts logged before this existed: walk back through the current arc's log until the run started
+function clearedBackfill(){
+  S.clearedInit = 1; const p = prog(), perWeek = p.weeks[0].days.length; let last = S.pos.w * perWeek + S.pos.d;
+  for (const l of S.log){ if (l.bossFight || l.deload) continue; if (l.prog !== p.name) break;
+    const w = (l.week || 0) - 1, d = w >= 0 && p.weeks[w] ? p.weeks[w].days.findIndex(x => x.name === l.day) : -1; if (d < 0) break;
+    const i = w * perWeek + d; if (i >= last) break; last = i; if (l.id && !clearedDay(p, w, d)) markCleared(p, w, d, l.id); }
+}
+var redoDay = null;   // "Do it again" on a finished day shows its sets once more
 function viewToday(){
-  deloadMissedCheck(); const p = prog(), {w, d} = curPos(), wk = p.weeks[w], day = liveDay(p, w, d);
+  deloadMissedCheck(); if (!S.clearedInit) clearedBackfill();
+  const p = prog(), {w, d} = curPos(), wk = p.weeks[w], day = liveDay(p, w, d);
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
-  const pips = Array.from({length:total}, (_, i) => `<span class="pip${i < idx ? ' on' : i === idx ? ' cur' : ''}"></span>`).join('');
-  const n = sessionSets();
+  const pips = Array.from({length:total}, (_, i) => `<span class="pip${i === idx ? ' cur' : i < idx || clearedDay(p, Math.floor(i / perWeek), i % perWeek) ? ' on' : ''}"></span>`).join('');
+  const n = sessionSets(), key = `${p.id}|${w}|${d}`, cl = n || deloadOn() ? null : clearedDay(p, w, d), shut = cl && redoDay !== key;
+  const doneHTML = cl ? `<div class="stage-done"><span class="sd-badge">✓ Workout completed</span><span class="fine">${cl.date || cl.iso} · ${cl.sets} set${cl.sets === 1 ? '' : 's'} · +${fmt(cl.xp || 0)} XP${cl.boss ? ' · boss defeated' : ''}</span>
+      ${(cl.ex || []).length ? `<ul class="sd-ex">${cl.ex.map(x => `<li><span>${esc(x.name)}</span><b>${(st => st.length > 1 && st.every(s => s[0] === st[0][0] && s[1] === st[0][1]) ? `${st.length}×${st[0][1]}${st[0][0] > 0 ? ` @ ${fmt(st[0][0])}` : ''}` : st.map(([wt, r]) => wt > 0 ? `${fmt(wt)}×${r}` : `${r} reps`).join(', '))(x.sets || [])}</b></li>`).join('')}</ul>` : ''}</div>
+    <button class="btn btn-power wk-start" data-act="nextOpen">Go to your next workout ›</button><button type="button" class="wk-link boss-plain" data-act="redoDay">Do this workout again</button>` : '';
   let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + coachHTML() + fuelHTML() +restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
     ${bossDay(p, w, d) ? `<div class="boss-line">Boss battle: <b>${bossName(p)}</b>. Clear every set to defeat it for +${fmt(bossXp(p))} XP.</div>` : ''}
-    ${bossDay(p, w, d) && window.TA_BOSSES ? `<button class="btn btn-power wk-start" data-act="startWk">${arcBossMid() ? `Resume the boss fight · ${arcBossMid()} sets in` : 'Fight the boss'}</button><button type="button" class="wk-link boss-plain" data-act="startWkPlain">Log it as a normal workout instead</button>`
+    ${shut ? doneHTML : bossDay(p, w, d) && window.TA_BOSSES ? `<button class="btn btn-power wk-start" data-act="startWk">${arcBossMid() ? `Resume the boss fight · ${arcBossMid()} sets in` : 'Fight the boss'}</button><button type="button" class="wk-link boss-plain" data-act="startWkPlain">Log it as a normal workout instead</button>`
       : `<button class="btn btn-power wk-start" data-act="startWk">${n ? 'Continue workout' : 'Start workout'}</button>`}
     ${deloadOn() ? '' : `<div class="stage-nav">
       <button class="btn btn-ghost btn-sm" data-act="move" data-dir="-1" aria-label="Previous workout">‹ Prev</button>
@@ -3168,6 +3185,7 @@ function viewToday(){
     </div>`}
   </section>`;
   h += questsHTML() + seasonHTML();   // the monthly season track, here as well as on Progress
+  if (shut) return h;   // a finished day: no empty set boxes or Clear stage bar
   if (p.needsMax && S.example) h += `<div class="notice">These weights use example maxes. <button data-act="tab" data-tab="maxes">Enter your maxes</button> and every number updates.</div>`;
   h += day.ex.map((ex, ei) => exCard(p, ex, ei)).join('');
   h += scrollHTML();
@@ -3294,7 +3312,7 @@ const arcWhere = id => { const sv = arcSave(id); return sv && sv.pos && (sv.pos.
 function switchArc(id, fresh){
   S.arcSaves = S.arcSaves || {};
   if (S.programId) S.arcSaves[S.programId] = {pos:clone(S.pos), schedule:clone(S.schedule)};
-  const sv = !fresh && S.arcSaves[id]; S.programId = id; const p = prog();
+  const sv = !fresh && S.arcSaves[id]; S.programId = id; const p = prog(); if (fresh) clearCleared(id);
   const w = sv ? Math.max(0, Math.min(sv.pos.w, p.weeks.length - 1)) : 0, d = sv ? Math.max(0, Math.min(sv.pos.d, p.weeks[w].days.length - 1)) : 0;
   S.pos = {w, d};
   setSchedule(sv && Array.isArray(sv.schedule) && sv.schedule.length ? clone(sv.schedule) : clone(SCHED[p.weeks[0].days.length] || SCHED[3]));
@@ -3304,6 +3322,7 @@ function switchArc(id, fresh){
 // Starting an arc over: back to week 1, day 1, with any sets logged on its unfinished days cleared
 function restartArc(id){
   if (id === S.programId) S.pos = {w:0, d:0}; else if (S.arcSaves) delete S.arcSaves[id];
+  clearCleared(id);
   for (const bag of [S.done, S.amrap, S.setLog, S.ramp]) for (const k of Object.keys(bag || {})) if (k.startsWith(id + '|')) delete bag[k];
 }
 let restartArmed = null;
@@ -7588,6 +7607,9 @@ function completeWorkout(){
   const boosts = [];
   if (arcDone) for (const l of new Set(p.weeks.flatMap(wv => wv.days.flatMap(dd => dd.ex.map(x => x.lift))).filter(Boolean))){
     const add = (l === 'bench' || l === 'ohp' ? 5 : 10) * (S.unit === 'kg' ? .5 : 1); S.tmAdd[l] = (S.tmAdd[l] || 0) + add; boosts.push([l, add]); }
+  if (!dl && !(boss && !bossWon)) markCleared(p, w, d, entry.id);   // going back to this day shows it as done
+  if (arcDone) clearCleared(p.id);   // a fresh pass through the arc
+  redoDay = null;
   S.pos = {w:nw, d:nd}; save();
   const parts = [[`${n} ${n === 1 ? 'set' : 'sets'} logged`, n * 10], [full ? 'Stage cleared' : `Stage ${Math.round(n / total * 100)}% cleared`, clear - (full ? FULL_CLEAR : 0)]];
   if (full) parts.push(['Full clear bonus', FULL_CLEAR]);
@@ -7768,7 +7790,13 @@ const actSel = el => `[data-act="${el.dataset.act}"]` + FOCUS_KEYS.filter(n => e
 function move(dir){
   const p = prog(), perWeek = p.weeks[0].days.length, total = p.weeks.length * perWeek;
   const idx = ((S.pos.w * perWeek + S.pos.d + dir) % total + total) % total;
-  S.pos = {w:Math.floor(idx / perWeek), d:idx % perWeek}; save(); render();
+  redoDay = null; S.pos = {w:Math.floor(idx / perWeek), d:idx % perWeek}; save(); render();
+}
+// From a finished day: the first day after it you haven't done yet this time through
+function nextOpen(){
+  const p = prog(), perWeek = p.weeks[0].days.length, total = p.weeks.length * perWeek, cur = S.pos.w * perWeek + S.pos.d;
+  let i = cur + 1; while (i < total && clearedDay(p, Math.floor(i / perWeek), i % perWeek)) i++;
+  move((i < total ? i : cur + 1) - cur); window.scrollTo(0, 0);
 }
 function rankCheck(oldXp){
   const a = rankFor(oldXp), b = rankFor(S.xp);
@@ -7885,6 +7913,8 @@ document.addEventListener('click', e => {
     if (on) buzz(8);
   }
   else if (a === 'move') move(+t.dataset.dir);
+  else if (a === 'nextOpen') nextOpen();
+  else if (a === 'redoDay'){ redoDay = `${S.programId}|${S.pos.w}|${S.pos.d}`; render(); }
   else if (a === 'finish') finish();
   else if (a === 'startWk'){ const p = prog(), boss = bossDay(p, S.pos.w, S.pos.d), go = () => boss && window.TA_BOSSES ? openArcBoss() : openWorkout();
     // a scene when an arc begins, and before its boss

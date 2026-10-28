@@ -2635,6 +2635,12 @@ body:has(.wk:not([hidden])){overflow:hidden}
 .wk-say{position:relative;flex:1;padding:10px 12px;margin-bottom:34px;font-size:15px;font-weight:600;border-radius:var(--radius) var(--radius) var(--radius) 2px}
 .wk-sheet .wk-btn{margin-top:auto;min-height:56px;flex-shrink:0}
 .wk-start{width:100%;margin-top:12px}
+.stage-done{display:flex;flex-direction:column;gap:6px;margin-top:12px;padding:12px;border-radius:12px;background:color-mix(in srgb,var(--good) 10%,var(--surface-2));border:1px solid color-mix(in srgb,var(--good) 55%,var(--line))}
+.sd-badge{font-family:var(--label);font-weight:800;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--good)}
+.stage-done .fine{margin:0}
+.sd-ex{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:3px}
+.sd-ex li{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.sd-ex li b{color:var(--dim);font-weight:700;text-align:right}
 @keyframes wk-sheet-in{from{transform:translateY(28px);opacity:0}to{transform:none;opacity:1}}
 @keyframes wk-stamp-in{0%{transform:rotate(-14deg) scale(2.4);opacity:0}70%{transform:rotate(-9deg) scale(.92);opacity:1}100%{transform:rotate(-9deg) scale(1);opacity:1}}
 @keyframes spin{to{transform:rotate(360deg)}}

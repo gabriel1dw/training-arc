@@ -2421,7 +2421,7 @@ function renderHeader(){
   const em = document.getElementById('emblem');
   em.textContent = r.k; em.style.setProperty('--rc', `var(--rank-${r.k.toLowerCase()})`); em.style.fontSize = emFont(r.k, 'xs');
   document.getElementById('heroName').textContent = S.hero.name || 'Hero';
-  { const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = rivalsBtn() + settingsBtn(); }   // Rivals, with a count of new challenges
+  { const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = meBtn() + rivalsBtn() + settingsBtn(); }   // your profile, Rivals with a count of new challenges
   paintCoins();
   paintHeroes();
   document.getElementById('rankTitle').textContent = `${r.k}-Rank · ${heroTitle()}`;
@@ -4261,7 +4261,42 @@ const rivalsBtn = () => { const n = rivalsNew(); return `<button type="button" c
 function settingsBtn(){   // the gear, beside Friends & Rivals on every tab
   return `<button type="button" class="icon-btn" data-act="openSettings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>`; }
 function todayHead(){ const d = new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
-  return `<div class="today-head"><span class="today-date">${d}</span><span class="sec-btns"><span id="todayRv">${rivalsBtn()}</span>${settingsBtn()}</span></div>`; }
+  return `<div class="today-head"><span class="me-wrap">${meBtn()}<span class="today-date">${d}</span></span><span class="sec-btns"><span id="todayRv">${rivalsBtn()}</span>${settingsBtn()}</span></div>`; }
+// Your profile: a small portrait of your hero, top left on every tab, that opens everything about you
+const meBtn = () => `<button type="button" class="me-btn" data-act="openMe" aria-label="Your profile: ${esc(S.hero.name || 'Hero')}"><canvas class="me-av" width="64" height="64" aria-hidden="true"></canvas></button>`;
+var ME_PORT = {key:'', url:''};
+function mePortrait(){ const g = S.hero.gender, h = S.hero[g], k = rankFor(S.xp).k, look = wornLook(g), key = g + k + lookKey(look, h.style, h.acc);
+  if (ME_PORT.key === key) return Promise.resolve(ME_PORT.url);
+  return spriteFrames(g, k, look, h.style, h.acc).then(fr => { const bm = fr[0].bmp, c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; const x = c.getContext('2d'); x.drawImage(bm, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data; let top = 0; find: for (; top < c.height; top++) for (let i = 40; i < 88; i++) if (d[(top * c.width + i) * 4 + 3] > 40) break find;   // the top of the hair
+    const s = 60, o = document.createElement('canvas'); o.width = o.height = 64; const ox = o.getContext('2d'); ox.imageSmoothingEnabled = false; ox.drawImage(bm, 64 - s / 2, Math.max(0, top - 2), s, s, 2, 2, 60, 60);
+    ME_PORT = {key, url:o.toDataURL()}; return ME_PORT.url; }); }
+// The profile sheet: who you are, your numbers, your account, shortcuts to everything about you, and the other profiles
+function openMe(){
+  const r = rankFor(S.xp), lv = curLevel(), a = auth(), mail = a && ((a.user || {}).email || a.email), p = prog(), wk = weekStreak(), st = window.TA_SHOP ? TA_SHOP.state() : {coins:0, gems:0};
+  const others = PROFILES.list.filter(x => x.id !== PROFILES.active), md = ts => ts ? new Date(ts).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : '';
+  const row = (act, icon, t, s, extra = '') => `<button type="button" class="st-row st-link me-row" data-act="${act}"${extra}><span class="me-ic" aria-hidden="true">${icon}</span><div><b>${t}</b><span>${s}</span></div><span aria-hidden="true">›</span></button>`;
+  rvDlg(`<div class="me-top"><span class="me-big stage-bg"><canvas class="me-av" width="64" height="64" aria-hidden="true"></canvas></span>
+      <div class="me-who"><b class="rl-h">${esc(S.hero.name || 'Hero')}</b><span class="me-rank">${emblem(r.k, 'xs')}<span>${r.k}-Rank ${r.t} · Lv ${lv}</span></span><span class="fine">"${esc(heroTitle())}" · ${esc(pathOf(p).name)}, ${esc(p.name)}</span></div>
+      <button type="button" class="icon-btn me-x" data-act="rvClose" aria-label="Close">×</button></div>
+    <div class="me-stats"><div><b class="num">${fmt(S.log.length)}</b><span>Workouts</span></div><div><b class="num">${S.prs}</b><span>PRs</span></div><div><b class="num">${wk}</b><span>Week streak</span></div><div><b class="num">${fmt(st.coins || 0)}</b><span>Grind</span></div><div><b class="num">${fmt(st.gems || 0)}</b><span>Glory</span></div></div>
+    <span class="rl-sec">Account</span>
+    ${mail ? row('acctOpen', '☁️', esc(mail), 'Signed in. Your progress is backed up to your account.') : row('acctOpen', '☁️', 'Sign in', 'Back up your progress and add friends.')}
+    <span class="rl-sec">You</span>
+    <div class="st-group">${row('meHero', '🧍', 'Edit your character', 'Look, hair, gear, title and stage')}
+      ${row('meProgress', '📈', 'Stats, trophies and bodyweight', 'Your card, achievements and progress')}
+      ${row('meFriends', '🤝', 'Friends and rivals', 'Showdowns, crews and cheers')}
+      ${row('mePremium', '👑', `Training Arc Premium${isPremium() ? ' · active' : ''}`, isPremium() ? 'Your perks and app themes' : 'See what Premium adds')}
+      ${row('meBackup', '💾', 'Back up or restore', 'Save a copy of this profile, or bring one back')}
+      ${row('meSettings', '⚙️', 'Settings', 'Units, sounds, reminders and more')}</div>
+    <span class="rl-sec">Switch profile</span>
+    <div class="st-group">${others.map(o => { const s = profileData(o.id), nm = (s && s.hero && s.hero.name) || o.name || 'Hero', rr = s ? rankFor(s.xp) : RANKS[0];
+        return `<button type="button" class="st-row st-link me-row" data-act="meSwitch" data-id="${o.id}"><span class="me-ic" aria-hidden="true">${emblem(rr.k, 'xs')}</span><div><b>${esc(nm)}</b><span>${s && s.onboarded ? `${rr.k}-Rank · Lv ${levelFor(s.xp)}${o.played ? ` · last played ${md(o.played)}` : ''}` : 'Setup not finished'}</span></div><span aria-hidden="true">›</span></button>`; }).join('')}
+      ${row('meProfiles', '👥', others.length ? 'Manage profiles' : 'Add a profile', others.length ? 'Rename, add or remove profiles on this device' : 'Someone else training on this phone? Give them their own hero')}</div>`);
+  paintMe();
+}
+function paintMe(){ const cs = document.querySelectorAll('canvas.me-av'); if (!cs.length) return;
+  mePortrait().then(url => { const im = new Image(); im.onload = () => { for (const c of document.querySelectorAll('canvas.me-av')){ const x = c.getContext('2d'); x.imageSmoothingEnabled = false; x.clearRect(0, 0, 64, 64); x.drawImage(im, 0, 0); } }; im.src = url; }).catch(() => {}); }
 // Today keeps cheers, taunts and challenges to one tappable line; they open in full on Friends & Rivals
 function todaySocial(){
   const ch = (S.cheerIn || []).length, tn = (S.tauntIn || []).length, cl = (S.chals || []).filter(c => !c.claimed && !c.gone).length;
@@ -4731,7 +4766,7 @@ async function netLoad(){ const a = auth(); if (!a) return;
   if (sdTick(true) && tab !== 'rivals') render();
   setTimeout(maybeRecap, 900);   // the Monday look back, once friends' numbers are in
   netPaint(); acctPaint(); const tr = document.getElementById('todayRv'); if (tr) tr.innerHTML = rivalsBtn();
-  const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = rivalsBtn() + settingsBtn(); }
+  const hr = document.getElementById('hudRv'); if (hr) hr.innerHTML = meBtn() + rivalsBtn() + settingsBtn(); }
 // Friend requests: answer one sent to you, or take back one you sent
 async function netAnswer(id, accept){ const r = (netReq || []).find(x => x.id === id && x.dir === 'in'); if (!r) return;
   try { await sb('/rest/v1/rpc/answer_request', {method:'POST', body:JSON.stringify({requester:id, accept})}); await netLoad();
@@ -6671,7 +6706,7 @@ function viewProgress(){
   const r = rankFor(S.xp), n = nextRank(S.xp), lv = levelInfo(S.xp);
   const hist = S.history.slice(0, 10).map(h => `<div class="li"><div class="l">${LIFTS[h.lift]}<small>${h.date} · ${h.src}</small></div><span class="r num">${fmt(h.val)} ${h.unit}</span></div>`).join('');
   const log = S.log.slice(0, 10).map(l => `<div class="li"><div class="l">${l.day}<small>${l.date} · ${l.prog}, week ${l.week} · ${l.sets} sets</small></div><span class="r num" style="color:var(--power)">+${l.xp} XP</span></div>`).join('');
-  return `<section class="row-between"><h1 class="sec">Progress</h1><span class="sec-btns">${rivalsBtn()}${settingsBtn()}</span></section>
+  return `<section class="row-between"><span class="me-wrap">${meBtn()}<h1 class="sec">Progress</h1></span><span class="sec-btns">${rivalsBtn()}${settingsBtn()}</span></section>
   ${backupNudge()}
   ${tcardHTML(r, n, lv)}
   <div class="stats">
@@ -7945,6 +7980,17 @@ document.addEventListener('click', e => {
   else if (/^(acct|cloud|net)[A-Z]/.test(a) && acctAct(a, t)){}
   else if (a === 'petCard'){ e.stopPropagation(); openPetCard(t.dataset.id); } else if (a === 'petPoke') petPoke(); else if (a === 'petClose') petClose();
   else if (a === 'openRivals') openRivals(t.dataset.v);
+  // your profile sheet and its shortcuts
+  else if (a === 'openMe') openMe();
+  else if (a.startsWith('me') && /^me(Hero|Progress|Friends|Premium|Backup|Settings|Switch|Profiles)$/.test(a)){ document.getElementById('rvDlg').close();
+    if (a === 'meHero') document.querySelector('[data-act=openHero]')?.click();
+    else if (a === 'meProgress'){ tab = 'progress'; render(true); window.scrollTo(0, 0); }
+    else if (a === 'meFriends') openRivals();
+    else if (a === 'mePremium') premiumHub();
+    else if (a === 'meSettings') openSettings();
+    else if (a === 'meBackup'){ openSettings(); setTimeout(() => [...document.querySelectorAll('.st-h')].find(h => /your data/i.test(h.textContent))?.scrollIntoView({block:'start'}), 80); }
+    else if (a === 'meSwitch'){ const p = PROFILES.list.find(x => x.id === t.dataset.id); if (p){ pf = {then:null, canClose:false, edit:null, del:null}; useProfile(p.id); } }
+    else if (a === 'meProfiles') openProfiles(null, true); }
   else if (a === 'openYear') openYear(); else if (a === 'yirNext') yirNext(); else if (a === 'yirClose') yirClose(); else if (a === 'yirShare') shareYear();
   else if (a === 'startWkPlain') openWorkout();
   else if (a === 'checkQuest'){   // daily check-ins are on your honor: tap when you've done it
@@ -8603,7 +8649,7 @@ function paintHeroes(){
   document.documentElement.dataset.stage = STAGES[S.hero[g].stage].toLowerCase();
   for (const id of ['heroImg', 'ruImg', 'bannerImg', 'cardImg', 'coachImg']) if (document.getElementById(id)) setSprite(id, rankIdx(), g);
   if (hasArt(editG)) setSprite('heImg', previewRank, editG);
-  paintEditorExtras();
+  paintEditorExtras(); paintMe();
 }
 function cheer(){
   if (reduceMotion) return;

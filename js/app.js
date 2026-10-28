@@ -2158,7 +2158,7 @@ function perkOf(it){
 const petPerk = () => perkOf(shopItem(shopEq().pet)), auraPerk = () => canWear('aura') ? perkOf(shopItem(shopEq().aura)) : null;
 // Your own hero in the shop's try-on, wearing what you preview
 function shopHero(cv){
-  const g = S.hero.gender, h = S.hero[g], k = rankFor(S.xp).k, ctx = cv.getContext('2d');
+  const g = S.hero.gender, h = S.hero[g], k = RANKS[formIdx(g)].k, ctx = cv.getContext('2d');
   let alive = true, frames = null, i = 0, next = 0, ver = 0, raf = 0;
   cv.width = SPRITE_W; cv.height = SPRITE_H;
   const draw = now => {
@@ -4276,7 +4276,7 @@ function todayHead(){ const d = new Date().toLocaleDateString(undefined, {weekda
 // Your profile: a small portrait of your hero, top left on every tab, that opens everything about you
 const meBtn = () => `<button type="button" class="me-btn" data-act="openMe" aria-label="Your profile: ${esc(S.hero.name || 'Hero')}"><canvas class="me-av" width="64" height="64" aria-hidden="true"></canvas></button>`;
 var ME_PORT = {key:'', url:''};
-function mePortrait(){ const g = S.hero.gender, h = S.hero[g], k = rankFor(S.xp).k, look = wornLook(g), key = g + k + lookKey(look, h.style, h.acc);
+function mePortrait(){ const g = S.hero.gender, h = S.hero[g], k = RANKS[formIdx(g)].k, look = wornLook(g), key = g + k + lookKey(look, h.style, h.acc);
   if (ME_PORT.key === key) return Promise.resolve(ME_PORT.url);
   return spriteFrames(g, k, look, h.style, h.acc).then(fr => { const bm = fr[0].bmp, c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; const x = c.getContext('2d'); x.drawImage(bm, 0, 0);
     const d = x.getImageData(0, 0, c.width, c.height).data; let top = 0; find: for (; top < c.height; top++) for (let i = 40; i < 88; i++) if (d[(top * c.width + i) * 4 + 3] > 40) break find;   // the top of the hair
@@ -5574,7 +5574,7 @@ function tsSize(){
   tsx.dirty = true;
 }
 async function tsLoad(){
-  const k = RANKS[rankIdx()].k, frames = (g, kk = k) => { const h = S.hero[g]; return spriteFrames(g, kk, wornLook(g), h.style, h.acc); }, me = tsx;
+  const k = RANKS[formIdx()].k, frames = (g, kk = k) => { const h = S.hero[g]; return spriteFrames(g, kk, wornLook(g), h.style, h.acc); }, me = tsx;
   try {
     const hero = await frames(S.hero.gender); if (tsx !== me) return; tsBounds(hero); tsx.hero = hero; tsx.dirty = true;
     if (tsx.sc.id === 'select'){ const both = {male:await frames('male'), female:await frames('female')}; if (tsx !== me) return; tsBounds(both.male); tsBounds(both.female); tsx.both = both; }
@@ -5687,7 +5687,7 @@ function fitBoss(boss){
 
 // Your hero for the fight: frame one of your own character, sized for the battle screen
 async function gateHero(){
-  try { const g = S.hero.gender, h = S.hero[g], fr = await spriteFrames(g, rankFor(S.xp).k, wornLook(g), h.style, h.acc);
+  try { const g = S.hero.gender, h = S.hero[g], fr = await spriteFrames(g, RANKS[formIdx(g)].k, wornLook(g), h.style, h.acc);
     const c = document.createElement('canvas'); c.width = 128; c.height = 192; c.getContext('2d').drawImage(fr[0].bmp, 0, -8); return c.toDataURL(); } catch(e){ return null; }
 }
 // Each boss's sprite sheet as a CSS class, added once: its frames play as a small looping animation
@@ -5853,7 +5853,7 @@ function renderProfiles(){
       ${L.length < MAX_PROFILES ? `<button type="button" class="pf-new" data-pf="new"><span class="pf-plus" aria-hidden="true">+</span><span><b>New profile</b><small>Start a fresh arc with your own hero</small></span></button>` : `<p class="fine">That's the most profiles a device can hold (${MAX_PROFILES}).</p>`}</div>
     <p class="fine pf-note">Profiles are saved on this device. Back each one up from Settings to keep it safe.</p>`;
   for (const p of L){ const s = profileData(p.id); if (!s || !s.hero) continue; const g = s.hero.gender, h = s.hero[g] || {};
-    spriteFrames(g, rankFor(s.xp).k, h.look || {}, h.style, h.acc || {}).then(fr => { if (pf) players['pf-' + p.id] = {want:'pf', frames:fr, i:0, next:0}; }).catch(() => {}); }
+    spriteFrames(g, RANKS[formIdx(g, s)].k, h.look || {}, h.style, h.acc || {}).then(fr => { if (pf) players['pf-' + p.id] = {want:'pf', frames:fr, i:0, next:0}; }).catch(() => {}); }
 }
 function openProfiles(then, canClose){
   pf = {then, canClose:!!canClose && !!PROFILES.active, edit:null, del:null};
@@ -7562,7 +7562,7 @@ function renderWorkout(){
     ${wkAddHTML()}
     <button type="button" class="wk-btn" data-wk="finish"${doneN ? '' : ' disabled'}>Finish workout (${doneN} of ${total} sets)</button>
     <p class="wk-style">Today's style: ${theme.name}</p>`;
-  setSprite('coachImg', rankIdx(), S.hero.gender);
+  setSprite('coachImg', formIdx(), S.hero.gender);
   page.querySelectorAll('.wk-demo').forEach(playDemo);
   if (keep){ const el = page.querySelector(keep); if (el && !el.disabled) el.focus({preventScroll:true}); }
 }
@@ -8109,9 +8109,12 @@ document.addEventListener('click', e => {
   else if (a === 'shareCard') shareCard(t.dataset.v);
   else if (a === 'path'){ arcPath = t.dataset.path; render(); }
   else if (a === 'allArcs'){ S.prefs.allArcs = !S.prefs.allArcs; save(); arcPath = null; render(); }
-  else if (a === 'openHero'){ previewRank = rankIdx(); editG = S.hero.gender; renderHeroEditor(); openDialog('heroEditor', '[data-act=closeHero]'); document.getElementById('heName').value = S.hero.name; paintHeroes(); }
+  else if (a === 'openHero'){ previewRank = formIdx(); editG = S.hero.gender; renderHeroEditor(); openDialog('heroEditor', '[data-act=closeHero]'); document.getElementById('heName').value = S.hero.name; paintHeroes(); }
   else if (a === 'closeHero'){ closeDialog('heroEditor'); render(); }
   else if (a === 'heroRank'){ previewRank = +t.dataset.v; renderHeroEditor(); paintHeroes(); }
+  else if (a === 'heroForm'){ const v = +t.dataset.v, cur = rankIdx(); if (v > cur) return; const pr = S.hero[editG];
+    if (v === cur) delete pr.form; else pr.form = v;   // your current rank means "follow my rank" as it rises
+    save(); renderHeroEditor(); paintHeroes(); render(); toast(`Now showing your ${RANKS[v].k}-Rank form.`); buzz(10); }
   else if (a === 'heroGender'){
     editG = t.dataset.v;
     if (hasArt(editG) && S.hero.gender !== editG){ S.hero.gender = editG; arcPath = null; if (!S.prefs.allArcs && ![editG, 'both'].includes(pathOf(prog()).g)) toast(editG === 'female' ? 'Her arcs are ready in the Arcs tab.' : 'His arcs are ready in the Arcs tab.'); }   // without art yet, the page explains and you stay as you are
@@ -8228,6 +8231,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape'){
 const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 let previewRank = 0;
 const rankIdx = () => RANKS.indexOf(rankFor(S.xp));
+// The form your hero shows: any rank you've reached, picked in the editor. None picked follows your rank as it rises.
+const formIdx = (g = S.hero.gender, s = S) => { const r = RANKS.indexOf(rankFor(s.xp)), f = ((s.hero || {})[g] || {}).form; return typeof f === 'number' && f >= 0 && f < r ? f : r; };
 const lookKey = (look, style, acc = {}) => style + '|' + PART_IDS.map(p => look[p] || '').join('|') + '|' + SLOT_ORDER.map(s => acc[s] || '').join(',') + '|' + (look.garb || '') + '|' + (look.sole || '') + (look.shoeKind || '');
 const BASES = {}, RENDERS = new Map();
 let editG = 'male';   // the character page open in the editor
@@ -8658,7 +8663,8 @@ requestAnimationFrame(tickPlayers);
 function paintHeroes(){
   const g = S.hero.gender;
   document.documentElement.dataset.stage = STAGES[S.hero[g].stage].toLowerCase();
-  for (const id of ['heroImg', 'ruImg', 'bannerImg', 'cardImg', 'coachImg']) if (document.getElementById(id)) setSprite(id, rankIdx(), g);
+  for (const id of ['heroImg', 'bannerImg', 'cardImg', 'coachImg']) if (document.getElementById(id)) setSprite(id, formIdx(g), g);
+  if (document.getElementById('ruImg')) setSprite('ruImg', rankIdx(), g);   // a rank-up shows the new rank
   for (const id of ['heroImg', 'bannerImg', 'cardImg']){ const el = document.getElementById(id); if (el) el.style.filter = glowCss(auraColor()); }   // your aura, at any rank
   if (hasArt(editG)) setSprite('heImg', previewRank, editG);
   paintEditorExtras(); paintMe();
@@ -8688,8 +8694,11 @@ function renderHeroEditor(){
   if (!ready) return;
   const G = GENDERS[editG], pr = S.hero[editG];
   const cur = rankIdx(), r = RANKS[previewRank], look = pr.look;
-  document.getElementById('heRanks').innerHTML = RANKS.map((x, i) => `<button class="opt${i > cur ? ' locked' : ''}" data-act="heroRank" data-v="${i}" aria-pressed="${i === previewRank}">${x.k}</button>`).join('');
-  document.getElementById('heGear').textContent = `${r.k}-Rank · ${r.t}. ` + (previewRank > cur ? `Locked. Reach level ${r.lv} to unlock this look.` : previewRank === cur ? 'This is your current look.' : 'Unlocked.');
+  const worn = formIdx(editG);   // the form you show: any rank up to yours
+  document.getElementById('heRanks').innerHTML = RANKS.map((x, i) => `<button class="opt${i > cur ? ' locked' : ''}${i === worn ? ' worn' : ''}" data-act="heroRank" data-v="${i}" aria-pressed="${i === previewRank}" aria-label="${x.k}-Rank${i === worn ? ', wearing' : i > cur ? ', locked' : ''}">${x.k}</button>`).join('');
+  document.getElementById('heGear').innerHTML = `${r.k}-Rank · ${r.t}. ` + (previewRank > cur ? `Locked. Reach level ${r.lv} to unlock this form.`
+    : previewRank === worn ? `You're wearing this form${previewRank < cur ? `. Your rank is ${RANKS[cur].k}` : ''}.`
+    : `Unlocked. <button type="button" class="btn btn-power btn-sm he-form-btn" data-act="heroForm" data-v="${previewRank}">Wear this form</button>`);
   const sw = part => `<div class="swatches" role="group" aria-label="${part.label}">`
     + `<button class="sw-btn sw-default" data-act="heroLook" data-k="${part.k}" data-v="" aria-pressed="${!look[part.k]}" aria-label="${part.label}: rank default" title="Rank default"></button>`
     + [...part.colors, ...REWARDS.filter(r => r.kind === (part.k === 'hair' ? 'hair' : part.k === 'aura' ? 'aura' : part.k === 'skin' ? '-' : 'cloth')).map(r => [r.color, r.name, r.lv])]

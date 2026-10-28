@@ -1269,6 +1269,9 @@ span.fd-r{min-height:28px;cursor:default}
 .opt-chips{display:flex;flex-wrap:wrap;gap:6px}
 .opt{min-height:40px;min-width:40px;padding:7px 12px;border-radius:9px;border:1px solid var(--line);background:transparent;font-family:var(--label);font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:14px;color:var(--muted);cursor:pointer}
 .opt.locked{border-style:dashed}
+.opt.worn{position:relative;border-color:var(--good)}
+.opt.worn::after{content:"";position:absolute;left:50%;bottom:3px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--good)}
+.he-form-btn{margin-left:6px;vertical-align:middle}
 .opt[aria-pressed="true"]{background:var(--power);color:var(--power-ink);border-color:var(--power)}
 /* Polish: press feedback, touch-safe hover, motion */
 button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}

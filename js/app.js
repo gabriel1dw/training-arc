@@ -3171,7 +3171,7 @@ function viewToday(){
   const doneHTML = cl ? `<div class="stage-done"><span class="sd-badge">✓ Workout completed</span><span class="fine">${cl.date || cl.iso} · ${cl.sets} set${cl.sets === 1 ? '' : 's'} · +${fmt(cl.xp || 0)} XP${cl.boss ? ' · boss defeated' : ''}</span>
       ${(cl.ex || []).length ? `<ul class="sd-ex">${cl.ex.map(x => `<li><span>${esc(x.name)}</span><b>${(st => st.length > 1 && st.every(s => s[0] === st[0][0] && s[1] === st[0][1]) ? `${st.length}×${st[0][1]}${st[0][0] > 0 ? ` @ ${fmt(st[0][0])}` : ''}` : st.map(([wt, r]) => wt > 0 ? `${fmt(wt)}×${r}` : `${r} reps`).join(', '))(x.sets || [])}</b></li>`).join('')}</ul>` : ''}</div>
     <button class="btn btn-power wk-start" data-act="nextOpen">Go to your next workout ›</button><button type="button" class="wk-link boss-plain" data-act="redoDay">Do this workout again</button>` : '';
-  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + coachHTML() + fuelHTML() +restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + coachHTML() + fuelHTML() + nutTodayHTML() +restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -6357,7 +6357,13 @@ function foodAdd(n, k, p){ const t = todayIso(), F = S.food = S.food || {}; F[t]
   for (const d of Object.keys(F)) if (d < addDays(t, -14)) delete F[d]; nutRewards(); }
 // Protein and water streaks: hit them and they pay out once a day
 const waterDay = (iso = todayIso()) => (S.water || {})[iso] || 0;
-const proteinHit = iso => { const t = nutTargets(bwTrend()); return !!t && foodSum(iso).p >= t.protein * .95; };
+// Your targets, or a starting estimate until About you is filled in (so the food log and streaks work from day one)
+function nutGoals(T){ const t = nutTargets(T); if (t) return t;
+  const lb = S.bw ? (S.unit === 'kg' ? S.bw * 2.20462 : S.bw) : 0, f = bodySex() === 'f', goal = S.bwGoal || 'keep';
+  const base = lb ? lb * (f ? 14 : 15) : f ? 2000 : 2500, kcal = Math.round((goal === 'lose' ? base - 400 : goal === 'gain' ? base + 300 : base) / 50) * 50;
+  const protein = lb ? Math.round(Math.min(lb, 250) * .8) : f ? 110 : 140, fat = lb ? Math.max(40, Math.round(lb * .3)) : 70;
+  return {kcal, protein, fat, carbs:Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4)), tdee:Math.round(base / 10) * 10, why:'', goal, est:true}; }
+const proteinHit = iso => foodSum(iso).p >= nutGoals(bwTrend()).protein * .95;
 const waterHit = iso => waterDay(iso) >= 8;
 const nutStreak = hit => { let n = 0, d = todayIso(); if (!hit(d)) d = addDays(d, -1); while (hit(d) && n < 400){ n++; d = addDays(d, -1); } return n; };
 function nutRewards(){ const t = todayIso(), R = S.nutRw = S.nutRw || {}, r = R[t] = R[t] || {}, old = S.xp;
@@ -6386,18 +6392,18 @@ const SUPPS = [['Creatine', 'The most proven supplement for strength. 3–5 g a 
   ['Fish oil', 'Helpful if you rarely eat fish. Not essential otherwise.'], ['Skip', 'Fat burners, testosterone boosters and BCAAs (if you already eat enough protein). Mostly marketing.']];
 var foodOpen = false, groceryOpen = false;
 function nutritionHTML(T){
-  if (!S.bw) return '';
+  if (!S.bw && !isPremium()) return '';
   if (!isPremium()) return `<div class="nut locked"><div class="row-between"><span class="eyebrow">Nutrition</span><span class="prem">Premium</span></div>
     <p class="fine">Your daily calories and protein, carbs and fat for ${({lose:'losing', gain:'gaining', keep:'maintaining'})[S.bwGoal || 'keep']} weight, a food log with protein and water streaks, meal plans scaled to you, a weekly check-in and training-day fueling tips.</p>
     <div class="nut-blur" aria-hidden="true"><b>2,350</b><span>kcal</span><b>180g</b><span>protein</span></div><button type="button" class="btn btn-ghost btn-sm" data-act="premiumHub">See what's in Premium</button></div>`;
-  const t = nutTargets(T), goal = S.bwGoal || 'keep', tips = NUT_TIPS[goal], di = dayNum(todayIso());
-  if (!t) return `<div class="nut"><div class="row-between"><span class="eyebrow">Nutrition</span><span class="prem on">Premium</span></div><p class="fine">Add your age and height in About you above to get your daily calories and protein, carbs and fat.</p></div>`;
+  const t = nutGoals(T), goal = S.bwGoal || 'keep', tips = NUT_TIPS[goal], di = dayNum(todayIso());
   const sum = foodSum(), wtr = waterDay(), ring = (v, max, label, unit) => { const pc = Math.min(1, v / max), C = 2 * Math.PI * 26;
     return `<div class="ring"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" class="rb"/><circle cx="32" cy="32" r="26" class="rf${v > max * 1.1 ? ' over' : ''}" stroke-dasharray="${(C * pc).toFixed(1)} ${C.toFixed(1)}"/></svg><b class="num">${fmt(Math.round(v))}</b><small>of ${fmt(max)}${unit} ${label}</small></div>`; };
   const plan = mealPlan(t.kcal), ps = nutStreak(proteinHit), ws = nutStreak(waterHit);
   const groceries = (() => { const g = {}; for (const m of plan) for (const x of m.items){ const k = `${x.n}|${x.u}`; g[k] = (g[k] || 0) + x.q * 7; } return Object.entries(g).map(([k, q]) => { const [n, u] = k.split('|'); return `<li><span>${n}</span><b>${qtyText(Math.round(q * 4) / 4, u)}</b></li>`; }).join(''); })();
   return `<div class="nut"><div class="row-between"><span class="eyebrow">Nutrition · ${({lose:'lose', gain:'gain', keep:'maintain'})[goal]}</span><span class="prem on">Premium</span></div>
-    <div class="nut-kcal"><b class="num">${fmt(t.kcal)}</b><span>calories a day</span></div>
+    ${t.est ? `<p class="nut-est">These are starting estimates. ${S.bw ? 'Add your age and height in About you' : 'Log your bodyweight above and add your age and height'} for numbers made for you.</p>` : ''}
+    <div class="nut-kcal"><b class="num">${fmt(t.kcal)}</b><span>calories a day${t.est ? ' (estimate)' : ''}</span></div>
     <div class="nut-mac"><div><b class="num">${t.protein}g</b><small>Protein</small></div><div><b class="num">${t.carbs}g</b><small>Carbs</small></div><div><b class="num">${t.fat}g</b><small>Fat</small></div></div>
     <p class="fine">${goal === 'keep' ? `Your maintenance is about ${fmt(t.tdee)}.` : `About ${fmt(Math.abs(t.kcal - t.tdee))} ${t.kcal < t.tdee ? 'under' : 'over'} your maintenance (${fmt(t.tdee)}).`} ${t.why}</p>
     <span class="rl-sec">Today</span>
@@ -6408,7 +6414,7 @@ function nutritionHTML(T){
     <div class="food-today">${foodDay().map((x, i) => `<div class="food-row"><span>${esc(x.n)}</span><small>${x.k} kcal · ${x.p}g</small><button type="button" class="icon-btn" data-act="foodDel" data-i="${i}" aria-label="Remove ${esc(x.n)}">×</button></div>`).join('') || '<p class="fine">Nothing logged yet today.</p>'}</div>
     <button type="button" class="btn ${foodOpen ? 'btn-ghost' : 'btn-power'} btn-sm" data-act="foodOpen">${foodOpen ? 'Close' : '+ Log food'}</button>
     ${foodOpen ? `<div class="food-pick"><div class="food-presets">${FOODS.map(([n, k, p], i) => `<button type="button" class="opt" data-act="foodPreset" data-i="${i}">${n}<small>${k} kcal · ${p}g</small></button>`).join('')}</div>
-      <div class="food-custom"><input id="foodN" type="text" maxlength="40" placeholder="Something else" aria-label="Food name"><input id="foodK" type="number" inputmode="numeric" placeholder="kcal" aria-label="Calories"><input id="foodP" type="number" inputmode="numeric" placeholder="protein g" aria-label="Protein grams"><button type="button" class="btn btn-power btn-sm" data-act="foodCustom">Add</button></div></div>` : ''}
+      <div class="food-custom"><input id="foodN" type="text" maxlength="40" placeholder="Something else" aria-label="Food name"><input id="foodK" type="number" inputmode="numeric" placeholder="kcal" aria-label="Calories"><input id="foodP" type="number" inputmode="numeric" placeholder="protein" aria-label="Protein grams"><button type="button" class="btn btn-power btn-sm" data-act="foodCustom">Add</button></div></div>` : ''}
     <span class="rl-sec">Meal plan for your ${fmt(t.kcal)} calories</span>
     <div class="meals">${plan.map(m => `<div class="meal"><div class="row-between"><b>${m.slot} · ${m.name}</b><button type="button" class="wk-link" data-act="mealSwap" data-v="${m.slot}">Swap</button></div>
       <p class="fine">${m.items.map(x => `${qtyText(x.q, x.u)} ${x.n.toLowerCase()}`).join(' · ')}</p><small class="meal-m">${fmt(m.k)} kcal · ${m.p}g protein</small></div>`).join('')}</div>
@@ -6419,6 +6425,15 @@ function nutritionHTML(T){
     ${trainsOn(todayIso()) ? `<div class="nut-tip train"><span class="eyebrow">Training day</span><p>${NUT_TRAIN[di % NUT_TRAIN.length]}</p></div>` : ''}
     <details class="supps"><summary>Supplements: what's worth it</summary><dl>${SUPPS.map(([n, d]) => `<dt>${n}</dt><dd>${d}</dd>`).join('')}</dl></details>
     <p class="fine nut-note">General guidance, not medical advice. If you have a health condition, are pregnant, or have a history of disordered eating, talk to a doctor or dietitian first.</p></div>`;
+}
+// Today's nutrition at a glance on Today (Premium): calories, protein and water, with quick buttons
+function nutTodayHTML(){
+  if (!isPremium()) return ''; const t = nutGoals(bwTrend()), s = foodSum(), w = waterDay(), bar = (v, m) => `<div class="bar"><i style="width:${Math.min(100, v / m * 100)}%"></i></div>`;
+  return `<section class="panel nut-today"><div class="row-between"><span class="eyebrow">Nutrition today</span><span class="prem on">Premium</span></div>
+    <div class="nt-grid"><div><span class="fine">Calories</span><b class="num">${fmt(Math.round(s.k))}<small> / ${fmt(t.kcal)}</small></b>${bar(s.k, t.kcal)}</div>
+      <div><span class="fine">Protein</span><b class="num">${Math.round(s.p)}<small> / ${t.protein}g</small></b>${bar(s.p, t.protein)}</div>
+      <div><span class="fine">Water</span><b class="num">${w}<small> / 8</small></b>${bar(w, 8)}</div></div>
+    <div class="arc-btns"><button type="button" class="btn btn-ghost btn-sm" data-act="water" data-v="1">+ Glass of water</button><button type="button" class="btn btn-power btn-sm" data-act="nutJump">+ Log food</button></div></section>`;
 }
 // Training-day fueling on Today (Premium): what to eat before, then after once the workout is in
 function fuelHTML(){
@@ -7955,6 +7970,7 @@ document.addEventListener('click', e => {
   else if (a === 'nutSex'){ S.nut = {...(S.nut || {}), sex:t.dataset.v}; save(); render(); }
   // Premium: food log, water, meal plans, stats, smart coach, themes and the Premium page
   else if (a === 'foodOpen'){ foodOpen = !foodOpen; render(); }
+  else if (a === 'nutJump'){ foodOpen = true; if (tab !== 'progress'){ tab = 'progress'; render(true); } else render(); const el = document.querySelector('.nut'); if (el) window.scrollTo(0, el.getBoundingClientRect().top + scrollY - 12); }
   else if (a === 'groceryOpen'){ groceryOpen = !groceryOpen; render(); }
   else if (a === 'foodPreset'){ const f = FOODS[+t.dataset.i]; if (f){ foodAdd(...f); save(); render(); toast(`Logged ${f[0]}.`); } }
   else if (a === 'foodCustom'){ const n = document.getElementById('foodN')?.value.trim(), k = parseFloat(document.getElementById('foodK')?.value), p = parseFloat(document.getElementById('foodP')?.value) || 0;

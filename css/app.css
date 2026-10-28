@@ -407,6 +407,15 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .nut-mac small{color:var(--dim);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
 .nut-tip{padding:10px 12px;border-radius:10px;background:var(--surface);border-left:3px solid var(--power)}
 .nut-tip.train{border-left-color:#3ddc97}
+.nut-est{margin:0;padding:8px 10px;border-radius:10px;background:var(--surface);font-size:13px;line-height:1.4;color:var(--dim)}
+.nut-today{display:flex;flex-direction:column;gap:10px}
+.nt-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.nt-grid > div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.nt-grid b{font-family:var(--display);font-size:20px;line-height:1}
+.nt-grid b small{font-family:var(--body);font-size:11px;color:var(--dim);font-weight:700}
+.nt-grid .bar{height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
+.nt-grid .bar i{display:block;height:100%;border-radius:99px;background:var(--power)}
+.nut-today .arc-btns .btn{flex:1}
 /* Premium: today's rings, water, food log, meal plan, grocery list, supplements */
 .nut-rings{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .ring{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px 4px;border-radius:12px;background:var(--surface);text-align:center;min-width:0}

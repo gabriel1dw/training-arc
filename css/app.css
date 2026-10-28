@@ -2434,6 +2434,21 @@ body:has(.wk:not([hidden])){overflow:hidden}
 .wk-rest-q span{display:block;margin-top:2px;font-style:normal;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.75}
 .wk-chip{min-height:40px;padding:0 12px;border:var(--bw) solid currentColor;border-radius:var(--btn-radius);background:transparent;color:inherit;font-weight:700;font-size:14px;cursor:pointer}
 .wk-share{display:block;width:100%;min-height:48px;margin:4px 0 10px}
+.wk-help{min-width:40px;font-size:16px;font-weight:800}
+.tour{position:fixed;inset:0;z-index:2147483000}
+.tour[hidden]{display:none}
+.tour-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 200vmax rgba(8,6,16,.74);outline:2px solid var(--power,#ffd23f);outline-offset:2px;transition:left .3s,top .3s,width .3s,height .3s;pointer-events:none}
+.tour-card{position:fixed;background:var(--surface,#1d1830);color:var(--text,#f3effb);border:1px solid var(--power,#ffd23f);border-radius:16px;padding:14px 16px;box-shadow:0 12px 40px rgba(0,0,0,.5);transition:top .3s,left .3s;font-size:15px;line-height:1.45}
+.tour-card h3{margin:2px 0 6px;font-family:var(--display);font-size:22px;letter-spacing:.03em}
+.tour-card p{margin:0}
+.tour-k{font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--power,#ffd23f)}
+.tour-btns{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}
+.tour-btns>span{display:flex;gap:8px}
+.tour-btns .wk-link{min-height:44px}
+@media (prefers-reduced-motion:reduce){.tour-spot,.tour-card{transition:none}}
+.gloss{margin:8px 0 0;max-height:58vh;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+.gloss dt{font-weight:800;margin-top:10px}
+.gloss dd{margin:2px 0 0;color:var(--dim);font-size:14px;line-height:1.45}
 .wk-chip[aria-pressed="true"]{background:var(--surface-ink);color:var(--surface)}
 .wk-tools{display:flex;flex-wrap:wrap;gap:8px}
 .wk-tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px}

@@ -3452,6 +3452,7 @@ function obFinish(){
   tab = 'today'; render(true); window.scrollTo(0, 0); cheer();
   document.querySelector('[data-act=startWk]')?.focus({preventScroll:true});
   toast(`${p.name} begins. Your first workout is ready.`);
+  setTimeout(tourOffer, 1400);   // new players get the optional tour
 }
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-ob]'); if (!t || !ob) return;
@@ -5887,6 +5888,8 @@ function renderSettings(){
     <div class="st-group"><button type="button" class="st-row st-link" data-act="switchProfile"><div><b>${esc(S.hero.name || 'Hero')}'s profile</b><span>Switch profile or add someone new · ${PROFILES.list.length} on this device</span></div><span aria-hidden="true">›</span></button></div>
     <h4 class="st-h">Character</h4>
     <div class="st-group"><button type="button" class="st-row st-link" data-act="stEditHero"><div><b>${esc(S.hero.name || 'Hero')}</b><span>Look, hair, gear and title</span></div><span aria-hidden="true">›</span></button>
+      <button type="button" class="st-row st-link" data-act="tourReplay"><div><b>Show me around</b><span>A one-minute tour of the app, plus the workout guide next time you start one.</span></div><span aria-hidden="true">›</span></button>
+      <button type="button" class="st-row st-link" data-act="glossary"><div><b>What do these words mean?</b><span>Sets, reps, rep-outs, maxes, deloads, Grind and more, in plain English.</span></div><span aria-hidden="true">›</span></button>
       <button type="button" class="st-row st-link" data-act="stSetup"><div><b>Run setup again</b><span>Choose your character, path and arc again. Your level and progress stay.</span></div><span aria-hidden="true">›</span></button></div>
     ${installHTML()}
     ${SHOW_TEST_TOOLS ? `<h4 class="st-h">Testing</h4>
@@ -6928,6 +6931,14 @@ const rampAt = (e, steps) => { const v = S.ramp[rampKey(e)]; return v === 'skip'
 function coachLine(plan, e, next, all, doneN, total){
   const pick = list => list[doneN % list.length], {p, w, d} = plan;
   if (doneN >= total) return 'Every set cleared! Hit Finish and take your XP.';
+  // the first couple of workouts: say exactly what to do next, in plain words
+  const rpNow = rampFor(plan, e), inRampNow = rpNow && rampAt(e, rpNow) < rpNow.length;
+  if (S.log.length < 2 && next && !all && !inRampNow){ const idx = e.sets.indexOf(next) + 1, w = e.lift ? next.weight : 0;
+    const amt = n => e.unit ? `${n} ${({sec:"seconds", min:"minutes", m:"meters", yd:"yards"})[e.unit] || e.unit}` : `${n} rep${n === 1 ? "" : "s"}`;
+    if (rest) return 'Rest until the timer runs out (or tap Skip), then do your next set.';
+    if (doneN === 0) return `Do ${amt(next.reps)}${w ? ` with ${fmt(w)} ${S.unit}` : e.pick ? ' with a weight that feels challenging' : ''}, then tap Log set ${idx}.`;
+    if (next.amrap) return `Last set: do at least ${next.reps}, then as many more as you can with good form. Type how many you got, then log it.`;
+    return `Nice! Now set ${idx}: ${amt(next.reps)}${w ? ` with ${fmt(w)} ${S.unit}` : ''}, then tap Log set ${idx}.`; }
   { const rp = rampFor(plan, e); if (rp && rampAt(e, rp) < rp.length) return pick(['Easy weight. Groove the movement and save your energy.', 'Warm-up sets are practice reps. Make them perfect.', 'Build up slow. The heavy set will feel better for it.']); }
   if (rest) return pick(['Breathe. Shake it out. Next set soon.', 'Sip some water. You earned that one.', 'Rest is part of the work. Stay ready.', 'Slow breaths. Let your heart rate settle.', 'Picture the next set going perfectly.', 'Loosen up the arms. Stay warm.']);
   if (all) return 'Exercise done! Pick the next one below.';
@@ -6941,6 +6952,98 @@ function coachLine(plan, e, next, all, doneN, total){
   if (total - doneN <= 3) return `${total - doneN} set${total - doneN === 1 ? '' : 's'} left. Finish strong!`;
   return pick(COACH_PATH[p.path] || COACH_PATH.power);
 }
+
+/* ---------- Guided tour ---------- */
+// An optional walk-through for people new to lifting (or to the app): a spotlight on the real buttons with a plain
+// note under it. Offered once after setup, the workout part the first time you start a workout; replay from Settings.
+const TOURS = {
+  main:[
+    {sel:'.banner-wrap', t:'This is you', x:'Your hero. Every workout earns XP, so you level up, rank up and your hero gets stronger-looking.'},
+    {sel:'.stage', t:'Today\'s workout', x:'Your plan for today: which exercises, how many sets and reps, and how heavy. No guessing needed.'},
+    {sel:'[data-act=startWk]', t:'Start here at the gym', x:'Tap Start workout and the app walks you through every set, one at a time.'},
+    {sel:'.quests', t:'Quests', x:'Small daily and weekly goals (stretch, drink water, finish your sets) for bonus XP and Grind.'},
+    {sel:'.tabs [data-tab=calendar]', t:'Calendar', x:'Which days you train, what you did, and your streak.'},
+    {sel:'.tabs [data-tab=maxes]', t:'Maxes', x:'The most you can lift one time. Not sure? Guesses are fine. The app adjusts as you get stronger.'},
+    {sel:'.tabs [data-tab=arcs]', t:'Arcs', x:'Arcs are training plans, like seasons of a show. Pick one that fits your goal. You can switch anytime.'},
+    {sel:'.tabs [data-act=shop]', t:'Shop', x:'Workouts pay Grind, big wins pay Glory. Spend them on outfits, pets, auras and titles. No real money.'},
+    {sel:'#todayRv', t:'Friends & Rivals', x:'Add friends to cheer each other on, or rivals to race in weekly showdowns.'},
+    {sel:'.today-head [data-act=openSettings]', t:'Settings', x:'Sound, rest timer, units, backups, a glossary of gym words, and this tour again whenever you want it.'}
+  ],
+  workout:[
+    {sel:'.wk-active-top', t:'Your exercise', x:'What to do and how heavy. "3 sets of 5" means: lift it 5 times, rest, and repeat that 3 times. A "+" means keep going if you can.'},
+    {sel:'.wk-fields', t:'Did something different?', x:'Change the weight or reps here before you log, if you used another weight or got more or fewer reps.'},
+    {sel:'[data-wk=log]', t:'Log every set', x:'Tap this after each set. A rest timer starts, and the next set is ready when it ends.'},
+    {sel:'.wk-tools', t:'Never done it before?', x:'Form tips shows a short animation and simple cues. Swap picks a different exercise. "?" explains the gym words.'},
+    {sel:'.wk-grid', t:'Today\'s list', x:'Every exercise for today. Tap one to jump to it, or add your own at the end.'},
+    {sel:'[data-wk=finish]', t:'Finish to collect XP', x:'Done for the day? Tap Finish. A partial workout still counts and still earns XP.'}
+  ]
+};
+var tourRun = null;
+function tourEl(){ let el = document.getElementById('tour'); if (el) return el;
+  el = document.createElement('div'); el.id = 'tour'; el.className = 'tour'; el.hidden = true;
+  el.innerHTML = '<div class="tour-spot"></div><div class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tourT"></div>';
+  document.body.appendChild(el);
+  el.addEventListener('click', e => { const b = e.target.closest('[data-tour]'); if (!b) return; const a = b.dataset.tour;
+    if (a === 'next') tourStep(tourRun.i + 1); else if (a === 'back') tourStep(tourRun.i - 1); else if (a === 'end') tourEnd(); else if (a === 'yes') tourStart('main'); else if (a === 'no'){ S.tourOff = 1; save(); tourEnd(); } });
+  addEventListener('resize', () => tourRun && tourPlace()); document.addEventListener('scroll', () => tourRun && tourPlace(), true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && tourRun){ e.preventDefault(); tourEnd(); } }, true);
+  return el; }
+const tourVisible = sel => [...document.querySelectorAll(sel)].find(n => n.getClientRects().length && !n.closest('[hidden]'));
+function tourStart(name){
+  if (name === 'main' && tab !== 'today'){ tab = 'today'; render(); }
+  document.querySelectorAll('dialog[open]').forEach(d => { if (d.id !== 'workout') d.close(); });
+  tourRun = {name, steps:TOURS[name], i:0}; tourEl().hidden = false; tourStep(0);
+}
+function tourStep(i){ const r = tourRun; if (!r) return;
+  while (i >= 0 && i < r.steps.length && !tourVisible(r.steps[i].sel)) i += i >= r.i ? 1 : -1;   // skip what isn't on screen (no quests today, say)
+  if (i < 0) i = 0; if (i >= r.steps.length) return tourEnd(true);
+  r.i = i; const s = r.steps[i], target = tourVisible(s.sel); r.target = target;
+  target.scrollIntoView({block:'center', behavior:reduceMotion ? 'auto' : 'smooth'});
+  const n = r.steps.filter(x => tourVisible(x.sel)).length, k = r.steps.slice(0, i).filter(x => tourVisible(x.sel)).length + 1;
+  tourEl().querySelector('.tour-card').innerHTML = `<p class="tour-k">${r.name === 'workout' ? 'Workout guide' : 'Quick tour'} · ${k} of ${n}</p><h3 id="tourT">${s.t}</h3><p>${s.x}</p>
+    <div class="tour-btns"><button type="button" class="wk-link" data-tour="end">${k === n ? '' : 'Skip'}</button><span>${k > 1 ? '<button type="button" class="btn btn-ghost btn-sm" data-tour="back">Back</button>' : ''}<button type="button" class="btn btn-power btn-sm" data-tour="next">${k === n ? 'Got it' : 'Next'}</button></span></div>`;
+  tourPlace(); for (let k = 1; k <= 20; k++) setTimeout(() => { if (tourRun && tourRun.target === target) tourPlace(); }, k * 60);   // follow the scroll to it
+  tourEl().querySelector('[data-tour=next]').focus({preventScroll:true}); }
+function tourPlace(){ const r = tourRun, el = tourEl(); if (!r) return; const spot = el.querySelector('.tour-spot'), card = el.querySelector('.tour-card');
+  if (!r.target){ spot.style.cssText = 'left:50%;top:40%;width:0;height:0'; card.style.cssText = `left:16px;right:16px;top:30%;margin:auto;max-width:360px`; return; }
+  const b = r.target.getBoundingClientRect(), p = 6, vw = innerWidth, vh = innerHeight;
+  spot.style.cssText = `left:${b.left - p}px;top:${b.top - p}px;width:${b.width + p * 2}px;height:${b.height + p * 2}px`;
+  const ch = card.offsetHeight || 170, w = Math.min(360, vw - 32), below = b.bottom + p + 12, above = b.top - p - 12 - ch;
+  const top = below + ch < vh - 8 ? below : above > 8 ? above : Math.max(8, vh - ch - 12);
+  card.style.cssText = `width:${w}px;left:${Math.max(16, Math.min(vw - w - 16, b.left + b.width / 2 - w / 2))}px;top:${top}px`; }
+function tourEnd(done){ const r = tourRun; tourRun = null; const el = document.getElementById('tour'); if (el) el.hidden = true;
+  if (r && r.name === 'workout'){ S.wkTourDone = 1; save(); } else if (r){ S.tourDone = 1; save(); if (done) toast('Tour done. Replay it anytime from Settings.'); } }
+// asked once: right after setup, or the first time an existing player opens the app after this update
+function tourOffer(){ if (S.tourAsked || tourRun || !S.onboarded) return;
+  if (document.querySelector('dialog[open], #title:not([hidden]), #profiles:not([hidden]), #workout:not([hidden])') || !document.getElementById('welcome')?.hidden || tab !== 'today'){ clearTimeout(tourOffer.t); tourOffer.t = setTimeout(tourOffer, 2500); return; }   // wait for a quiet moment on Today
+  S.tourAsked = 1; save(); const el = tourEl(); el.hidden = false; tourRun = {name:'offer', steps:[], i:0, target:null};
+  el.querySelector('.tour-card').innerHTML = `<p class="tour-k">New here?</p><h3 id="tourT">Want a quick tour?</h3><p>One minute, showing you where everything is. Good if you're new to lifting or to the app. You can replay it from Settings later.</p>
+    <div class="tour-btns"><button type="button" class="wk-link" data-tour="no">No thanks</button><button type="button" class="btn btn-power btn-sm" data-tour="yes">Show me around</button></div>`;
+  tourPlace(); el.querySelector('[data-tour=yes]').focus({preventScroll:true}); }
+
+/* ---------- Glossary ---------- */
+// Plain-English meanings of the gym and game words, from the workout's "?" and from Settings
+const GLOSSARY = [
+  ['Rep', 'One lift, up and down. "5 reps" means do it 5 times in a row.'],
+  ['Set', 'A group of reps with a rest after. "3 sets of 5" means: 5 reps, rest, 5 reps, rest, 5 reps.'],
+  ['Rep-out set (5+)', 'A set marked with "+". Do the reps shown, then keep going as long as your form stays good. It shows the app you\'re getting stronger.'],
+  ['Max', 'The most weight you can lift one time with good form. The app uses it to pick your weights, so a guess is fine to start.'],
+  ['% of max', 'Your weights are a share of your max. 70% of a 200 lb max is 140 lb.'],
+  ['Training max', 'A slightly lighter number the plan uses instead of your full max, so you build up safely.'],
+  ['Warm-up ramp', 'A few lighter sets before your first heavy set, to get loose. They don\'t earn XP.'],
+  ['Pick a weight', 'For exercises without a max: choose a weight you can lift for every rep with 1 or 2 reps left in the tank.'],
+  ['Rest timer', 'Counts down between sets. Heavy lifts need longer rests (2 to 3 minutes), lighter ones about a minute.'],
+  ['Accessory', 'Smaller exercises after the main lift. They build muscle and keep you balanced.'],
+  ['Deload', 'An easy week every few weeks, so your body recovers. You come back stronger.'],
+  ['PR', 'Personal record: your best ever on a lift.'],
+  ['Arc', 'Your training plan. Each arc lasts a few weeks; finish it to unlock the next one.'],
+  ['Rank (F to SSS)', 'Your hero\'s tier. It goes up as you earn XP, and your hero looks stronger at each rank.'],
+  ['XP', 'Points from workouts and quests. Earn enough and you level up.'],
+  ['Boss day', 'A tougher workout. Clear every set to defeat the boss and win a bonus.'],
+  ['Grind and Glory', 'Shop money. Grind comes from workouts and quests; Glory is rarer, from PRs, bosses and showdowns. Never real money.']
+];
+function openGlossary(){ rvDlg(`<b class="rl-h">What do these words mean?</b><dl class="gloss">${GLOSSARY.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>
+  <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="rvClose">Got it</button></div>`); }
 
 let wk = null;   // {active: exercise index, drafts: what's typed per exercise, tool: 'tips' | 'swap' | null}
 function wkPlan(){
@@ -7031,7 +7134,7 @@ function renderWorkout(){
       ${lastLine}${sugLine}
       ${e.lift && !all ? (pv => `<p class="wk-plates">${pv.viz}<span>${pv.text}</span></p>`)(plateViz(inRamp ? ramp[rs][0] : +dr.w || 0)) : ''}
       ${rampHTML}
-      <div class="wk-tools"><button type="button" class="wk-chip" data-wk="tool" data-v="tips" aria-pressed="${wk.tool === 'tips'}">Form tips</button>${swapList(e) ? `<button type="button" class="wk-chip" data-wk="tool" data-v="swap" aria-pressed="${wk.tool === 'swap'}">Swap</button>` : ''}${e.extra && !e.sets.some(setDone) ? `<button type="button" class="wk-chip" data-wk="addDel">Remove from today</button>` : ''}</div>
+      <div class="wk-tools"><button type="button" class="wk-chip" data-wk="tool" data-v="tips" aria-pressed="${wk.tool === 'tips'}">Form tips</button>${swapList(e) ? `<button type="button" class="wk-chip" data-wk="tool" data-v="swap" aria-pressed="${wk.tool === 'swap'}">Swap</button>` : ''}${e.extra && !e.sets.some(setDone) ? `<button type="button" class="wk-chip" data-wk="addDel">Remove from today</button>` : ''}<button type="button" class="wk-chip wk-help" data-act="glossary" aria-label="What do these words mean?">?</button></div>
       ${wk.tool === 'tips' ? `<div class="wk-form">${demoFor(e.name) ? `<canvas class="wk-demo" data-demo="${demoFor(e.name)}" width="64" height="64" role="img" aria-label="Animated demo of the ${demoFor(e.name)} movement"></canvas>` : ''}
         <ul class="wk-tips">${cuesFor(e.name).map(c => `<li>${c}</li>`).join('')}</ul>
         <a class="wk-chip wk-video" href="${demoVideo(e.name)}" target="_blank" rel="noopener">Watch a video demo</a></div>` : ''}
@@ -7060,6 +7163,7 @@ function openWorkout(){
   el.hidden = false; el.scrollTop = 0; behind().forEach(x => x.inert = true);
   renderWorkout();
   el.querySelector('[data-wk="log"]:not([disabled])')?.focus({preventScroll:true});
+  if (!S.wkTourDone && !S.tourOff) setTimeout(() => { if (wk && !tourRun) tourStart('workout'); }, 700);   // the first workout comes with a guide
 }
 function closeWorkout(){
   const el = document.getElementById('workout'); if (el.hidden) return;
@@ -7299,6 +7403,7 @@ function render(animate){
   v.innerHTML =tab === 'rivals' ? viewRivals() : tab === 'today' ? viewToday() : tab === 'calendar' ? viewCalendar() : tab === 'maxes' ? viewMaxes() : tab === 'arcs' ? viewArcs() : viewProgress();
   paintRivals(); landPendingCode(); cloudBoot(); inviteCheck();
   if (!auth() && tab === 'today') setTimeout(maybeRecap, 1500);   // signed in, it waits for friends' numbers (netLoad)
+  if (tab === 'today' && !S.tourAsked) setTimeout(tourOffer, 1800);   // and players from before the tour existed, once
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
   if (animate) [...v.children].forEach((c, i) => c.style.setProperty('--i', Math.min(i, 6)));
   if (tab === 'maxes') updateEstimate();
@@ -7484,6 +7589,8 @@ document.addEventListener('click', e => {
     const ach = setMax(lift, val, 'Estimated'); save(); render(); toast(`${LIFTS[lift]} max set to ${fmt(val)} ${S.unit}${ach.length ? ' · Achievement: ' + ach.map(achText).join(', ') : ''}${flairNote()}`); if (ach.length) cheer();
   }
   else if (a === 'openSettings') openSettings();
+  else if (a === 'glossary') openGlossary();
+  else if (a === 'tourReplay'){ closeDialog('settings'); S.wkTourDone = 0; S.tourOff = 0; save(); setTimeout(() => tourStart('main'), 300); }
   else if (a === 'closeSettings') closeDialog('settings');
   else if (a === 'pref'){ S.prefs[t.dataset.k] = !S.prefs[t.dataset.k]; save(); if (t.dataset.k === 'restAuto' && !S.prefs.restAuto) stopRest(); render(); }
   else if (a === 'restScale'){ S.prefs.restScale = +t.dataset.v; save(); renderSettings(); }

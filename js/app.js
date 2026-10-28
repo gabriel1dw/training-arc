@@ -2276,6 +2276,7 @@ function invEditorHTML(){
 // The editor preview wears your aura and has your pet beside you
 function paintEditorExtras(){
   const st = document.querySelector('.he-stage'), img = document.getElementById('heImg'); if (!st || !img) return;
+  const fl = st.querySelector('.he-flairs'); if (fl) fl.innerHTML = flairLayer();   // the backdrops you picked, behind the hero
   const a = shopItem(shopEq().aura), p = shopItem(shopEq().pet);
   img.style.filter = a ? `drop-shadow(0 0 2px ${a.color}) drop-shadow(0 0 7px ${a.color})` : '';
   let pe = st.querySelector('.he-pet');
@@ -3043,12 +3044,14 @@ function restDayHTML(){
     <div class="ci-body"><b>Rest day logged</b><span class="fine">${restScore(r) <= 2 ? 'Take it easy today. Your next session will offer a lighter option.' : restScore(r) >= 5 ? 'Recovering well. Next session, bring it.' : 'Solid recovery. Rest up and come back strong.'}</span></div></section>`;
   return `<section class="panel rest-ci" aria-label="Rest day check-in"><div class="row-between"><b>Rest day check-in</b><span class="fine">+10 Grind</span></div>
     ${REST_Q.map(([k, l, opts]) => `<div class="rest-q"><span>${l}</span><div class="seg" role="group" aria-label="${l}">${opts.map((o, i) => `<button type="button" data-act="restPick" data-k="${k}" data-v="${i}" aria-pressed="${r[k] === i}">${o}</button>`).join('')}</div></div>`).join('')}
+    <label class="rest-bw"><span>Weigh-in <small>optional</small></span><span class="tr-bw-in"><input id="restBw" type="number" inputmode="decimal" min="0" step="any" placeholder="${S.bw || (S.unit === 'kg' ? 75 : 170)}" aria-label="Bodyweight in ${S.unit}"><em>${S.unit}</em></span></label>
     <button type="button" class="btn btn-power btn-sm" data-act="restClaim"${REST_Q.every(([k]) => r[k] != null) ? '' : ' disabled'}>Log it</button></section>`;
 }
 function restPick(k, v){ const t = todayIso(), L = S.restLog = S.restLog || {}; L[t] = {...(L[t] || {}), [k]:+v}; save(); render(); }
 function restClaim(){
   const t = todayIso(), r = (S.restLog || {})[t]; if (!r || r.claimed || REST_Q.some(([k]) => r[k] == null)) return;
   r.claimed = 1; if (window.TA_SHOP) TA_SHOP.addCoins(10);
+  { const v = parseFloat(document.getElementById('restBw')?.value); if (v > 0) logBw(v); }   // the optional weigh-in
   const keep = Object.keys(S.restLog).sort().slice(-30); S.restLog = Object.fromEntries(keep.map(k => [k, S.restLog[k]]));
   save(); render(); sfx('quest'); buzz(12); toast('Rest day logged: +10 Grind.');
 }
@@ -3151,7 +3154,7 @@ function viewToday(){
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
   const pips = Array.from({length:total}, (_, i) => `<span class="pip${i < idx ? ' on' : i === idx ? ' cur' : ''}"></span>`).join('');
   const n = sessionSets();
-  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + coachHTML() + fuelHTML() +restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -3236,7 +3239,7 @@ function setMax(lift, val, src){
     S.history = S.history.filter(h => h.lift !== lift || inUnit(h) <= val + .01); }
   S.history.unshift({date:today(), iso:todayIso(), lift, val, unit:S.unit, src, delta:val - old});
   S.history = S.history.slice(0, 300);
-  return checkAch();
+  const r = checkAch(); bwMsCheck(); return r;   // a new max can also pass a bodyweight milestone
 }
 
 /* ---------- Strength achievements ---------- */
@@ -3279,6 +3282,7 @@ function setUnit(u){
   S.unit = u;
   for (const l in S.maxes) S.maxes[l] = roundW(S.maxes[l] * f);
   if (S.bw) S.bw = Math.round(S.bw * f * 10) / 10;
+  if (S.bwLog) S.bwLog = S.bwLog.map(e => ({...e, v:Math.round(e.v * f * 10) / 10}));
   for (const l in S.tmAdd) S.tmAdd[l] = Math.round(S.tmAdd[l] * f / inc()) * inc();
   save(); render(); toast(`Switched to ${u}. Maxes converted.`);
 }
@@ -4085,12 +4089,13 @@ function cleanCard(o, base){
     ...lifts(o),   // this week's best estimated max per lift, for lift duels
     pw:(Array.isArray(o.pw) ? o.pw : []).slice(0, 3).filter(p => p && iso(p.ws)).map(p => ({ws:p.ws, wx:int(p.wx, 0, 1e6), wsets:int(p.wsets, 0, 5000), wwk:int(p.wwk, 0, 50), wv:int(p.wv, 0, 1e8), ...lifts(p)})),   // the last 3 finished weeks, for showdowns
     tr:(Array.isArray(o.tr) ? o.tr : []).filter(id => TROPHIES.some(x => x[0] === id)).slice(0, TROPHIES.length),
+    p4p:int(o.p4p, 0, 1000),   // pound-for-pound score (no bodyweight is shared, just the score)
     cr:o.cr && /^[a-z0-9]{6,24}$/i.test(o.cr.id || '') ? {id:o.cr.id, n:str(o.cr.n, 20).replace(/[<>]/g, '') || 'Crew'} : null};
 }
 function myCard(){ const g = S.hero.gender, h = S.hero[g], pid = shopEq().pet;
   return {t:'f', id:socialId(), n:S.hero.name || 'Hero', g, ri:rankIdx(), lv:levelInfo(S.xp).L, title:heroTitle(), u:S.unit,
     m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, Math.round(bestMax(l))])), md:Object.keys(S.ach).length, st:weekStreak(), wk:S.log.length,
-    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso(), wh:weekHits(), tr:S.trophies || [], cr:S.crew ? {id:S.crew.id, n:S.crew.n} : null}; }
+    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso(), wh:weekHits(), tr:S.trophies || [], cr:S.crew ? {id:S.crew.id, n:S.crew.n} : null, p4p:dots()}; }
 const inMyUnit = (v, u) => u === S.unit ? v : S.unit === 'kg' ? v / 2.20462 : v * 2.20462;
 // Opening a code: a card adds or updates a rival, a challenge goes on Today
 function takeCode(text, quiet){
@@ -4487,6 +4492,7 @@ function giftTake(name, d){ if (+d.gf !== GIFT || !window.TA_SHOP) return; TA_SH
 // Crews: up to 5 friends under one name. Your crew rides on your card; members are the friends whose cards carry the
 // same crew. The crew's weekly XP adds up, and crews among your friends rank against each other.
 var CREW_MAX = 5;
+function crewMax(){ return isPremium() ? 10 : CREW_MAX; }   // Premium: crews of up to 10
 const crewMates = () => S.crew ? (netFriends || []).filter(f => f.cr && f.cr.id === S.crew.id) : [];
 const crewWeek = (list, ws) => list.reduce((t, c) => t + (c.ws === ws ? c.wx || 0 : 0), 0);
 function crewHTML(){
@@ -4494,7 +4500,7 @@ function crewHTML(){
   const ws = weekStart(todayIso()), inv = (S.crewInv || []).filter(i => !S.crew || i.id !== S.crew.id);
   const invHTML = inv.map(i => `<div class="sd-row sd-inv"><b>${esc(i.fn)} invited you to ${esc(i.n)}</b><div class="arc-btns"><button type="button" class="btn btn-ghost btn-sm" data-act="rvCrewNo" data-id="${i.id}">No thanks</button><button type="button" class="btn btn-power btn-sm" data-act="rvCrewJoin" data-id="${i.id}">Join</button></div></div>`).join('');
   if (!S.crew) return `<section class="panel crew" id="crewBox"><span class="rl-sec">Crew</span>${invHTML}
-    <p class="fine">Team up with up to ${CREW_MAX - 1} friends. Your crew's weekly XP adds up and goes head to head with other crews.</p>
+    <p class="fine">Team up with up to ${crewMax() - 1} friends. Your crew's weekly XP adds up and goes head to head with other crews.</p>
     <div class="rl-add"><input id="crewName" type="text" maxlength="20" placeholder="Crew name" aria-label="Crew name" autocomplete="off"><button type="button" class="btn btn-power btn-sm" data-act="rvCrewNew">Start a crew</button></div></section>`;
   const me = {...netCard(), n:S.hero.name || 'Hero', isMe:true}, mates = crewMates(), all = [me, ...mates].sort((a, b) => (b.ws === ws ? b.wx : 0) - (a.ws === ws ? a.wx : 0));
   const others = {}; for (const f of netFriends || []) if (f.cr && f.cr.id !== S.crew.id){ const o = others[f.cr.id] = others[f.cr.id] || {n:f.cr.n, list:[]}; o.list.push(f); }
@@ -4502,7 +4508,7 @@ function crewHTML(){
   return `<section class="panel crew" id="crewBox">${invHTML}<div class="row-between"><span class="rl-sec">Crew · ${esc(S.crew.n)}</span><span class="fine num">${fmt(crewWeek(all, ws))} XP this week</span></div>
     <ol class="crew-list">${all.map((c, i) => `<li><span class="lb-n num">${i + 1}</span><b>${esc(c.n)}${c.isMe ? ' (you)' : ''}</b><span class="fine num">${fmt(c.ws === ws ? c.wx || 0 : 0)} XP</span></li>`).join('')}</ol>
     ${board.length > 1 ? `<span class="rl-sec">Crew leaderboard</span><ol class="crew-list">${board.map((b, i) => `<li${b.mine ? ' class="me"' : ''}><span class="lb-n num">${i + 1}</span><b>${esc(b.n)}</b><span class="fine num">${fmt(b.xp)} XP · ${b.k}</span></li>`).join('')}</ol>` : ''}
-    <div class="arc-btns">${all.length < CREW_MAX ? '<button type="button" class="btn btn-ghost btn-sm" data-act="rvCrewInv">Invite a friend</button>' : ''}<button type="button" class="wk-link" data-act="rvCrewLeave">${S.crewLeaveArm ? 'Tap again to leave' : 'Leave crew'}</button></div></section>`;
+    <div class="arc-btns">${all.length < crewMax() ? '<button type="button" class="btn btn-ghost btn-sm" data-act="rvCrewInv">Invite a friend</button>' : ''}<button type="button" class="wk-link" data-act="rvCrewLeave">${S.crewLeaveArm ? 'Tap again to leave' : 'Leave crew'}</button></div></section>`;
 }
 function crewNew(){ const el = document.getElementById('crewName'), n = (el && el.value || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 20);
   if (n.length < 2){ toast('Give your crew a name first.'); el && el.focus(); return; }
@@ -4518,7 +4524,7 @@ async function crewSend(id){ const f = (netFriends || []).find(x => x.id === id)
 function crewTake(from, d, name){ const id = String(d.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 24), n = String(d.n || '').replace(/[\u0000-\u001f<>]/g, '').slice(0, 20);
   if (!id || !n || (S.crew && S.crew.id === id)) return; S.crewInv = [...(S.crewInv || []).filter(i => i.id !== id), {id, n, fn:name, from}].slice(-5); save(); toast(`${name} invited you to the crew ${n}!`); }
 function crewJoin(id){ const i = (S.crewInv || []).find(x => x.id === id); if (!i) return;
-  const count = (netFriends || []).filter(f => f.cr && f.cr.id === id).length + 1; if (count >= CREW_MAX){ toast(`${i.n} is full (${CREW_MAX} max).`); return; }
+  const count = (netFriends || []).filter(f => f.cr && f.cr.id === id).length + 1; if (count >= crewMax()){ toast(`${i.n} is full (${crewMax()} max).`); return; }
   S.crew = {id:i.id, n:i.n}; S.crewInv = (S.crewInv || []).filter(x => x.id !== id); save(); cloudMark && cloudMark(); render(); toast(`You joined ${i.n}!`); buzz(15); }
 
 // Weekly recap: the first time you open the app in a new week, a look back at the last one
@@ -4684,12 +4690,12 @@ function duoStreak(c){ if (!c || !c.wh) return 0; const mine = weekHits(), off =
   const both = i => mine[i] === '1' && c.wh[i - off] === '1';
   let i = both(0) ? 0 : 1, n = 0; while (i < 52 && both(i)){ n++; i++; } return n; }
 // What the leaderboard ranks by
-const LB_BY = [['wx', 'XP'], ['wwk', 'Workouts'], ['wsets', 'Sets'], ['wv', 'Volume'], ['st', 'Streak'], ['lv', 'Level']];
+const LB_BY = [['wx', 'XP'], ['wwk', 'Workouts'], ['wsets', 'Sets'], ['wv', 'Volume'], ['p4p', 'P4P'], ['st', 'Streak'], ['lv', 'Level']];
 const LB_WEEKLY = {wx:1, wwk:1, wsets:1, wv:1};   // these reset each Monday; streak and level don't
-function lbValue(c, by){ return by === 'st' ? (c.isMe ? weekStreak() : c.st) : by === 'lv' ? c.lv : c[by] || 0; }
+function lbValue(c, by){ return by === 'st' ? (c.isMe ? weekStreak() : c.st) : by === 'lv' ? c.lv : by === 'p4p' ? (c.isMe ? dots() : c.p4p || 0) : c[by] || 0; }
 function lbLabel(c, by){ const v = lbValue(c, by);
   return by === 'wx' ? `${fmt(v)} XP` : by === 'wwk' ? `${v} workout${v === 1 ? '' : 's'}` : by === 'wsets' ? `${fmt(v)} sets` : by === 'wv' ? `${fmt(Math.round(inMyUnit(v, 'lb')))} ${S.unit}`
-    : by === 'st' ? `${v} wk${v === 1 ? '' : 's'}` : `Lv ${v}`; }
+    : by === 'st' ? `${v} wk${v === 1 ? '' : 's'}` : by === 'p4p' ? (v ? (P => `${P.k} · ${P.rating}`)(p4pInfo(v)) : 'No bodyweight') : `Lv ${v}`; }
 async function netLoad(){ const a = auth(); if (!a) return;
   try { const rows = await sb('/rest/v1/profiles?select=id,friend_code,name,card,updated_at') || [];
     netMe = rows.find(r => r.id === a.user.id) || null;
@@ -5886,6 +5892,8 @@ function renderSettings(){
     <div class="st-group"><button type="button" class="st-row st-link" data-act="acctOpen"><div><b>${auth() ? esc(auth().user.email) : 'Sign in'}</b><span>${auth() ? `Cloud save on${S.cloudAt ? ` · synced ${agoText(S.cloudAt)}` : ''} · friends · sign out` : 'Optional. Back up your progress and add friends.'}</span></div><span aria-hidden="true">›</span></button></div>
     <h4 class="st-h">Profile</h4>
     <div class="st-group"><button type="button" class="st-row st-link" data-act="switchProfile"><div><b>${esc(S.hero.name || 'Hero')}'s profile</b><span>Switch profile or add someone new · ${PROFILES.list.length} on this device</span></div><span aria-hidden="true">›</span></button></div>
+    <h4 class="st-h">Premium</h4>
+    <div class="st-group"><button type="button" class="st-row st-link" data-act="premiumHub"><div><b>Training Arc Premium${isPremium() ? ' · active' : ''}</b><span>${isPremium() ? 'Your perks, this month\'s exclusive and app themes.' : 'Nutrition, advanced stats, a smart coach, exclusive cosmetics and more.'}</span></div><span aria-hidden="true">›</span></button></div>
     <h4 class="st-h">Character</h4>
     <div class="st-group"><button type="button" class="st-row st-link" data-act="stEditHero"><div><b>${esc(S.hero.name || 'Hero')}</b><span>Look, hair, gear and title</span></div><span aria-hidden="true">›</span></button>
       <button type="button" class="st-row st-link" data-act="tourReplay"><div><b>Show me around</b><span>A one-minute tour of the app, plus the workout guide next time you start one.</span></div><span aria-hidden="true">›</span></button>
@@ -5893,7 +5901,8 @@ function renderSettings(){
       <button type="button" class="st-row st-link" data-act="stSetup"><div><b>Run setup again</b><span>Choose your character, path and arc again. Your level and progress stay.</span></div><span aria-hidden="true">›</span></button></div>
     ${installHTML()}
     ${SHOW_TEST_TOOLS ? `<h4 class="st-h">Testing</h4>
-    <div class="st-group"><button type="button" class="st-row st-link" data-act="maxProfile"><div><b>Make a maxed-out test profile</b><span>A new "Max Test" profile with everything unlocked: Lv 250, every boss, item and gear. Your own profile stays as it is.</span></div><span aria-hidden="true">›</span></button></div>` : ''}
+    <div class="st-group"><button type="button" class="st-row st-link" data-act="premiumToggle"><div><b>Premium (test switch): ${S.premium ? 'on' : 'off'}</b><span>Unlock or lock Premium features like Nutrition on this profile, until real purchases are set up.</span></div><span aria-hidden="true">›</span></button>
+    <button type="button" class="st-row st-link" data-act="maxProfile"><div><b>Make a maxed-out test profile</b><span>A new "Max Test" profile with everything unlocked: Lv 250, every boss, item and gear. Your own profile stays as it is.</span></div><span aria-hidden="true">›</span></button></div>` : ''}
     <h4 class="st-h">Your data</h4>
     ${backupHTML()}
     <h4 class="st-h">Danger zone</h4>
@@ -5934,7 +5943,7 @@ const STAT_COLOR = {str:'#ff5a6e', spd:'#4cc3ff', end:'#3ddc97', tec:'#b98cff'};
 // E: your character as a trading card: art on your stage, rank, title, level, and stats. The border takes your rank's color.
 function tcardHTML(r, n, lv){
   const vals = STAT_KEYS.map(([k]) => statVal(k)), p = prog(), o = ovr(p.path);
-  return `<section class="tcard" style="--rc:var(--rank-${r.k.toLowerCase()})"><div class="tcard-in">
+  return `<section class="tcard${isPremium() ? " prem-frame" : ""}" style="--rc:var(--rank-${r.k.toLowerCase()})"><div class="tcard-in">
     <button class="tcard-art stage-bg" data-act="openHero" aria-label="Customize your character">
       <span class="tcard-ovr" style="--tc:${tierColor(o)}" aria-label="Overall ${o}, ${pathOf(p).name}"><b class="num">${o}</b><span>OVR</span><span>${POS[p.path]}</span></span><span class="tcard-edit">Edit</span>
       ${flairLayer()}<canvas id="cardImg" class="card-img" width="128" height="208" role="img"></canvas>
@@ -6177,6 +6186,302 @@ const flairNote = () => { const n = announceFlairs(); return n.length ? ` · New
 // Requirement text in your unit
 const howText = f => f.how.replace(/(\d+) lb/g, (m, n) => S.unit === "kg" ? `${MS_KG[n] || Math.round(n / 2.20462)} kg` : m);
 
+/* ---------- Bodyweight ---------- */
+// Weigh-ins over time and a goal (lose, keep or gain) with honest pace feedback; strength relative to bodyweight;
+// a pound-for-pound score (DOTS, the powerlifting standard for comparing lifters of any size); and milestones.
+function logBw(v){ v = Math.round(v * 10) / 10; if (!(v > 20 && v < 1000)) return false;
+  const t = todayIso(), L = (S.bwLog || []).filter(e => e.iso !== t); L.push({iso:t, v}); L.sort((a, b) => a.iso.localeCompare(b.iso));
+  S.bwLog = L.slice(-180); S.bw = v; bwMsCheck(); return true; }
+const bwKg = () => S.bw ? (S.unit === 'kg' ? S.bw : S.bw / 2.20462) : 0;
+// your own sex and age (About you on the Bodyweight panel), falling back to the hero you play
+const bodySex = () => (S.nut && S.nut.sex) || (S.hero.gender === 'female' ? 'f' : 'm');
+// age adjustment, as lifting federations score juniors and masters: under 18 and over 40 count for a little more
+const ageCoef = a => !a ? 1 : a < 18 ? Math.min(1.15, 1 + (18 - a) * .03) : a <= 40 ? 1 : 1 + .0115 * (a - 40) + .00035 * (a - 40) ** 2;
+function dots(){ const bw = bwKg(), tot = bigThree() / 2.20462; if (!bw || !tot) return 0;
+  const f = bodySex() === 'f', x = Math.min(f ? 150 : 210, Math.max(40, bw));
+  const [a, b, c, d, e] = f ? [-57.96288, 13.6175032, -.1126655495, .0005158568, -.0000010706] : [-307.75076, 24.0900756, -.1918759221, .0007391293, -.000001093];
+  return Math.round(tot * 500 / (a + b * x + c * x ** 2 + d * x ** 3 + e * x ** 4) * ageCoef((S.nut || {}).age)); }
+// The pound-for-pound score on the app's own scale: a rank (F to SSS) and a 1-99 rating, like OVR. Under it is DOTS
+// (the powerlifting formula); these are the DOTS points where each rank starts, and what that means in plain words.
+const P4P_RANKS = [['F', 0, 'Just starting out'], ['E', 150, 'Building the base'], ['D', 200, 'Stronger than most people who don\'t lift'], ['C', 250, 'A solid regular at the gym'],
+  ['B', 300, 'Stronger than most gym-goers your size'], ['A', 350, 'Seriously strong for your size'], ['S', 400, 'Competitive-lifter strong'], ['SS', 475, 'Top-level strong'], ['SSS', 550, 'World-class, pound for pound']];
+function p4pInfo(d){ if (!d) return null; let i = 0; P4P_RANKS.forEach(([, at], k) => { if (d >= at) i = k; }); const [k, , desc] = P4P_RANKS[i], nx = P4P_RANKS[i + 1];
+  return {k, desc, rating:Math.max(1, Math.min(99, Math.round(d / 6.06))), next:nx ? {k:nx[0], need:Math.max(1, Math.ceil((nx[1] - d) / 6.06)), pct:Math.round((d - P4P_RANKS[i][1]) / (nx[1] - P4P_RANKS[i][1]) * 100)} : null}; }
+// Bodyweight milestones (the female hero's are set at 70%, rounded, as the usual standards are)
+var BW_MS = [['bench', 1, 'Bench your bodyweight'], ['squat', 1.5, 'Squat 1.5× bodyweight'], ['deadlift', 2, 'Deadlift double bodyweight'], ['ohp', .75, 'Press ¾ of your bodyweight'],
+  ['bench', 1.5, 'Bench 1.5× bodyweight'], ['squat', 2, 'Squat double bodyweight'], ['deadlift', 2.5, 'Deadlift 2.5× bodyweight'], ['ohp', 1, 'Press your bodyweight']];
+const bwMsRatio = r => bodySex() === 'f' ? Math.round(r * .7 * 20) / 20 : r;
+const bwMsName = m => bwMsRatio(m[1]) === m[1] ? m[2] : `${LIFTS[m[0]]} ${bwMsRatio(m[1])}× bodyweight`;
+const bwMsId = m => m[0] + m[1];
+function bwMsCheck(){ if (!S.bw) return; const got = S.bwMs = S.bwMs || {}, old = S.xp; let n = 0;
+  for (const m of BW_MS){ const id = bwMsId(m), best = bestMax(m[0]); if (got[id] || !best || best < S.bw * bwMsRatio(m[1]) - .01) continue;
+    got[id] = todayIso(); S.xp += 100; n++; setTimeout(() => { toast(`Bodyweight milestone: ${bwMsName(m)}! +100 XP`); sfx('quest'); }, 500 + n * 2800); }
+  if (n){ rankCheck(old); save(); } }
+// How much of your bodyweight a bodyweight move lifts, roughly, so push-ups and pull-ups count as weight moved
+function bwShare(e){ if (!S.bw || e.unit) return 0; const n = e.name;
+  return /pull-?up|chin-?up|muscle-?up/i.test(n) ? 1 : /dip/i.test(n) ? .95 : /push-?up/i.test(n) ? .64 : /inverted row|australian/i.test(n) ? .5
+    : /squat|lunge|step-?up|pistol/i.test(n) ? .7 : /burpee/i.test(n) ? .5 : 0; }
+// The trend: a smoothed line through the weigh-ins (day-to-day water swings average out), and its weekly pace
+function bwTrend(){ const L = S.bwLog || []; if (!L.length) return null; let ema = L[0].v; const sm = L.map((e, i) => { ema = i ? ema + .35 * (e.v - ema) : e.v; return {...e, t:ema}; });
+  const last = sm[sm.length - 1], from = sm.filter(e => dayNum(e.iso) >= dayNum(last.iso) - 28)[0];
+  const weeks = from && from !== last ? Math.max(1, (dayNum(last.iso) - dayNum(from.iso)) / 7) : 0, perWk = weeks ? (last.t - from.t) / weeks : null;
+  return {sm, last, perWk, pct:perWk != null && S.bw ? perWk / S.bw * 100 : null, span:weeks}; }
+var bwMsAll = false;
+function bwHTML(){
+  if (S.bw) bwMsCheck();   // catches milestones already passed, e.g. a bodyweight entered before milestones existed
+  const u = S.unit, goal = S.bwGoal || 'keep', bw = S.bw, T = bwTrend(), L = S.bwLog || [];
+  const sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(Math.round(v * 10) / 10)), md = iso => fromYmd(iso).toLocaleDateString(undefined, {month:'short', day:'numeric'});
+  const pct = T && T.pct, say = pct == null ? (bw ? 'Weigh in again in a few days to see your trend. Same time of day works best, like right after waking up.' : 'Log your bodyweight to see your trend, your strength for your size and bodyweight milestones.')
+    : goal === 'lose' ? (pct < -1.2 ? 'Dropping fast. Ease up a little to keep your strength.' : pct <= -.25 ? 'Right on track. Steady loss keeps your lifts strong.' : 'About flat. Trim portions a little to start moving.')
+    : goal === 'gain' ? (pct > .6 ? 'Gaining fast. Some of that is likely fat; ease up a touch.' : pct >= .1 ? 'Right on track for lean gains.' : 'About flat. Eat a little more to grow.')
+    : Math.abs(pct) < .25 ? 'Holding steady. Nice.' : `Drifting ${pct > 0 ? 'up' : 'down'}. Adjust a little if that isn't on purpose.`;
+  // chart: raw weigh-ins as dots, the smoothed trend as the line, with the range and dates labeled
+  const pts = T ? T.sm.slice(-20) : [], chart = pts.length > 1 ? (() => { const vs = pts.flatMap(p => [p.v, p.t]), lo = Math.min(...vs), hi = Math.max(...vs), span = Math.max(1, hi - lo);
+    const X = i => 34 + i * (258 / (pts.length - 1)), Y = v => 70 - (v - lo) / span * 56;
+    return `<svg class="bw-chart" viewBox="0 0 300 92" role="img" aria-label="Bodyweight trend from ${fmt(pts[0].t)} to ${fmt(pts[pts.length - 1].t)} ${u}">
+      <text x="28" y="${Y(hi) + 4}" text-anchor="end">${fmt(Math.round(hi))}</text><text x="28" y="${Y(lo) + 4}" text-anchor="end">${fmt(Math.round(lo))}</text>
+      <line x1="34" x2="292" y1="${Y(hi)}" y2="${Y(hi)}"/><line x1="34" x2="292" y1="${Y(lo)}" y2="${Y(lo)}"/>
+      ${pts.map((p, i) => `<circle class="raw" cx="${X(i).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="2"/>`).join('')}
+      <polyline points="${pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.t).toFixed(1)}`).join(' ')}"/><circle cx="${X(pts.length - 1).toFixed(1)}" cy="${Y(pts[pts.length - 1].t).toFixed(1)}" r="4"/>
+      <text x="34" y="88">${md(pts[0].iso)}</text><text x="292" y="88" text-anchor="end">${md(pts[pts.length - 1].iso)}</text></svg>`; })() : '';
+  // a goal weight: how far along, and when you'd get there at this pace
+  const tgt = goal !== 'keep' && S.bwTarget > 0 ? S.bwTarget : 0, start = S.bwStart || (L[0] && L[0].v) || bw, toGo = tgt && bw ? tgt - bw : 0;
+  const along = tgt && start !== tgt ? Math.max(0, Math.min(100, (start - bw) / (start - tgt) * 100)) : 0, right = T && T.perWk && toGo && Math.sign(T.perWk) === Math.sign(toGo);
+  const eta = right ? addDays(todayIso(), Math.round(Math.abs(toGo / T.perWk) * 7)) : null;
+  const d = dots(), rel = ['squat', 'bench', 'deadlift', 'ohp'].map(l => [l, bestMax(l)]).filter(([, m]) => m && bw), got = S.bwMs || {};
+  const ms = BW_MS.map(m => ({m, on:got[bwMsId(m)], best:bestMax(m[0]), need:bw * bwMsRatio(m[1])})), earned = ms.filter(x => x.on).length;
+  const shown = bwMsAll ? ms : ms.filter(x => !x.on).sort((a, b) => (b.best || 0) / b.need - (a.best || 0) / a.need).slice(0, 2);
+  return `<section class="panel bw" aria-label="Bodyweight"><div class="row-between"><h3>Bodyweight</h3>${L.length ? `<span class="fine">Last weigh-in ${md(L[L.length - 1].iso)}</span>` : ''}</div>
+    <div class="bw-top"><div><b class="num bw-now">${bw ? fmt(bw) : '—'}</b><span class="bw-u">${u}</span>${T && T.perWk != null ? `<span class="bw-ch num">Trend ${sgn(T.perWk)} ${u} a week</span>` : ''}</div>
+      <div class="bw-in"><input id="bwIn" type="number" inputmode="decimal" min="0" step="any" placeholder="${bw || (u === 'kg' ? 75 : 170)}" aria-label="Today's bodyweight in ${u}"><button type="button" class="btn btn-power btn-sm" data-act="bwLog">Log</button></div></div>
+    ${chart}
+    <div class="seg seg-wide" role="group" aria-label="Your goal">${[['lose', 'Lose'], ['keep', 'Maintain'], ['gain', 'Gain']].map(([v, t]) => `<button type="button" data-act="bwGoal" data-v="${v}" aria-pressed="${goal === v}">${t}</button>`).join('')}</div>
+    <p class="fine bw-say">${say}</p>
+    ${goal !== 'keep' && bw ? `<div class="bw-goal"><label><span>Goal weight</span><span class="tr-bw-in"><input id="bwTgt" type="number" inputmode="decimal" min="0" step="any" value="${tgt || ''}" placeholder="${Math.round(bw * (goal === 'lose' ? .92 : 1.06))}" aria-label="Goal weight in ${u}"><em>${u}</em></span></label>
+      ${tgt ? `<div class="bar"><i style="width:${along}%"></i></div><p class="fine">${Math.abs(toGo) < .5 ? 'You hit your goal weight! Pick a new one or switch to Maintain.' : `${fmt(Math.abs(Math.round(toGo * 10) / 10))} ${u} to go${eta ? ` · about ${fromYmd(eta).toLocaleDateString(undefined, {month:'short', day:'numeric', year:fromYmd(eta).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined})} at this pace` : ''}`}</p>` : ''}</div>` : ''}
+    ${aboutYouHTML()}
+    ${nutritionHTML(T)}
+    ${d ? (P => `<div class="bw-p4p"><div class="row-between"><span class="eyebrow">Pound-for-pound</span><span class="fine">How strong you are for your size${ageCoef((S.nut || {}).age) > 1 ? ' and age' : ''}</span></div>
+      <div class="p4p-main">${emblem(P.k, 'sm')}<div class="p4p-txt"><b>${P.k}-Rank · <span class="num">${P.rating}</span><small>/99</small></b><p>${P.desc}</p></div></div>
+      ${P.next ? `<div class="bar"><i style="width:${P.next.pct}%"></i></div><p class="fine">${P.next.need} rating point${P.next.need === 1 ? '' : 's'} to ${P.next.k}-Rank. Raise it by getting stronger on squat, bench and deadlift.</p>` : '<p class="fine">The top rank. Nothing left but legend.</p>'}
+      <p class="fine p4p-how">Based on your Big 3 total compared with your bodyweight (the DOTS formula powerlifting uses), so lifters of any size compare fairly.</p></div>`)(p4pInfo(d)) : ''}
+    ${rel.length ? `<div class="bw-rel">${rel.map(([l, m]) => `<div><small>${LIFTS[l]}</small><b class="num">${(m / bw).toFixed(2)}×</b><small>bodyweight</small></div>`).join('')}</div>` : ''}
+    ${bw ? `<div class="row-between"><span class="rl-sec">Bodyweight milestones · ${earned} of ${BW_MS.length}</span><button type="button" class="wk-link" data-act="bwMsAll">${bwMsAll ? 'Show less' : 'Show all'}</button></div>
+      ${shown.length ? `<div class="bw-ms">${shown.map(({m, on, best, need}) => `<div class="bw-m${on ? ' on' : ''}"><b>${on ? '✓' : `${Math.min(99, Math.round((best || 0) / need * 100))}%`}</b><span>${bwMsName(m)}<small>${on ? `Earned ${md(on)}` : best ? `${fmt(Math.ceil(need - best))} ${u} to go` : `${fmt(Math.ceil(need))} ${u}`}</small></span></div>`).join('')}</div>` : '<p class="fine">Every bodyweight milestone earned. Beast.</p>'}` : ''}
+    ${L.length ? `<details class="bw-hist"><summary>Weigh-ins (${L.length})</summary><p class="fine">Tap a date or weight to fix it.</p><ul>${L.slice(-20).reverse().map(e => `<li><input type="date" data-bwdate="${e.iso}" value="${e.iso}" max="${todayIso()}" aria-label="Date of the ${md(e.iso)} weigh-in"><span class="tr-bw-in"><input type="number" inputmode="decimal" step="any" min="0" data-bwval="${e.iso}" value="${e.v}" aria-label="Weight on ${md(e.iso)}"><em>${u}</em></span><button type="button" class="icon-btn" data-act="bwDel" data-iso="${e.iso}" aria-label="Delete the ${md(e.iso)} weigh-in">×</button></li>`).join('')}</ul></details>` : ''}
+  </section>`;
+}
+
+// About you: sex, age and height, for the age-adjusted score and the calorie targets. Kept on this phone.
+function aboutYouHTML(){
+  const n = S.nut || {}, ft = n.h ? Math.floor(n.h / 2.54 / 12) : '', inch = n.h ? Math.round(n.h / 2.54 - Math.floor(n.h / 2.54 / 12) * 12) : '', ac = ageCoef(n.age);
+  return `<div class="bw-about"><span class="rl-sec">About you</span>
+    <div class="nut-form"><label><span>Gender <small>for the formulas</small></span><span class="seg" role="group" aria-label="Gender for the formulas">${[['m', 'Male'], ['f', 'Female']].map(([v, l]) => `<button type="button" data-act="nutSex" data-v="${v}" aria-pressed="${bodySex() === v}">${l}</button>`).join('')}</span></label>
+      <label><span>Age</span><input id="nutAge" type="number" inputmode="numeric" min="13" max="90" value="${n.age || ''}" placeholder="25" aria-label="Age"></label>
+      ${S.unit === 'kg' ? `<label><span>Height</span><span class="tr-bw-in"><input id="nutCm" type="number" inputmode="numeric" min="120" max="230" value="${n.h ? Math.round(n.h) : ''}" placeholder="175" aria-label="Height in centimeters"><em>cm</em></span></label>`
+        : `<label><span>Height</span><span class="tr-bw-in"><input id="nutFt" type="number" inputmode="numeric" min="4" max="7" value="${ft}" placeholder="5" aria-label="Height, feet"><em>ft</em><input id="nutIn" type="number" inputmode="numeric" min="0" max="11" value="${inch}" placeholder="9" aria-label="Height, inches"><em>in</em></span></label>`}</div>
+    <p class="fine">Used for your ${isPremium() ? 'calorie targets and an ' : ''}age-adjusted pound-for-pound score${ac > 1 ? ` (your age counts ×${ac.toFixed(2)}, as federations score junior and masters lifters)` : ''}. Stays on your phone.</p></div>`;
+}
+/* ---------- Nutrition (Premium) ---------- */
+// Daily calories and protein / carbs / fat for your goal, from your size, age and how often you train
+// (Mifflin-St Jeor), nudged when your trend stalls or runs fast; plus tips for the goal and for training days.
+// Premium: until purchases exist, it unlocks from Settings > Testing.
+const isPremium = () => !!S.premium;
+const NUT_TIPS = {
+  lose:['Fill half your plate with vegetables first. Big volume, few calories.', 'Protein at every meal keeps you full and protects your muscle.', 'Liquid calories add up fast: soda, juice and fancy coffee. Swap for water or zero-cal drinks.',
+    'Aim for slow and steady: about 0.5–1% of bodyweight a week keeps your lifts strong.', 'Plan a treat into your week instead of banning it. It keeps you consistent.', 'Hungry at night? A high-protein snack (Greek yogurt, cottage cheese) beats grazing.',
+    'Weigh in at the same time, after waking up. Daily swings are water; watch the trend line.', 'Sleep matters: short sleep makes you hungrier the next day.'],
+  keep:['Keep protein high even when maintaining. It helps you recover from training.', 'Eat mostly whole foods, leave a little room for what you enjoy.', 'If the trend drifts more than a pound or two, nudge portions, don\'t overhaul everything.',
+    'Carbs around your workouts help you train harder.', 'A colorful plate covers most vitamins without thinking about it.', 'Drink water through the day; thirst often feels like hunger.',
+    'Same-ish meals on busy days make maintaining almost automatic.', 'Weekends count too. Enjoy them, just don\'t let two days undo five.'],
+  gain:['Eat a little more every day rather than a lot some days. Consistency builds muscle.', 'Calorie-dense foods help: nuts, olive oil, rice, oats, whole milk.', 'Add a shake (milk, oats, banana, peanut butter) if eating enough is hard.',
+    'Protein at every meal, spread through the day, builds muscle best.', 'Aim for about 0.25–0.5% of bodyweight a week. Faster is mostly fat.', 'Don\'t skip breakfast if you struggle to hit your calories.',
+    'Bigger plates and an extra snack before bed add up over a week.', 'Strength going up and waist barely changing means the gain is going well.']
+};
+const NUT_TRAIN = ['Training today: eat a carb-and-protein meal 1–3 hours before (rice and chicken, oats and yogurt).', 'After training: get some protein and carbs within a few hours. A sandwich and milk works.',
+  'Training today: have water with you and sip between sets.', 'Heavy day today: don\'t train on an empty stomach if you can help it. A banana 30–60 minutes before helps.'];
+function nutTargets(T){
+  const n = S.nut || {}, kg = bwKg(); if (!kg || !n.age || !n.h) return null;
+  const sex = bodySex(), cm = n.h, bmr = 10 * kg + 6.25 * cm - 5 * n.age + (sex === 'f' ? -161 : 5);
+  const days = typeof weekGoal === 'function' ? weekGoal() : 3, act = days >= 5 ? 1.55 : days >= 3 ? 1.465 : 1.375, tdee = bmr * act, goal = S.bwGoal || 'keep';
+  let kcal = goal === 'lose' ? tdee - Math.min(500, tdee * .2) : goal === 'gain' ? tdee + Math.min(350, tdee * .1) : tdee;
+  // the weekly check-in's running adjustment for this goal (reset when the goal changes)
+  const W = S.nutWeek && S.nutWeek.goal === goal ? S.nutWeek : null, adj = W ? W.total : 0, why = W && W.total ? `Weekly check-in: ${W.total > 0 ? '+' : ''}${W.total} kcal so far.` : '';
+  kcal = Math.max(sex === 'f' ? 1200 : 1500, Math.round((kcal + adj) / 10) * 10);   // never below a safe floor
+  const lb = kg * 2.20462, protein = Math.round(Math.min(lb, 250) * (goal === 'lose' ? 1 : .8)), fat = Math.max(40, Math.round(lb * .3)), carbs = Math.max(50, Math.round((kcal - protein * 4 - fat * 9) / 4));
+  return {kcal, protein, fat, carbs, tdee:Math.round(tdee / 10) * 10, why, goal};
+}
+// Weekly check-in: once a week, look at the trend and move calories 100-150 if it stalled or ran too fast for the goal
+function nutStep(T, goal){ if (!T || T.pct == null || T.span < 1.5) return [0, 'Not enough weigh-ins yet to judge the trend. Keep logging a few times a week.']; const p = T.pct;
+  if (goal === 'lose') return p > -.25 ? [-150, 'Your weight was about flat, so calories go down 150.'] : p < -1.2 ? [150, 'You lost fast, so calories go up 150 to protect your strength.'] : [0, 'You\'re losing at a good pace. No change.'];
+  if (goal === 'gain') return p < .1 ? [150, 'Your weight was about flat, so calories go up 150.'] : p > .6 ? [-150, 'You gained fast, so calories go down 150 to keep it lean.'] : [0, 'You\'re gaining at a good pace. No change.'];
+  return Math.abs(p) >= .25 ? [p > 0 ? -100 : 100, `Your weight drifted ${p > 0 ? 'up' : 'down'}, so calories move ${p > 0 ? 'down' : 'up'} 100.`] : [0, 'Steady. No change.']; }
+function nutCheckin(tries = 0){
+  if (!isPremium() || !S.bw || !nutTargets(bwTrend())) return;
+  const ws = weekStart(todayIso()), goal = S.bwGoal || 'keep', prev = S.nutWeek && S.nutWeek.goal === goal ? S.nutWeek : null; if (prev && prev.ws === ws) return;
+  // wait until the player is past the title screen and nothing else is open
+  if (tsx || !document.getElementById('welcome').hidden || !document.getElementById('profiles').hidden || document.querySelector('dialog[open], .overlay:not([hidden])') || tourRun){ if (tries < 40) setTimeout(() => nutCheckin(tries + 1), 4000); return; }
+  const T = bwTrend(), [step, why] = nutStep(T, goal), total = Math.max(-500, Math.min(500, (prev ? prev.total : 0) + step));
+  S.nutWeek = {ws, goal, step, total, why}; save(); const t = nutTargets(T);
+  rvDlg(`<b class="rl-h">Weekly nutrition check-in</b>${T && T.perWk != null ? `<p class="fine">Trend: ${T.perWk > 0 ? '+' : ''}${fmt(Math.round(T.perWk * 10) / 10)} ${S.unit} a week.</p>` : ''}
+    <p>${why}</p><div class="nut-kcal"><b class="num">${fmt(t.kcal)}</b><span>calories a day this week</span></div><p class="fine">Protein ${t.protein}g · carbs ${t.carbs}g · fat ${t.fat}g</p>
+    <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="rvClose">Got it</button></div>`); render(); }
+// Food log: quick presets (one serving each) or your own entry; kept 14 days
+const FOODS = [['Chicken breast (6 oz)', 280, 52], ['Eggs (2)', 140, 12], ['Greek yogurt (1 cup)', 150, 20], ['Protein shake (1 scoop)', 120, 24], ['Rice (1 cup)', 205, 4], ['Oatmeal (1 cup)', 150, 5],
+  ['Banana', 105, 1], ['Apple', 95, 0], ['Peanut butter (2 tbsp)', 190, 8], ['Ground beef (6 oz)', 340, 38], ['Salmon (6 oz)', 350, 38], ['Tuna (1 can)', 120, 26], ['Bread (2 slices)', 160, 8],
+  ['Pasta (1 cup)', 220, 8], ['Potato', 160, 4], ['Milk (1 cup)', 150, 8], ['Cheese (1 oz)', 110, 7], ['Cottage cheese (1 cup)', 220, 26], ['Steak (8 oz)', 540, 62], ['Turkey sandwich', 380, 28],
+  ['Salad with chicken', 400, 35], ['Protein bar', 220, 20], ['Almonds (1 oz)', 165, 6], ['Burger', 550, 28], ['Pizza (2 slices)', 570, 24], ['Burrito', 650, 28], ['Takeout rice bowl', 700, 30],
+  ['Chips (1 bag)', 160, 2], ['Soda (1 can)', 140, 0], ['Coffee with cream', 60, 1]];
+const foodDay = (iso = todayIso()) => (S.food || {})[iso] || [];
+const foodSum = (iso = todayIso()) => foodDay(iso).reduce((a, x) => ({k:a.k + x.k, p:a.p + x.p}), {k:0, p:0});
+function foodAdd(n, k, p){ const t = todayIso(), F = S.food = S.food || {}; F[t] = [...(F[t] || []), {n:String(n).slice(0, 40), k:Math.max(0, Math.round(k)), p:Math.max(0, Math.round(p))}];
+  for (const d of Object.keys(F)) if (d < addDays(t, -14)) delete F[d]; nutRewards(); }
+// Protein and water streaks: hit them and they pay out once a day
+const waterDay = (iso = todayIso()) => (S.water || {})[iso] || 0;
+const proteinHit = iso => { const t = nutTargets(bwTrend()); return !!t && foodSum(iso).p >= t.protein * .95; };
+const waterHit = iso => waterDay(iso) >= 8;
+const nutStreak = hit => { let n = 0, d = todayIso(); if (!hit(d)) d = addDays(d, -1); while (hit(d) && n < 400){ n++; d = addDays(d, -1); } return n; };
+function nutRewards(){ const t = todayIso(), R = S.nutRw = S.nutRw || {}, r = R[t] = R[t] || {}, old = S.xp;
+  if (!r.p && proteinHit(t)){ r.p = 1; S.xp += 30; if (window.TA_SHOP) TA_SHOP.addCoins(15); setTimeout(() => toast(`Protein goal hit! +30 XP, +15 Grind · ${nutStreak(proteinHit)}-day streak`), 300); }
+  if (!r.w && waterHit(t)){ r.w = 1; S.xp += 20; if (window.TA_SHOP) TA_SHOP.addCoins(10); setTimeout(() => toast(`Water goal hit! +20 XP, +10 Grind · ${nutStreak(waterHit)}-day streak`), 900); }
+  for (const d of Object.keys(R)) if (d < addDays(t, -30)) delete R[d]; if (S.xp !== old) rankCheck(old); }
+// Meal plans: a day of meals scaled to your calories; swap any meal; a week's grocery list
+const MEALS = {
+  Breakfast:[['Oats and whey', [['Oats', .75, 'cup', 230, 8], ['Whey protein', 1, 'scoop', 120, 24], ['Banana', 1, '', 105, 1]]], ['Eggs on toast', [['Eggs', 3, '', 210, 18], ['Toast', 2, 'slice', 160, 8], ['Greek yogurt', 1, 'cup', 150, 20]]],
+    ['Yogurt bowl', [['Greek yogurt', 1.5, 'cup', 225, 30], ['Granola', .5, 'cup', 220, 5], ['Berries', 1, 'cup', 70, 1]]]],
+  Lunch:[['Chicken and rice', [['Chicken breast', 6, 'oz', 280, 52], ['Rice', 1, 'cup', 205, 4], ['Mixed veggies', 1, 'cup', 50, 2]]], ['Turkey wrap plate', [['Turkey wrap', 1, '', 380, 28], ['Apple', 1, '', 95, 0], ['Cheese stick', 1, '', 80, 7]]],
+    ['Tuna pasta', [['Tuna', 1, 'can', 120, 26], ['Pasta', 1.5, 'cup', 330, 12], ['Olive oil', 1, 'tbsp', 120, 0]]]],
+  Dinner:[['Salmon and potatoes', [['Salmon', 6, 'oz', 350, 38], ['Potato', 1, '', 160, 4], ['Broccoli', 1, 'cup', 55, 4]]], ['Beef rice bowl', [['Lean ground beef', 6, 'oz', 340, 38], ['Rice', 1, 'cup', 205, 4], ['Peppers and onions', 1, 'cup', 45, 1]]],
+    ['Steak and sweet potato', [['Steak', 6, 'oz', 405, 46], ['Sweet potato', 1, '', 115, 2], ['Side salad', 2, 'cup', 40, 2]]]],
+  Snack:[['Shake and peanut butter', [['Whey protein', 1, 'scoop', 120, 24], ['Peanut butter', 1, 'tbsp', 95, 4]]], ['Cottage cheese', [['Cottage cheese', 1, 'cup', 220, 26]]], ['Bar and banana', [['Protein bar', 1, '', 220, 20], ['Banana', 1, '', 105, 1]]]]
+};
+const mealPick = () => S.mealPick || {Breakfast:0, Lunch:0, Dinner:0, Snack:0};
+function mealPlan(kcal){ const pk = mealPick(), base = Object.entries(MEALS).reduce((t, [slot, opts]) => t + opts[pk[slot] % opts.length][1].reduce((a, x) => a + x[3], 0), 0), f = kcal / base;
+  const nice = (q, u) => u === 'oz' || !u || u === 'slice' || u === 'can' || u === 'scoop' ? Math.max(1, Math.round(q * 2) / 2) : Math.max(.25, Math.round(q * 4) / 4);
+  return Object.entries(MEALS).map(([slot, opts]) => { const [name, items] = opts[pk[slot] % opts.length];
+    const it = items.map(([n, q, u, k, p]) => { const qq = nice(q * f, u); return {n, q:qq, u, k:k * qq / q, p:p * qq / q}; });
+    return {slot, name, items:it, k:Math.round(it.reduce((a, x) => a + x.k, 0)), p:Math.round(it.reduce((a, x) => a + x.p, 0))}; }); }
+const qtyText = (q, u) => { const w = Math.floor(q), fr = q - w, frs = fr >= .74 ? '¾' : fr >= .49 ? '½' : fr >= .24 ? '¼' : ''; const num = (w || !frs ? w : '') + frs; return `${num || q}${u ? ` ${u}${q > 1 && !/oz|cup|tbsp/.test(u) ? 's' : ''}` : ''}`; };
+const SUPPS = [['Creatine', 'The most proven supplement for strength. 3–5 g a day, any time, every day. Safe for healthy people.'], ['Protein powder', 'Just food in powder form. Handy when you can\'t hit protein from meals.'],
+  ['Caffeine', 'Boosts training performance. A coffee or two before training is plenty; skip it late in the day so you sleep well.'], ['Vitamin D', 'Worth it if you get little sun. Many people are low in winter.'],
+  ['Fish oil', 'Helpful if you rarely eat fish. Not essential otherwise.'], ['Skip', 'Fat burners, testosterone boosters and BCAAs (if you already eat enough protein). Mostly marketing.']];
+var foodOpen = false, groceryOpen = false;
+function nutritionHTML(T){
+  if (!S.bw) return '';
+  if (!isPremium()) return `<div class="nut locked"><div class="row-between"><span class="eyebrow">Nutrition</span><span class="prem">Premium</span></div>
+    <p class="fine">Your daily calories and protein, carbs and fat for ${({lose:'losing', gain:'gaining', keep:'maintaining'})[S.bwGoal || 'keep']} weight, a food log with protein and water streaks, meal plans scaled to you, a weekly check-in and training-day fueling tips.</p>
+    <div class="nut-blur" aria-hidden="true"><b>2,350</b><span>kcal</span><b>180g</b><span>protein</span></div><button type="button" class="btn btn-ghost btn-sm" data-act="premiumHub">See what's in Premium</button></div>`;
+  const t = nutTargets(T), goal = S.bwGoal || 'keep', tips = NUT_TIPS[goal], di = dayNum(todayIso());
+  if (!t) return `<div class="nut"><div class="row-between"><span class="eyebrow">Nutrition</span><span class="prem on">Premium</span></div><p class="fine">Add your age and height in About you above to get your daily calories and protein, carbs and fat.</p></div>`;
+  const sum = foodSum(), wtr = waterDay(), ring = (v, max, label, unit) => { const pc = Math.min(1, v / max), C = 2 * Math.PI * 26;
+    return `<div class="ring"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" class="rb"/><circle cx="32" cy="32" r="26" class="rf${v > max * 1.1 ? ' over' : ''}" stroke-dasharray="${(C * pc).toFixed(1)} ${C.toFixed(1)}"/></svg><b class="num">${fmt(Math.round(v))}</b><small>of ${fmt(max)}${unit} ${label}</small></div>`; };
+  const plan = mealPlan(t.kcal), ps = nutStreak(proteinHit), ws = nutStreak(waterHit);
+  const groceries = (() => { const g = {}; for (const m of plan) for (const x of m.items){ const k = `${x.n}|${x.u}`; g[k] = (g[k] || 0) + x.q * 7; } return Object.entries(g).map(([k, q]) => { const [n, u] = k.split('|'); return `<li><span>${n}</span><b>${qtyText(Math.round(q * 4) / 4, u)}</b></li>`; }).join(''); })();
+  return `<div class="nut"><div class="row-between"><span class="eyebrow">Nutrition · ${({lose:'lose', gain:'gain', keep:'maintain'})[goal]}</span><span class="prem on">Premium</span></div>
+    <div class="nut-kcal"><b class="num">${fmt(t.kcal)}</b><span>calories a day</span></div>
+    <div class="nut-mac"><div><b class="num">${t.protein}g</b><small>Protein</small></div><div><b class="num">${t.carbs}g</b><small>Carbs</small></div><div><b class="num">${t.fat}g</b><small>Fat</small></div></div>
+    <p class="fine">${goal === 'keep' ? `Your maintenance is about ${fmt(t.tdee)}.` : `About ${fmt(Math.abs(t.kcal - t.tdee))} ${t.kcal < t.tdee ? 'under' : 'over'} your maintenance (${fmt(t.tdee)}).`} ${t.why}</p>
+    <span class="rl-sec">Today</span>
+    <div class="nut-rings">${ring(sum.k, t.kcal, 'kcal', '')}${ring(sum.p, t.protein, 'protein', 'g')}
+      <div class="ring water"><div class="w-cups" aria-label="${wtr} of 8 glasses of water">${Array.from({length:8}, (_, i) => `<i class="${i < wtr ? 'on' : ''}"></i>`).join('')}</div><b class="num">${wtr}/8</b><small>glasses of water</small>
+        <span class="w-btns"><button type="button" class="icon-btn" data-act="water" data-v="-1" aria-label="One glass less">−</button><button type="button" class="icon-btn" data-act="water" data-v="1" aria-label="One more glass">+</button></span></div></div>
+    <p class="fine nut-streaks">🔥 Protein streak <b>${ps}</b> day${ps === 1 ? '' : 's'} · 💧 Water streak <b>${ws}</b> day${ws === 1 ? '' : 's'} · each pays XP and Grind</p>
+    <div class="food-today">${foodDay().map((x, i) => `<div class="food-row"><span>${esc(x.n)}</span><small>${x.k} kcal · ${x.p}g</small><button type="button" class="icon-btn" data-act="foodDel" data-i="${i}" aria-label="Remove ${esc(x.n)}">×</button></div>`).join('') || '<p class="fine">Nothing logged yet today.</p>'}</div>
+    <button type="button" class="btn ${foodOpen ? 'btn-ghost' : 'btn-power'} btn-sm" data-act="foodOpen">${foodOpen ? 'Close' : '+ Log food'}</button>
+    ${foodOpen ? `<div class="food-pick"><div class="food-presets">${FOODS.map(([n, k, p], i) => `<button type="button" class="opt" data-act="foodPreset" data-i="${i}">${n}<small>${k} kcal · ${p}g</small></button>`).join('')}</div>
+      <div class="food-custom"><input id="foodN" type="text" maxlength="40" placeholder="Something else" aria-label="Food name"><input id="foodK" type="number" inputmode="numeric" placeholder="kcal" aria-label="Calories"><input id="foodP" type="number" inputmode="numeric" placeholder="protein g" aria-label="Protein grams"><button type="button" class="btn btn-power btn-sm" data-act="foodCustom">Add</button></div></div>` : ''}
+    <span class="rl-sec">Meal plan for your ${fmt(t.kcal)} calories</span>
+    <div class="meals">${plan.map(m => `<div class="meal"><div class="row-between"><b>${m.slot} · ${m.name}</b><button type="button" class="wk-link" data-act="mealSwap" data-v="${m.slot}">Swap</button></div>
+      <p class="fine">${m.items.map(x => `${qtyText(x.q, x.u)} ${x.n.toLowerCase()}`).join(' · ')}</p><small class="meal-m">${fmt(m.k)} kcal · ${m.p}g protein</small></div>`).join('')}</div>
+    <p class="fine">Plan total: ${fmt(plan.reduce((a, m) => a + m.k, 0))} kcal, ${plan.reduce((a, m) => a + m.p, 0)}g protein. Portions are scaled to your calories.</p>
+    <button type="button" class="wk-link" data-act="groceryOpen">${groceryOpen ? 'Hide grocery list' : 'Grocery list for the week'}</button>
+    ${groceryOpen ? `<ul class="grocery">${groceries}</ul>` : ''}
+    <div class="nut-tip"><span class="eyebrow">Today's tip</span><p>${tips[di % tips.length]}</p></div>
+    ${trainsOn(todayIso()) ? `<div class="nut-tip train"><span class="eyebrow">Training day</span><p>${NUT_TRAIN[di % NUT_TRAIN.length]}</p></div>` : ''}
+    <details class="supps"><summary>Supplements: what's worth it</summary><dl>${SUPPS.map(([n, d]) => `<dt>${n}</dt><dd>${d}</dd>`).join('')}</dl></details>
+    <p class="fine nut-note">General guidance, not medical advice. If you have a health condition, are pregnant, or have a history of disordered eating, talk to a doctor or dietitian first.</p></div>`;
+}
+// Training-day fueling on Today (Premium): what to eat before, then after once the workout is in
+function fuelHTML(){
+  if (!isPremium() || !trainsOn(todayIso())) return '';
+  const done = S.log.some(l => l.iso === todayIso() && !l.bossFight), t = S.bw ? nutTargets(bwTrend()) : null, post = t ? Math.round(t.protein / 4) : 30;
+  return `<section class="panel checkin fuel"><div class="ci-ico" aria-hidden="true">${done ? '🥛' : '🍌'}</div><div class="ci-body"><b>${done ? 'Refuel' : 'Fuel your session'}</b>
+    <span class="fine">${done ? `Get about ${post}g of protein and some carbs in the next couple of hours: a shake and a banana, or a real meal.` : 'Eat a carb-and-protein meal 1–3 hours before (rice and chicken, oats and yogurt), or a banana 30–60 minutes before if you\'re short on time.'}</span></div></section>`;
+}
+
+/* ---------- Premium: advanced stats ---------- */
+// Estimated-max trend for each big lift by week, hard sets per muscle group this week, and lifts that have stalled
+const MUSCLES = [['Chest', /bench|chest press|push-?up|fly|dip|floor press/i], ['Back', /row|pull-?up|chin|pulldown|lat |deadlift|shrug|face pull|rack pull|block pull/i],
+  ['Legs', /squat|lunge|leg press|leg curl|leg ext|calf|rdl|romanian|step-?up|hip thrust|glute|nordic|hack/i], ['Shoulders', /overhead|ohp|shoulder|lateral|delt|push press|military|landmine|arnold/i],
+  ['Arms', /curl(?!.*leg)|tricep|pushdown|skull|extension(?!.*leg)|hammer/i], ['Core', /plank|crunch|raise|ab |twist|hollow|sit-?up|pallof|dead bug|rollout/i]];
+function liftWeeks(lift, n = 12){ const name = LIFTS[lift], w0 = weekStart(todayIso()), out = [];
+  for (let i = n - 1; i >= 0; i--){ const ws = addDays(w0, -7 * i); let best = 0;
+    for (const l of S.log) if (l.iso && weekStart(l.iso) === ws) for (const x of l.ex || []) if (x.name === name) for (const [w, r] of x.sets || []) if (w > 0 && r >= 1 && r <= 12){ const e = e1rm(w, r) * (l.unit && l.unit !== S.unit ? (S.unit === 'kg' ? 1 / 2.20462 : 2.20462) : 1); if (e > best) best = e; }
+    out.push({ws, best:Math.round(best)}); }
+  return out; }
+function plateaus(){ return Object.keys(LIFTS).filter(l => { const W = liftWeeks(l, 8), a = W.slice(0, 4).map(x => x.best).filter(Boolean), b = W.slice(4).map(x => x.best).filter(Boolean);
+  return a.length >= 2 && b.length >= 2 && Math.max(...b) <= Math.max(...a); }); }
+function muscleSets(days = 7){ const from = addDays(todayIso(), -days + 1), out = Object.fromEntries(MUSCLES.map(([m]) => [m, 0]));
+  for (const l of S.log) if (l.iso && l.iso >= from) for (const x of l.ex || []) for (const [m, re] of MUSCLES) if (re.test(x.name)){ out[m] += (x.sets || []).length; }
+  return out; }
+var statLift = 'squat';
+function advStatsHTML(){
+  if (!isPremium()) return `<section class="panel adv locked"><div class="row-between"><h3>Advanced stats</h3><span class="prem">Premium</span></div><p class="fine">Estimated-max trends for every lift, weekly sets per muscle group with the ranges that build muscle, and a plateau finder with fixes.</p><button type="button" class="btn btn-ghost btn-sm" data-act="premiumHub">See what's in Premium</button></section>`;
+  const W = liftWeeks(statLift), vals = W.map(x => x.best), has = vals.filter(Boolean), u = S.unit;
+  const chart = has.length >= 2 ? (() => { const lo = Math.min(...has), hi = Math.max(...has), span = Math.max(5, hi - lo), pts = W.map((x, i) => x.best ? [12 + i * (276 / (W.length - 1)), 64 - (x.best - lo) / span * 52] : null).filter(Boolean);
+    return `<svg class="bw-chart" viewBox="0 0 300 80" role="img" aria-label="${LIFTS[statLift]} estimated max by week"><polyline points="${pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ')}"/>${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5"/>`).join('')}
+      <text x="12" y="78">12 wks ago</text><text x="288" y="78" text-anchor="end">This week</text></svg><p class="fine">Best estimated max ${fmt(hi)} ${u}${has.length ? ` · latest ${fmt(has[has.length - 1])} ${u}` : ''}.</p>`; })() : '<p class="fine">Log this lift in a couple of workouts to see its trend.</p>';
+  const ms = muscleSets(7), maxS = Math.max(20, ...Object.values(ms)), pl = plateaus();
+  return `<section class="panel adv"><div class="row-between"><h3>Advanced stats</h3><span class="prem on">Premium</span></div>
+    <span class="rl-sec">Estimated max by week</span><div class="seg seg-fill" role="group" aria-label="Lift">${Object.keys(LIFTS).map(l => `<button type="button" data-act="statLift" data-v="${l}" aria-pressed="${statLift === l}">${({squat:'Squat', bench:'Bench', deadlift:'Dead', ohp:'OHP', clean:'Clean'})[l]}</button>`).join('')}</div>${chart}
+    <span class="rl-sec">Hard sets per muscle, last 7 days</span><div class="msets">${Object.entries(ms).map(([m, n]) => `<div class="mset"><span>${m}</span><div class="bar"><i style="width:${Math.min(100, n / maxS * 100)}%" class="${n >= 10 && n <= 20 ? 'ok' : n > 20 ? 'hi' : ''}"></i><em style="left:${10 / maxS * 100}%"></em><em style="left:${20 / maxS * 100}%"></em></div><b class="num">${n}</b></div>`).join('')}</div>
+    <p class="fine">About 10–20 hard sets per muscle a week (between the marks) is the range that builds the most muscle for most people.</p>
+    <span class="rl-sec">Plateau finder</span>${pl.length ? pl.map(l => `<div class="plat"><b>${LIFTS[l]} has stalled for 4+ weeks.</b><p class="fine">Try a deload week to recover, swap to a variation for two weeks (${(LIFT_SWAPS[l] || [])[0] ? LIFT_SWAPS[l][0][0] : 'a variation'}), or add a set of lighter back-off work.</p></div>`).join('') : '<p class="fine">No stalls. Every lift you train is still moving up.</p>'}</section>`;
+}
+
+/* ---------- Premium: smart coach ---------- */
+// After each workout: where your top set flew past the target or you missed reps twice running, a suggested change
+// to that lift's working weight. Nothing changes until you tap Apply.
+function coachReview(rows, p){
+  if (!isPremium() || deloadOn()) return []; const notes = [], miss = S.coachMiss = S.coachMiss || {};
+  for (const r of rows){ const e = r.e; if (!e.lift || e.swapped || !r.sets) continue; const done = e.sets.filter(setDone), acts = done.map(setActual);
+    const missed = done.some((s, i) => acts[i].r < s.reps), am = done.filter(s => s.amrap).map(s => setActual(s).r - s.reps);
+    if (missed){ miss[e.lift] = (miss[e.lift] || 0) + 1; if (miss[e.lift] >= 2){ const d = -Math.max(inc(), roundW((S.maxes[e.lift] || 0) * p.tm * .05)); notes.push({lift:e.lift, d, why:`You missed reps on ${LIFTS[e.lift]} two sessions in a row. Dropping its working weight ${fmt(-d)} ${S.unit} lets you rebuild momentum.`}); miss[e.lift] = 0; } }
+    else { miss[e.lift] = 0; if (am.length && Math.max(...am) >= 3){ const d = inc() * (Math.max(...am) >= 6 ? 2 : 1); notes.push({lift:e.lift, d, why:`You beat the rep-out target on ${LIFTS[e.lift]} by ${Math.max(...am)}. You're ready for ${fmt(d)} ${S.unit} more.`}); } } }
+  S.coachNotes = [...(S.coachNotes || []).filter(n => !notes.some(x => x.lift === n.lift)), ...notes].slice(-5); return notes; }
+function coachHTML(){ const N = isPremium() ? S.coachNotes || [] : []; if (!N.length) return '';
+  return N.map((n, i) => `<section class="panel coach"><div class="row-between"><span class="eyebrow">Smart coach</span><span class="prem on">Premium</span></div><p>${n.why}</p>
+    <div class="arc-btns"><button type="button" class="btn btn-ghost btn-sm" data-act="coachNo" data-i="${i}">Not now</button><button type="button" class="btn btn-power btn-sm" data-act="coachYes" data-i="${i}">Apply ${n.d > 0 ? '+' : '−'}${fmt(Math.abs(n.d))} ${S.unit}</button></div></section>`).join(''); }
+
+/* ---------- Premium: cosmetics, themes and the Premium page ---------- */
+// A gold frame on your card, a Premium title, and one exclusive item each month (yours to keep)
+function premiumItems(){ const I = TA_SHOP_DATA.items, near = (type, hex) => { const [h] = rgbHsl(...hexRgbA(hex)); return Object.values(I).filter(i => i.type === type && i.color && !/^pm_/.test(i.id)).sort((a, b) => Math.abs(rgbHsl(...hexRgbA(a.color))[0] - h) - Math.abs(rgbHsl(...hexRgbA(b.color))[0] - h))[0]; };
+  const ttl = Object.values(I).find(i => i.type === 'title' && i.r === 'L'), gi = I.of_crimson_gi, cape = near('cape', '#e6ad22'), aura = near('aura', '#c084fc');
+  const add = it => { if (!I[it.id]) I[it.id] = it; };
+  if (ttl) add({id:'pm_title', type:'title', name:'Premium', text:'PREMIUM', color:'#ffd23f', r:'L', price:0, cur:'g', icon:ttl.icon, desc:'For Premium members.', premium:true});
+  if (gi) add({id:'pm_gi', type:'outfit', name:'Obsidian Gold Gi', r:'L', price:0, cur:'g', icon:gi.icon, desc:'Premium exclusive.', premium:true, outfit:{shirt:'#121018', pants:'#121018', stripe:'#ffd23f', emb:'#ffd23f', gid:'of_crimson_gi'}, garb:'of_crimson_gi'});
+  if (cape) add({id:'pm_cape', type:'cape', name:'Royal Gold Cape', r:'L', price:0, cur:'g', icon:cape.icon, color:'#e6ad22', desc:'Premium exclusive.', premium:true});
+  if (aura) add({id:'pm_aura', type:'aura', name:'Prism Ki', r:'L', price:0, cur:'g', icon:aura.icon, color:'#c084fc', desc:'Premium exclusive.', premium:true});
+  return ['pm_gi', 'pm_cape', 'pm_aura'].filter(id => I[id]); }
+const premiumMonthly = () => { const L = premiumItems(); return L.length ? L[(new Date().getFullYear() * 12 + new Date().getMonth()) % L.length] : null; };
+function premiumGrant(){ if (!isPremium() || !window.TA_SHOP || !TA_SHOP.grant) return; premiumItems(); const got = [];
+  if (TA_SHOP.grant('pm_title')) got.push('the Premium title'); const m = premiumMonthly(); if (m && TA_SHOP.grant(m)) got.push(TA_SHOP.item(m).name);
+  if (got.length) setTimeout(() => toast(`Premium: ${got.join(' and ')} added to your items.`), 800); }
+const APP_THEMES = {default:['Default', {}], crimson:['Crimson', {'--power':'#ff4d6a', '--violet-glow':'rgba(255,77,106,.28)'}], ocean:['Ocean', {'--power':'#4cc3ff', '--violet-glow':'rgba(76,195,255,.26)'}],
+  emerald:['Emerald', {'--power':'#3ddc97', '--violet-glow':'rgba(61,220,151,.24)'}], sakura:['Sakura', {'--power':'#ff8ac8', '--violet-glow':'rgba(255,138,200,.26)'}], frost:['Frost', {'--power':'#d4f2ff', '--violet-glow':'rgba(212,242,255,.22)'}]};
+function applyTheme(){ const el = document.documentElement, all = new Set(Object.values(APP_THEMES).flatMap(([, v]) => Object.keys(v)));
+  for (const k of all) el.style.removeProperty(k); const th = isPremium() && APP_THEMES[S.appTheme] ? APP_THEMES[S.appTheme][1] : {}; for (const [k, v] of Object.entries(th)) el.style.setProperty(k, v); }
+const PERKS = [['🍽️', 'Nutrition', 'Daily calories and macros for your goal, a food log, meal plans scaled to you, a grocery list and supplement basics.'],
+  ['🔥', 'Protein and water streaks', 'Hit your daily protein and water for XP and Grind every day.'], ['📅', 'Weekly check-in', 'Every week your calories adjust to your weight trend, with the reason why.'],
+  ['🍌', 'Training-day fueling', 'What to eat before and after each workout, right on Today.'], ['📈', 'Advanced stats', 'Estimated-max trends, sets per muscle group and a plateau finder.'],
+  ['🧠', 'Smart coach', 'Suggests weight changes when you crush a lift or miss reps.'], ['👑', 'Exclusive cosmetics', 'A gold card frame, the Premium title and a new exclusive item every month.'],
+  ['🎁', 'Bonus season rewards', '+50% Grind and extra Glory on every season tier.'], ['🛡️', 'Bigger crews', 'Crews of up to 10 and a weekly crew battle.'], ['🎨', 'App themes', 'Color the whole app your way.']];
+function premiumHub(){ const on = isPremium(), m = premiumMonthly();
+  rvDlg(`<div class="row-between"><b class="rl-h">Training Arc Premium</b><span class="prem${on ? ' on' : ''}">${on ? 'Active' : 'Premium'}</span></div>
+    <ul class="perks">${PERKS.map(([i, t, d]) => `<li><span aria-hidden="true">${i}</span><div><b>${t}</b><p class="fine">${d}</p></div></li>`).join('')}</ul>
+    ${m ? `<p class="fine">This month's exclusive: <b>${TA_SHOP.item(m).name}</b>.</p>` : ''}
+    ${on ? `<span class="rl-sec">App theme</span><div class="opt-chips">${Object.entries(APP_THEMES).map(([k, [n]]) => `<button type="button" class="opt" data-act="appTheme" data-v="${k}" aria-pressed="${(S.appTheme || 'default') === k}">${n}</button>`).join('')}</div>` : '<p class="fine">Premium is coming soon. For now it can be switched on in Settings › Testing.</p>'}
+    <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="rvClose">Close</button></div>`); }
 // Strength levels by bodyweight multiple, the common gym standards (approximate), for the hero you play.
 // Each list is where Beginner, Novice, Intermediate, Advanced and Elite start.
 const LEVEL_NAMES = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'];
@@ -6187,7 +6492,7 @@ const STD = {
 };
 function strengthLevel(lift, max){
   const bw = S.bw || 0; if (!bw || !max) return null;
-  const t = STD[S.hero.gender === 'female' ? 'female' : 'male'][lift], r = max / bw; let i = -1; t.forEach((x, k) => { if (r >= x - 1e-9) i = k; });
+  const t = STD[bodySex() === 'f' ? 'female' : 'male'][lift], r = max / bw; let i = -1; t.forEach((x, k) => { if (r >= x - 1e-9) i = k; });
   return {ratio:r, i, name:i < 0 ? 'Starting out' : LEVEL_NAMES[i], color:i < 0 ? '#8d86a3' : LEVEL_COLOR[i], next:i < 4 ? {name:LEVEL_NAMES[i + 1], at:t[i + 1] * bw} : null};
 }
 const kgOf = lb => MS_KG[lb] || Math.round(lb / 2.20462 / 2.5) * 2.5;
@@ -6235,16 +6540,15 @@ function achHTML(){
     <div class="tr-total"><div class="row-between"><span class="eyebrow">Big 3 total</span><b class="num tr-tot">${tot ? `${fmt(Math.round(fromLb(tot)))} ${u}` : '—'}</b></div>
       <div class="bar"><i style="width:${nextC ? Math.min(100, tot / nextC * 100) : 100}%"></i></div>
       <p class="fine">${club ? `<b class="tr-club">${clubLabel(club)} club</b> · ` : ''}${nextC ? `${clubLabel(nextC)} club: ${fmt(Math.ceil(fromLb(nextC - tot)))} ${u} to go` : 'Top club reached.'}${S.bw && tot ? ` · ${(fromLb(tot) / S.bw).toFixed(1)}× bodyweight` : ''}</p></div>
-    <label class="tr-bw"><span><b>Bodyweight</b><small>Optional. Unlocks strength levels for each lift.</small></span>
-      <span class="tr-bw-in"><input id="trBw" type="number" inputmode="decimal" min="0" step="any" placeholder="${u === 'kg' ? 75 : 170}" value="${S.bw || ''}" aria-label="Bodyweight in ${u}"><em>${u}</em></span></label>
+    <button type="button" class="tr-bw tr-bw-link" data-act="bwJump"><span><b>Bodyweight${S.bw ? `: ${fmt(S.bw)} ${u}` : ''}</b><small>${S.bw ? 'From your weigh-ins. Used for strength levels on each lift.' : 'Optional. Add it in the Bodyweight panel to unlock strength levels for each lift.'}</small></span><span class="tr-bw-go">${S.bw ? 'Update' : 'Add'} ›</span></button>
     ${Object.entries(MILESTONES).map(lift).join('')}
     <p class="fine">Tap a medal for its details. P means plates per side: 2P is two 45s on each side, 225 lb. Strength levels are approximate gym standards for the hero you play.</p></section>
-  ${flairsHTML()}`;
+  `;   // the backdrops live in the character editor, under the stage
 }
 function flairsHTML(){
   const on = flairsOn(), open = FLAIRS.filter(f => f.ok()).length, seen = S.flairSeen || [];
-  return `<section class="panel"><div class="row-between"><h3>Today backdrops</h3><span class="fine num">${open} of ${FLAIRS.length} unlocked</span></div>
-    <p class="fine">Earned with your strength. Show up to ${MAX_FLAIRS} at once behind your hero on the Today tab and your card. They stack on top of your stage.</p>
+  return `<section class="he-group fl-pick"><div class="row-between"><h4>Backdrops</h4><span class="fine num">${open} of ${FLAIRS.length} unlocked</span></div>
+    <p class="fine">Earned with your strength. Show up to ${MAX_FLAIRS} behind your hero here, on the Today tab and on your card.</p>
     <p class="fl-count"><span class="num">${on.length} of ${MAX_FLAIRS}</span> showing${on.length ? `: ${on.map(id => flairOf(id).name).join(', ')}` : ''}</p>
     <div class="fl-grid">${FLAIRS.map(f => { const ok = f.ok(), sel = on.includes(f.id), full = !sel && on.length >= MAX_FLAIRS;
       return `<button type="button" class="fl-tile${sel ? ' on' : ''}${full && ok ? ' full' : ''}" data-act="flair" data-v="${f.id}"${ok || sel ? ` aria-pressed="${sel}"` : ' disabled'}>
@@ -6290,8 +6594,10 @@ function seasonAdd(n){
   while (s.got < SEASON_TIERS.length && s.pts >= (s.got + 1) * SEASON_STEP){
     const [k, v] = SEASON_TIERS[s.got]; s.got++;
     if (!window.TA_SHOP) continue;
-    if (k === 'c'){ TA_SHOP.addCoins(v); out.push(`+${v} Grind`); }
-    else if (k === 'g'){ TA_SHOP.addGems(v); out.push(`+${v} Glory`); }
+    const pm = isPremium();   // Premium: +50% Grind and +5 Glory on every tier
+    if (pm && k !== 'g') TA_SHOP.addGems(5);
+    if (k === 'c'){ const c = pm ? Math.round(v * 1.5) : v; TA_SHOP.addCoins(c); out.push(`+${c} Grind`); }
+    else if (k === 'g'){ const g = v + (pm ? 5 : 0); TA_SHOP.addGems(g); out.push(`+${g} Glory`); }
     else { const id = seasonPrize(); if (id && TA_SHOP.grant(id)) out.push(TA_SHOP.item(id).name); else { TA_SHOP.addGems(50); out.push('+50 Glory'); } }
   }
   return out;
@@ -6299,11 +6605,11 @@ function seasonAdd(n){
 function seasonHTML(){
   const s = seasonState(), name = SEASON_NAMES[+s.id.slice(5) - 1], end = new Date(+s.id.slice(0, 4), +s.id.slice(5), 0), left = Math.max(0, Math.round((end - fromYmd(todayIso())) / 864e5));
   const prize = seasonPrize(), pn = prize ? TA_SHOP.item(prize).name : '50 Glory', max = SEASON_TIERS.length * SEASON_STEP;
-  const lab = ([k, v]) => k === 'c' ? `${v}<small>Grind</small>` : k === 'g' ? `${v}<small>Glory</small>` : '★<small>Item</small>';
+  const pm = isPremium(), lab = ([k, v]) => k === 'c' ? `${pm ? Math.round(v * 1.5) : v}<small>Grind</small>` : k === 'g' ? `${v + (pm ? 5 : 0)}<small>Glory</small>` : '★<small>Item</small>';
   return `<section class="panel season" aria-label="Season track"><div class="row-between"><span class="eyebrow">Season · ${name}</span><span class="fine">${left} day${left === 1 ? '' : 's'} left</span></div>
     <div class="row-between"><b class="season-tier">Tier ${s.got} of ${SEASON_TIERS.length}</b><span class="fine num">${fmt(Math.min(s.pts, max))} / ${fmt(max)} pts</span></div>
     <div class="season-track">${SEASON_TIERS.map((t, i) => `<span class="st-tier${i < s.got ? ' got' : ''}${i === s.got ? ' next' : ''}${t[0] === 'item' ? ' top' : ''}">${lab(t)}</span>`).join('')}</div>
-    <p class="fine">Every workout fills it: 10 points plus 1 per set. Tier 10 is ${s.got >= SEASON_TIERS.length ? 'yours. Nice season' : `<b>${esc(pn)}</b>, free`}. A new season starts on the 1st.</p></section>`;
+    <p class="fine">Every workout fills it: 10 points plus 1 per set. Tier 10 is ${s.got >= SEASON_TIERS.length ? 'yours. Nice season' : `<b>${esc(pn)}</b>, free`}. A new season starts on the 1st.${pm ? ' <span class="prem on">Premium</span> +50% Grind and +5 Glory on every tier.' : ''}</p></section>`;
 }
 function viewProgress(){
   const r = rankFor(S.xp), n = nextRank(S.xp), lv = levelInfo(S.xp);
@@ -6317,6 +6623,8 @@ function viewProgress(){
     <div class="stat"><b class="num">${fmt(S.sets)}</b><span>Sets done</span></div>
     <div class="stat"><b class="num">${S.prs}</b><span>PRs</span></div>
   </div>
+  ${bwHTML()}
+  ${advStatsHTML()}
   ${seasonHTML()}
   ${S.log.some(l => l.iso && l.iso.startsWith(todayIso().slice(0, 4))) ? `<button class="yir-btn" data-act="openYear"><span><small>Year in review</small><b>Your ${todayIso().slice(0, 4)}</b></span><span aria-hidden="true">›</span></button>` : ''}
   ${rewardsHTML()}
@@ -6998,7 +7306,7 @@ function tourStep(i){ const r = tourRun; if (!r) return;
   while (i >= 0 && i < r.steps.length && !tourVisible(r.steps[i].sel)) i += i >= r.i ? 1 : -1;   // skip what isn't on screen (no quests today, say)
   if (i < 0) i = 0; if (i >= r.steps.length) return tourEnd(true);
   r.i = i; const s = r.steps[i], target = tourVisible(s.sel); r.target = target;
-  target.scrollIntoView({block:'center', behavior:reduceMotion ? 'auto' : 'smooth'});
+  target.scrollIntoView({block:'center'});
   const n = r.steps.filter(x => tourVisible(x.sel)).length, k = r.steps.slice(0, i).filter(x => tourVisible(x.sel)).length + 1;
   tourEl().querySelector('.tour-card').innerHTML = `<p class="tour-k">${r.name === 'workout' ? 'Workout guide' : 'Quick tour'} · ${k} of ${n}</p><h3 id="tourT">${s.t}</h3><p>${s.x}</p>
     <div class="tour-btns"><button type="button" class="wk-link" data-tour="end">${k === n ? '' : 'Skip'}</button><span>${k > 1 ? '<button type="button" class="btn btn-ghost btn-sm" data-tour="back">Back</button>' : ''}<button type="button" class="btn btn-power btn-sm" data-tour="next">${k === n ? 'Got it' : 'Next'}</button></span></div>`;
@@ -7015,7 +7323,7 @@ function tourEnd(done){ const r = tourRun; tourRun = null; const el = document.g
   if (r && r.name === 'workout'){ S.wkTourDone = 1; save(); } else if (r){ S.tourDone = 1; save(); if (done) toast('Tour done. Replay it anytime from Settings.'); } }
 // asked once: right after setup, or the first time an existing player opens the app after this update
 function tourOffer(){ if (S.tourAsked || tourRun || !S.onboarded) return;
-  if (document.querySelector('dialog[open], #title:not([hidden]), #profiles:not([hidden]), #workout:not([hidden])') || !document.getElementById('welcome')?.hidden || tab !== 'today'){ clearTimeout(tourOffer.t); tourOffer.t = setTimeout(tourOffer, 2500); return; }   // wait for a quiet moment on Today
+  if (document.querySelector('dialog[open], .overlay:not([hidden]), #title:not([hidden]), #profiles:not([hidden]), #workout:not([hidden])') || !document.getElementById('welcome')?.hidden || tab !== 'today'){ clearTimeout(tourOffer.t); tourOffer.t = setTimeout(tourOffer, 2500); return; }   // wait for a quiet moment on Today
   S.tourAsked = 1; save(); const el = tourEl(); el.hidden = false; tourRun = {name:'offer', steps:[], i:0, target:null};
   el.querySelector('.tour-card').innerHTML = `<p class="tour-k">New here?</p><h3 id="tourT">Want a quick tour?</h3><p>One minute, showing you where everything is. Good if you're new to lifting or to the app. You can replay it from Settings later.</p>
     <div class="tour-btns"><button type="button" class="wk-link" data-tour="no">No thanks</button><button type="button" class="btn btn-power btn-sm" data-tour="yes">Show me around</button></div>`;
@@ -7199,7 +7507,8 @@ function completeWorkout(){
     const done = e.sets.filter(setDone), acts = done.map(setActual);
     let pr = 0;   // a rep-out set whose estimated max beats the current one
     if (e.lift && !e.swapped) for (const s of done.filter(s => s.amrap)){ const a = setActual(s), est = roundW(e1rm(a.w, a.r)); if (est > S.maxes[e.lift] && est > pr) pr = est; }
-    return {e, sets:done.length, vol:e.weighted ? acts.reduce((a, x) => a + x.w * x.r, 0) : 0, amount:acts.reduce((a, x) => a + x.r, 0), pr};
+    const bwv = bwShare(e) * (S.bw || 0);   // bodyweight moves (and weighted pull-ups or dips) move your bodyweight too
+    return {e, sets:done.length, vol:e.weighted ? acts.reduce((a, x) => a + (x.w + (/pull-?up|chin-?up|dip/i.test(e.name) ? bwv : 0)) * x.r, 0) : acts.reduce((a, x) => a + bwv * x.r, 0), amount:acts.reduce((a, x) => a + x.r, 0), pr};
   });
   // Remember each exercise's sets for "last time" and auto-progression (the general warm-up aside). hit:
   // every set done with at least its target reps.
@@ -7254,6 +7563,7 @@ function completeWorkout(){
   if (dl){ nd = S.pos.d; nw = S.pos.w; arcDone = false; S.deload.left--;
     if (S.deload.left <= 0){ S.deload = null; S.deloadDone = true; S.lastDeload = todayIso(); } }
   else deloadCheck(rows, boss, bossWon);
+  if (!dl) coachReview(rows, p);   // Premium: weight suggestions, shown on Today
   S.arcJustDone = arcDone ? p.id : null;   // Today offers the next arc until you start one or train again
   if (arcDone) S.arcs++;
   // Finishing an arc (its boss beaten) steps up the working weight of every barbell lift it used:
@@ -7590,6 +7900,28 @@ document.addEventListener('click', e => {
   }
   else if (a === 'openSettings') openSettings();
   else if (a === 'glossary') openGlossary();
+  else if (a === 'bwLog'){ const v = parseFloat(document.getElementById('bwIn')?.value); if (logBw(v)){ save(); render(); toast(`Logged ${fmt(S.bw)} ${S.unit}.`); buzz(10); } else toast('Type your bodyweight first.'); }
+  else if (a === 'bwGoal'){ S.bwGoal = t.dataset.v; S.bwStart = S.bw; save(); render(); }
+  else if (a === 'bwDel'){ S.bwLog = (S.bwLog || []).filter(e => e.iso !== t.dataset.iso); const lst = S.bwLog[S.bwLog.length - 1]; S.bw = lst ? lst.v : 0; save(); render(); toast('Weigh-in removed.'); }
+  else if (a === 'bwMsAll'){ bwMsAll = !bwMsAll; render(); }
+  else if (a === 'bwJump'){ const p = document.querySelector('.bw'); if (p){ p.scrollIntoView({block:'start'}); setTimeout(() => document.getElementById('bwIn')?.focus({preventScroll:true}), 100); } }
+  else if (a === 'nutSex'){ S.nut = {...(S.nut || {}), sex:t.dataset.v}; save(); render(); }
+  // Premium: food log, water, meal plans, stats, smart coach, themes and the Premium page
+  else if (a === 'foodOpen'){ foodOpen = !foodOpen; render(); }
+  else if (a === 'groceryOpen'){ groceryOpen = !groceryOpen; render(); }
+  else if (a === 'foodPreset'){ const f = FOODS[+t.dataset.i]; if (f){ foodAdd(...f); save(); render(); toast(`Logged ${f[0]}.`); } }
+  else if (a === 'foodCustom'){ const n = document.getElementById('foodN')?.value.trim(), k = parseFloat(document.getElementById('foodK')?.value), p = parseFloat(document.getElementById('foodP')?.value) || 0;
+    if (!(k >= 0) || k > 5000 || p > 500){ toast('Add the calories (and protein if you know it).'); return; } foodAdd(n || 'Food', k, p); save(); render(); toast('Logged.'); }
+  else if (a === 'foodDel'){ const d = (S.food || {})[todayIso()]; if (d){ d.splice(+t.dataset.i, 1); save(); render(); } }
+  else if (a === 'water'){ const W = S.water = S.water || {}, td = todayIso(); W[td] = Math.max(0, Math.min(12, (W[td] || 0) + +t.dataset.v));
+    for (const d of Object.keys(W)) if (d < addDays(td, -30)) delete W[d]; nutRewards(); save(); render(); if (+t.dataset.v > 0) buzz(8); }
+  else if (a === 'mealSwap'){ const pk = {...mealPick()}; pk[t.dataset.v] = (pk[t.dataset.v] || 0) + 1; S.mealPick = pk; save(); render(); }
+  else if (a === 'statLift'){ statLift = t.dataset.v; render(); }
+  else if (a === 'coachYes' || a === 'coachNo'){ const N = S.coachNotes || [], n = N[+t.dataset.i]; if (!n) return; N.splice(+t.dataset.i, 1);
+    if (a === 'coachYes'){ S.tmAdd[n.lift] = (S.tmAdd[n.lift] || 0) + n.d; toast(`${LIFTS[n.lift]} working weights ${n.d > 0 ? '+' : '−'}${fmt(Math.abs(n.d))} ${S.unit}.`); } save(); render(); }
+  else if (a === 'premiumHub'){ closeDialog('settings'); premiumHub(); }
+  else if (a === 'appTheme'){ S.appTheme = t.dataset.v; applyTheme(); save(); premiumHub(); }
+  else if (a === 'premiumToggle' && SHOW_TEST_TOOLS){ S.premium = !S.premium; applyTheme(); premiumGrant(); save(); renderSettings(); render(); toast(S.premium ? 'Premium unlocked for testing.' : 'Premium locked again.'); }
   else if (a === 'tourReplay'){ closeDialog('settings'); S.wkTourDone = 0; S.tourOff = 0; save(); setTimeout(() => tourStart('main'), 300); }
   else if (a === 'closeSettings') closeDialog('settings');
   else if (a === 'pref'){ S.prefs[t.dataset.k] = !S.prefs[t.dataset.k]; save(); if (t.dataset.k === 'restAuto' && !S.prefs.restAuto) stopRest(); render(); }
@@ -7625,9 +7957,9 @@ document.addEventListener('click', e => {
   else if (a === 'flair'){   // tap to add (up to three) or take off; relocked backdrops don't hold a slot
     const v = t.dataset.v; if (!flairOf(v) || (!flairOf(v).ok() && !flairsOn().includes(v))) return; S.flairSeen = [...new Set([...(S.flairSeen || []), v])];
     const h = S.hero[S.hero.gender], on = flairsOn(); heroFlairs();
-    if (on.includes(v)){ h.flairs = on.filter(x => x !== v); save(); render(); toast(`${flairOf(v).name} removed · ${h.flairs.length} of ${MAX_FLAIRS} showing.`); return; }
+    if (on.includes(v)){ h.flairs = on.filter(x => x !== v); save(); render(); heFlairsRefresh(); toast(`${flairOf(v).name} removed · ${h.flairs.length} of ${MAX_FLAIRS} showing.`); return; }
     if (on.length >= MAX_FLAIRS){ toast(`You can show ${MAX_FLAIRS} at a time. Tap one you're showing to take it off first.`); return; }
-    h.flairs = [...on, v]; save(); render(); toast(`${flairOf(v).name} added · ${h.flairs.length} of ${MAX_FLAIRS} showing on Today.`);
+    h.flairs = [...on, v]; save(); render(); heFlairsRefresh(); toast(`${flairOf(v).name} added · ${h.flairs.length} of ${MAX_FLAIRS} showing on Today.`);
   }
   else if (a === 'boss') openBoss(t.dataset.id);
   else if (a === 'shop') openShop();
@@ -7729,7 +8061,16 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const el = e.target;
-  if (el.id === 'trBw'){ const v = parseFloat(el.value); S.bw = v > 0 ? Math.round(v * 10) / 10 : 0; save(); render(); return; }
+  if (el.id === 'trBw'){ const v = parseFloat(el.value); if (v > 0) logBw(v); else S.bw = 0; save(); render(); return; }
+  if (el.dataset && (el.dataset.bwval || el.dataset.bwdate)){   // fixing a weigh-in: its weight or its date
+    const iso = el.dataset.bwval || el.dataset.bwdate, L = S.bwLog || [], e = L.find(x => x.iso === iso); if (!e) return;
+    if (el.dataset.bwval){ const v = parseFloat(el.value); if (!(v > 20 && v < 1000)){ el.value = e.v; return; } e.v = Math.round(v * 10) / 10; }
+    else { const d = el.value; if (!/^\d{4}-\d\d-\d\d$/.test(d) || d > todayIso()){ el.value = e.iso; return; } S.bwLog = L.filter(x => x === e || x.iso !== d); e.iso = d; }
+    S.bwLog.sort((a, b) => a.iso.localeCompare(b.iso)); S.bw = S.bwLog[S.bwLog.length - 1].v; bwMsCheck(); save(); render(); document.querySelector('.bw-hist')?.setAttribute('open', ''); return; }
+  if (el.id === 'bwTgt'){ const v = parseFloat(el.value); S.bwTarget = v > 0 ? Math.round(v * 10) / 10 : 0; if (!S.bwStart) S.bwStart = S.bw; save(); render(); return; }
+  if (el.id === 'nutAge'){ const v = parseInt(el.value, 10); S.nut = {...(S.nut || {}), age:v >= 13 && v <= 90 ? v : 0}; save(); render(); return; }
+  if (el.id === 'nutCm'){ const v = parseFloat(el.value); S.nut = {...(S.nut || {}), h:v >= 120 && v <= 230 ? v : 0}; save(); render(); return; }
+  if (el.id === 'nutFt' || el.id === 'nutIn'){ const ft = parseFloat(document.getElementById('nutFt')?.value) || 0, inch = parseFloat(document.getElementById('nutIn')?.value) || 0, cm = (ft * 12 + inch) * 2.54; S.nut = {...(S.nut || {}), h:cm >= 120 && cm <= 230 ? Math.round(cm * 10) / 10 : 0}; save(); if (S.nut.h) render(); return; }
   if (el.id === 'stTitleScene'){ S.prefs.title = el.value; save(); toast(el.value === 'shuffle' ? 'A new title scene each launch.' : `${el.selectedOptions[0].text} it is.`); return; }
   if (el.id === 'restoreFileInput'){ const file = el.files && el.files[0]; el.value = ''; if (file) file.text().then(offerRestore, () => toast('That file could not be read.')); return; }
   if (el.matches('[data-max]')){
@@ -8104,6 +8445,7 @@ function gearHTML(pr){
       <span class="gear-how">${open ? (on ? 'Wearing · tap to take off' : 'Tap to wear') : `Locked · ${a.how}`}</span></button>`; };
   return `<div class="he-group"><h4>Training gear <span class="he-note">earned from training milestones · ${got} of ${ACCESSORIES.length} unlocked · one per slot</span></h4><div class="gear-grid">${ACCESSORIES.map(tile).join('')}</div></div>`;
 }
+function heFlairsRefresh(){ const el = document.getElementById('heFlairs'); if (el && !document.getElementById('heroEditor').hidden) el.innerHTML = flairsHTML(); }
 function renderHeroEditor(){
   // Male / Female tabs: picking one plays as that character and opens its own page
   document.getElementById('heTabs').innerHTML = Object.entries(GENDERS).map(([g, G]) =>
@@ -8145,14 +8487,17 @@ function renderHeroEditor(){
     stage: `<div class="he-group"><h4>Stage <span class="he-note">the backdrop behind your hero</span></h4><div class="opt-chips">${STAGES.map((s, i) => { const lv = stageLv(s);
         return lv && curLevel() < lv ? `<button class="opt locked" disabled title="Unlocks at Lv ${lv}">${s} · Lv ${lv}</button>`
           : `<button class="opt" data-act="heroStage" data-v="${i}" aria-pressed="${pr.stage === i}">${s}</button>`; }).join('')}</div></div>`
+      + `<div id="heFlairs" class="he-flairs-pick">${flairsHTML()}</div>`   // the backdrops that stack on your stage, right under the stages
   };
   document.getElementById('heOpts').innerHTML = bar + `<div class="he-sec" role="tabpanel">${sec[heSec] || sec.style}</div>`
     + `<div class="he-foot"><button class="btn btn-ghost btn-sm" data-act="heroReset"${Object.keys(look).length || pr.stage || pr.style !== G.defStyle ? '' : ' disabled'}>Reset ${G.label.toLowerCase()} look</button></div>`;
 }
 
+premiumItems(); applyTheme(); premiumGrant();   // Premium items exist for anyone who owns them; perks and theme only while Premium
 checkItems(); checkAch(); save();   // gear and achievements already earned before they existed unlock on first load
 render();
 startQuotes();
+setTimeout(nutCheckin, 3200);   // Premium: the weekly nutrition check-in, once the app has settled
 // Setup for a brand-new player starts once they make their profile (after the title screen)
 openTitle();   // the main menu greets everyone on launch; new players go from it into the welcome
 // The splash stays until the character art is ready (at least half a second, at most three), then fades out

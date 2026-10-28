@@ -491,6 +491,20 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .st-tier.got{background:color-mix(in srgb,var(--power) 22%,var(--surface-2));border-color:var(--power);color:var(--text)}
 .st-tier.next{border-color:var(--power);border-style:dashed}
 .st-tier.top{background:linear-gradient(160deg,#3a2a00,#1a1230);color:#ffd23f}
+.st-tier img{width:22px;height:22px;image-rendering:pixelated;margin-bottom:1px}
+.st-tier.top:has(img) small{display:none}
+.season-prize{display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;background:radial-gradient(circle at 15% 50%,color-mix(in srgb,var(--rc) 22%,transparent),transparent 60%),var(--surface-2);border:1px solid color-mix(in srgb,var(--rc) 55%,var(--line))}
+.sp-art{flex:none;display:grid;place-items:center;width:64px;height:64px;border-radius:12px;background:color-mix(in srgb,var(--rc) 14%,var(--surface));box-shadow:inset 0 -8px 0 rgba(0,0,0,.25)}
+.sp-art img{width:52px;height:52px;image-rendering:pixelated;animation:spBob 2.4s ease-in-out infinite}
+.sp-glory{font-size:30px;color:var(--power)}
+@keyframes spBob{50%{transform:translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){.sp-art img{animation:none}}
+.sp-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sp-txt b{font-family:var(--display);font-size:22px;line-height:1.05;text-transform:uppercase}
+.sp-r{color:var(--rc);font-size:12px;font-weight:700}
+.season-next{display:flex;flex-direction:column;gap:6px}
+.season-next .bar{height:8px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
+.season-next .bar i{display:block;height:100%;border-radius:99px;background:var(--power)}
 .rest-ci{display:flex;flex-direction:column;gap:10px;padding:14px}
 .rest-ci.done{flex-direction:row;align-items:center;gap:12px}
 .rest-ci .ci-ico{font-size:20px}

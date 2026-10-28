@@ -3167,7 +3167,7 @@ function viewToday(){
       <button class="btn btn-ghost btn-sm" data-act="move" data-dir="1" aria-label="Next workout">Next ›</button>
     </div>`}
   </section>`;
-  h += questsHTML();
+  h += questsHTML() + seasonHTML();   // the monthly season track, here as well as on Progress
   if (p.needsMax && S.example) h += `<div class="notice">These weights use example maxes. <button data-act="tab" data-tab="maxes">Enter your maxes</button> and every number updates.</div>`;
   h += day.ex.map((ex, ei) => exCard(p, ex, ei)).join('');
   h += scrollHTML();
@@ -6605,11 +6605,28 @@ function seasonAdd(n){
 function seasonHTML(){
   const s = seasonState(), name = SEASON_NAMES[+s.id.slice(5) - 1], end = new Date(+s.id.slice(0, 4), +s.id.slice(5), 0), left = Math.max(0, Math.round((end - fromYmd(todayIso())) / 864e5));
   const prize = seasonPrize(), pn = prize ? TA_SHOP.item(prize).name : '50 Glory', max = SEASON_TIERS.length * SEASON_STEP;
-  const pm = isPremium(), lab = ([k, v]) => k === 'c' ? `${pm ? Math.round(v * 1.5) : v}<small>Grind</small>` : k === 'g' ? `${v + (pm ? 5 : 0)}<small>Glory</small>` : '★<small>Item</small>';
+  const pm = isPremium(), cv = v => pm ? Math.round(v * 1.5) : v, gv = v => v + (pm ? 5 : 0);
+  const lab = ([k, v]) => k === 'c' ? `${cv(v)}<small>Grind</small>` : k === 'g' ? `${gv(v)}<small>Glory</small>` : '★<small>Item</small>';
+  const say = ([k, v]) => k === 'c' ? `+${cv(v)} Grind` : k === 'g' ? `+${gv(v)} Glory` : pn;
+  // the next reward, and how many workouts it'll take at your usual pace (10 points plus 1 per set)
+  const done = s.got >= SEASON_TIERS.length, into = s.pts - s.got * SEASON_STEP, recent = S.log.filter(l => !l.bossFight && l.sets).slice(0, 10);
+  const perWk = 10 + (recent.length ? Math.round(recent.reduce((a, l) => a + l.sets, 0) / recent.length) : 15), toTop = Math.max(0, max - s.pts), wkNeed = Math.ceil(toTop / perWk);
+  const trainLeft = Array.from({length:left + 1}, (_, i) => addDays(todayIso(), i)).filter(d => trainsOn(d) && !(d === todayIso() && S.log.some(l => l.iso === d))).length;
+  const reach = Math.min(SEASON_TIERS.length, Math.floor((s.pts + trainLeft * perWk) / SEASON_STEP));
+  const earned = SEASON_TIERS.slice(0, s.got).reduce((a, [k, v]) => { if (k === 'c') a.c += cv(v); else if (k === 'g') a.g += gv(v); else a.i++; if (pm && k !== 'g') a.g += 5; return a; }, {c:0, g:0, i:0});
+  const it = prize && TA_SHOP.item(prize), D = window.TA_SHOP_DATA || {}, rc = it && D.rarity ? D.rarity[it.r] : 'var(--power)';
+  const SLOT = {outfit:'Outfit', hair:'Hairstyle', aura:'Aura', cape:'Cape', pet:'Pet', title:'Title', shoes:'Shoes', fx:'Effect'};
   return `<section class="panel season" aria-label="Season track"><div class="row-between"><span class="eyebrow">Season · ${name}</span><span class="fine">${left} day${left === 1 ? '' : 's'} left</span></div>
+    <div class="season-prize" style="--rc:${rc}">${it ? `<span class="sp-art"><img src="${it.icon}" alt=""></span>` : '<span class="sp-art sp-glory" aria-hidden="true">★</span>'}
+      <div class="sp-txt"><span class="eyebrow">${done ? 'Season reward claimed' : 'Tier 10 reward · free'}</span><b>${esc(pn)}</b>
+        ${it ? `<span class="sp-r">${D.rarityName ? D.rarityName[it.r] : ''} ${SLOT[it.type] || ''} · only this season</span>` : '<span class="sp-r">You own every item this season</span>'}</div></div>
     <div class="row-between"><b class="season-tier">Tier ${s.got} of ${SEASON_TIERS.length}</b><span class="fine num">${fmt(Math.min(s.pts, max))} / ${fmt(max)} pts</span></div>
-    <div class="season-track">${SEASON_TIERS.map((t, i) => `<span class="st-tier${i < s.got ? ' got' : ''}${i === s.got ? ' next' : ''}${t[0] === 'item' ? ' top' : ''}">${lab(t)}</span>`).join('')}</div>
-    <p class="fine">Every workout fills it: 10 points plus 1 per set. Tier 10 is ${s.got >= SEASON_TIERS.length ? 'yours. Nice season' : `<b>${esc(pn)}</b>, free`}. A new season starts on the 1st.${pm ? ' <span class="prem on">Premium</span> +50% Grind and +5 Glory on every tier.' : ''}</p></section>`;
+    <div class="season-track">${SEASON_TIERS.map((t, i) => `<span class="st-tier${i < s.got ? ' got' : ''}${i === s.got ? ' next' : ''}${t[0] === 'item' ? ' top' : ''}">${t[0] === 'item' && it ? `<img src="${it.icon}" alt="">` : ''}${lab(t)}</span>`).join('')}</div>
+    ${done ? '<p class="fine">Every tier cleared. Nice season!</p>' : `<div class="season-next"><div class="row-between"><span>Next: <b>${esc(say(SEASON_TIERS[s.got]))}</b></span><span class="fine num">${into} / ${SEASON_STEP}</span></div>
+      <div class="bar" role="img" aria-label="${into} of ${SEASON_STEP} points to the next tier"><i style="width:${into / SEASON_STEP * 100}%"></i></div>
+      <p class="fine">${wkNeed <= trainLeft ? `About <b>${wkNeed} workout${wkNeed === 1 ? '' : 's'}</b> to reach Tier 10 at your usual ${perWk} points each.` : reach > s.got ? `With ${trainLeft} training day${trainLeft === 1 ? '' : 's'} left, you can reach <b>Tier ${reach}</b> this season at your usual ${perWk} points a workout.` : `About ${perWk} points per workout at your usual pace. Next season's reward arrives on the 1st.`}</p></div>`}
+    ${s.got ? `<p class="fine">Earned this season: ${[earned.c && `${fmt(earned.c)} Grind`, earned.g && `${fmt(earned.g)} Glory`, earned.i && pn].filter(Boolean).join(', ')}.</p>` : ''}
+    <p class="fine">Every workout fills it: 10 points plus 1 per set. A new season with a new reward starts on the 1st.${pm ? ' <span class="prem on">Premium</span> +50% Grind and +5 Glory on every tier.' : ''}</p></section>`;
 }
 function viewProgress(){
   const r = rankFor(S.xp), n = nextRank(S.xp), lv = levelInfo(S.xp);

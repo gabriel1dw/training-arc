@@ -1135,7 +1135,8 @@ const LOOK_PARTS = [
   {k:'cape',   label:'Cape', note:'D-Rank and up', colors:CLOTH_COLORS},
   {k:'aura',   label:'Aura', note:'C-Rank and up', colors:[['#ffd23f','Gold'],['#ff4d7d','Crimson'],['#ff8a3d','Flame'],['#3ddc97','Jade'],['#4cc3ff','Ice'],['#b98cff','Violet'],['#ffffff','White']]}
 ];
-const STAGES = ['Arena','Dusk','Gym','Neon','Dojo','Rooftop','Blossom','Volcano','Storm','Cosmos','Throne'];   // past Neon, each unlocks at a level
+const STAGES = ['Arena','Dusk','Gym','Neon','Dojo','Rooftop','Blossom','Volcano','Storm','Cosmos','Throne','Aurora Peak','Neon Rain','Sakura Night'];   // past Neon, each unlocks at a level; the last three are Premium
+var PREM_STAGES = new Set(['Aurora Peak', 'Neon Rain', 'Sakura Night']);
 const hexRgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
 
 // APNG → full-size RGBA frames, so each frame can be repainted.
@@ -2183,7 +2184,7 @@ function openShop(){
   shopUi = openItemShop(document.getElementById('shopIn'), {hero:shopHero, banner:SHOP_BANNER,
     gemHint:'Glory: beat a boss for the first time, rank up, or finish an arc.',
     coinHint:'Every workout pays Grind. Full clears, new maxes and boss days pay more.',
-    onClose:closeShop, onBundle:closeShop, onChange:paintHeroes});
+    onClose:closeShop, onBundle:closeShop, onChange:paintHeroes, onChest:shopChest});
   el.querySelector('.tsh-back')?.focus({preventScroll:true});
 }
 function closeShop(){
@@ -3157,7 +3158,7 @@ function questsHTML(){
     ${chalHTML()}
     ${qs.map(row).join('')}
     <p class="fine">Hit ${weekGoal()} workout${weekGoal() === 1 ? '' : 's'} a week to keep your streak. Each week in a row adds +5% workout XP, up to +20%. Tap Done on a check-in when you do it. Daily quests reset at midnight, weekly quests on Monday.</p>
-    <p class="fine shield-line">${shieldHTML(streakInfo(logsByDay(), todayIso()))} Rest days never break your session streak, and a shield covers one missed training day each week. It refills Monday.</p>
+    <p class="fine shield-line">${shieldHTML(streakInfo(logsByDay(), todayIso()))} Rest days never break your session streak, and ${isPremium() ? 'your two Premium shields each cover a missed training day' : 'a shield covers one missed training day'} each week. ${isPremium() ? 'They refill' : 'It refills'} Monday.</p>
   </section>`;
 }
 // Days of the arc you've finished this time through (by log id), so going back to one shows it as done.
@@ -3182,7 +3183,7 @@ function viewToday(){
   const doneHTML = cl ? `<div class="stage-done"><span class="sd-badge">✓ Workout completed</span><span class="fine">${cl.date || cl.iso} · ${cl.sets} set${cl.sets === 1 ? '' : 's'} · +${fmt(cl.xp || 0)} XP${cl.boss ? ' · boss defeated' : ''}</span>
       ${(cl.ex || []).length ? `<ul class="sd-ex">${cl.ex.map(x => `<li><span>${esc(x.name)}</span><b>${(st => st.length > 1 && st.every(s => s[0] === st[0][0] && s[1] === st[0][1]) ? `${st.length}×${st[0][1]}${st[0][0] > 0 ? ` @ ${fmt(st[0][0])}` : ''}` : st.map(([wt, r]) => wt > 0 ? `${fmt(wt)}×${r}` : `${r} reps`).join(', '))(x.sets || [])}</b></li>`).join('')}</ul>` : ''}</div>
     <button class="btn btn-power wk-start" data-act="nextOpen">Go to your next workout ›</button><button type="button" class="wk-link boss-plain" data-act="redoDay">Do this workout again</button>` : '';
-  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + coachHTML() + fuelHTML() + nutTodayHTML() +restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + dxpHTML() + premBossHTML() + coachHTML() + fuelHTML() + nutTodayHTML() +restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -3703,29 +3704,38 @@ function dayStatus(iso, tIso, done, plan){
 }
 // Session streak: rest days never break it, and a streak shield forgives one missed training day each week
 // (Monday to Sunday), because recovery is part of training. A second miss in the same week ends the streak.
+// Premium: two shields a week instead of one
+const shieldsPerWeek = () => isPremium() ? 2 : 1;
+// Premium: a double-XP weekend each month, its first Saturday and the Sunday after
+function dxpDays(iso = todayIso()){ const d = fromYmd(iso.slice(0, 8) + '01'); while (d.getDay() !== 6) d.setDate(d.getDate() + 1); const sat = ymd(d); d.setDate(d.getDate() + 1); return [sat, ymd(d)]; }
+const dxpOn = (iso = todayIso()) => isPremium() && dxpDays(iso).includes(iso);
+function dxpHTML(){ if (!isPremium()) return ''; const t = todayIso(), [sat, sun] = dxpDays(t), days = Math.round((fromYmd(sat) - fromYmd(t)) / 864e5);
+  if (dxpOn(t)) return `<section class="panel checkin dxp"><div class="ci-ico" aria-hidden="true">⚡</div><div class="ci-body"><b>Double XP weekend</b><span class="fine">Every workout ${t === sun ? 'today' : 'this weekend'} earns twice the XP. Premium.</span></div></section>`;
+  return days > 0 && days <= 3 ? `<section class="panel checkin dxp soon"><div class="ci-ico" aria-hidden="true">⚡</div><div class="ci-body"><b>Double XP weekend in ${days} day${days === 1 ? '' : 's'}</b><span class="fine">Plan a workout for ${fromYmd(sat).toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'})} or the day after.</span></div></section>` : ''; }
 function streakInfo(done, tIso){
-  let n = 0; const d = fromYmd(tIso), shielded = new Set();
+  let n = 0; const d = fromYmd(tIso), used = {}, cap = shieldsPerWeek();
   for (let i = 0; i < 400; i++, d.setDate(d.getDate() - 1)){
     const iso = ymd(d);
     if (done[iso]) { n++; continue; }
     if (iso < S.startedOn) break;
     if (i > 0 && trainsOn(iso)){   // a missed training day (by the schedule you had then, and any day you moved); today still counts as open
-      const wk = weekStart(iso); if (shielded.has(wk)) break; shielded.add(wk);
+      const wk = weekStart(iso); if ((used[wk] || 0) >= cap) break; used[wk] = (used[wk] || 0) + 1;
     }
   }
-  return {n, ready:!shielded.has(weekStart(tIso))};
+  const left = cap - (used[weekStart(tIso)] || 0);
+  return {n, ready:left > 0, left, cap};
 }
 const streak = (done, tIso) => streakInfo(done, tIso).n;
 const SHIELD = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/></svg>';
-const shieldHTML = si => `<small class="shield${si.ready ? ' on' : ''}">${SHIELD}${si.ready ? 'Shield ready' : 'Shield used'}</small>`;
+const shieldHTML = si => `<small class="shield${si.ready ? ' on' : ''}">${SHIELD}${si.cap > 1 ? (si.left ? `${si.left} of ${si.cap} shields ready` : 'Shields used') : si.ready ? 'Shield ready' : 'Shield used'}</small>`;
 // Missed training days, and which one each week the streak shield covered: the first miss of each Monday-to-Sunday
 // week (the same rule the session streak uses)
 function missMap(done, tIso, fromIso, toIso){
-  const out = {}, used = new Set(), d = fromYmd(weekStart(fromIso)), last = toIso < tIso ? toIso : tIso;
+  const out = {}, used = {}, cap = shieldsPerWeek(), d = fromYmd(weekStart(fromIso)), last = toIso < tIso ? toIso : tIso;
   for (let i = 0; i < 400; i++, d.setDate(d.getDate() + 1)){
     const iso = ymd(d); if (iso >= last) break;
     if (done[iso] || iso < S.startedOn || !trainsOn(iso)) continue;
-    const wk = weekStart(iso); out[iso] = used.has(wk) ? 'missed' : (used.add(wk), 'shield');
+    const wk = weekStart(iso); out[iso] = (used[wk] || 0) >= cap ? 'missed' : (used[wk] = (used[wk] || 0) + 1, 'shield');
   }
   return out;
 }
@@ -3766,7 +3776,7 @@ function dayDetail(iso, tIso, done, plan, miss){
       <ul class="dd-ex">${ex.slice(0, 6).map(x => `<li><span>${x.lift ? x.name : swapOf(x.name)}</span><b class="num">${x.sets.length} × ${x.sets[0].reps}${unitShort(x.sets[0].unit)}</b></li>`).join('')}${ex.length > 6 ? `<li class="fine">+${ex.length - 6} more</li>` : ''}</ul>
       <div class="dd-acts">${iso === tIso ? `<button class="btn btn-power btn-sm" data-act="startWk">${boss && window.TA_BOSSES ? 'Fight the boss' : 'Start workout'}</button>` : ''}${pl.deload ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-act="planEdit" data-iso="${iso}">Edit</button>`}</div></div>`;
   } else if (!done[iso]){
-    body = miss[iso] === 'shield' ? `<p class="empty">${CAL_ICON.shield}Missed, but your streak shield covered it. One miss a week won't break your streak.</p>`
+    body = miss[iso] === 'shield' ? `<p class="empty">${CAL_ICON.shield}Missed, but your streak shield covered it. ${isPremium() ? 'Two misses a week (Premium)' : 'One miss a week'} won't break your streak.</p>`
       : miss[iso] ? '<p class="empty">Missed. This was a training day with no workout logged.</p>'
       : `<p class="empty">Rest day.${iso >= tIso ? ' Recovery is part of the arc.' : ''}</p>`;
   }
@@ -4943,6 +4953,7 @@ function acctAct(a, t){
 document.getElementById('acctDlg')?.addEventListener('keydown', e => { if (e.key !== 'Enter') return; if (e.target.id === 'acEmail'){ e.preventDefault(); acctSend(); } else if (e.target.id === 'acCode'){ e.preventDefault(); acctVerify(); } });
 document.getElementById('acctDlg')?.addEventListener('cancel', e => { if (e.currentTarget.dataset.sticky) e.preventDefault(); });   // the progress choice needs an answer
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'netCode'){ e.preventDefault(); netAdd(); } });
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList?.contains('pb-main')){ e.preventDefault(); pbOpen(); } });
 
 /* ---------- Year in review ---------- */
 // A recap of the calendar year as tap-through slides (counters roll up), ending on a summary you can share
@@ -5033,8 +5044,12 @@ async function drawShareCard(kind){
   let bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#1b1230'); bg.addColorStop(1, '#0d0a15'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
   x.save(); x.globalAlpha = .05; x.strokeStyle = '#fff'; x.lineWidth = 10; for (let i = -H; i < W + H; i += 70){ x.beginPath(); x.moveTo(i, H); x.lineTo(i + H * .5, 0); x.stroke(); } x.restore();
   const glow = x.createRadialGradient(330, 720, 40, 330, 720, 520); glow.addColorStop(0, 'rgba(155,107,255,.45)'); glow.addColorStop(1, 'rgba(155,107,255,0)'); x.fillStyle = glow; x.fillRect(0, 0, W, H);
-  // frame in the rank's color
-  x.strokeStyle = rc; x.lineWidth = 14; x.strokeRect(28, 28, W - 56, H - 56);
+  // frame in the rank's color, or for Premium a holographic gold one with a sheen across the card
+  if (isPremium()){ const fg = x.createLinearGradient(0, 0, W, H); [[0, '#fff3b0'], [.2, '#e6ad22'], [.4, '#ff8ad8'], [.6, '#7ae0ff'], [.8, '#c084fc'], [1, '#ffd23f']].forEach(([o, k]) => fg.addColorStop(o, k));
+    x.strokeStyle = fg; x.lineWidth = 20; x.strokeRect(26, 26, W - 52, H - 52); x.strokeStyle = 'rgba(255,255,255,.5)'; x.lineWidth = 2; x.strokeRect(40, 40, W - 80, H - 80);
+    x.save(); x.globalCompositeOperation = 'screen'; for (const [o, a] of [[.18, .1], [.26, .05], [.62, .07]]){ const s = x.createLinearGradient(W * o, 0, W * o + 260, H * .4); s.addColorStop(0, 'rgba(255,255,255,0)'); s.addColorStop(.5, `rgba(255,240,255,${a})`); s.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = s; x.fillRect(0, 0, W, H); } x.restore();
+    x.fillStyle = '#ffd23f'; x.font = '700 30px "Barlow Condensed", sans-serif'; x.textBaseline = 'top'; x.textAlign = 'right'; x.fillText('PREMIUM', W - 80, 80); x.textAlign = 'left'; }
+  else { x.strokeStyle = rc; x.lineWidth = 14; x.strokeRect(28, 28, W - 56, H - 56); }
   // header
   x.fillStyle = power; x.font = '700 34px "Barlow Condensed", sans-serif'; x.textBaseline = 'top'; x.fillText('TRAINING ARC', 80, 78);
   x.fillStyle = '#f3effb'; x.font = '96px Anton, Impact, sans-serif';
@@ -5043,7 +5058,7 @@ async function drawShareCard(kind){
   x.fillStyle = '#a197b8'; x.font = '600 36px "Barlow Condensed", sans-serif';
   x.fillText((ws ? `${ws.p.weeks[ws.w].days[ws.d].name} · ${new Date().toLocaleDateString(undefined, {month:'short', day:'numeric'})}` : kind === 'rank' ? `Ranked up to ${r.t}` : `${r.k}-Rank · ${heroTitle()}`).toUpperCase(), 82, 250);
   // the hero, pixel-perfect, standing on a floor line
-  const fr = await spriteFrames(g, r.k, wornLook(g), S.hero[g].style, S.hero[g].acc);
+  const fr = await spriteFrames(g, kind === 'rank' ? r.k : RANKS[formIdx(g)].k, wornLook(g), S.hero[g].style, S.hero[g].acc);   // the form you wear (a rank-up shows the new rank)
   x.imageSmoothingEnabled = false; const sc = 3.6; x.drawImage(fr[0].bmp, 70, 1180 - 208 * sc, 128 * sc, 208 * sc);
   x.fillStyle = 'rgba(255,255,255,.08)'; x.fillRect(60, 1180, 520, 6);
   // right column: name, OVR badge, stats
@@ -6401,6 +6416,16 @@ const foodDay = (iso = todayIso()) => (S.food || {})[iso] || [];
 const foodSum = (iso = todayIso()) => foodDay(iso).reduce((a, x) => ({k:a.k + x.k, p:a.p + x.p}), {k:0, p:0});
 function foodAdd(n, k, p){ const t = todayIso(), F = S.food = S.food || {}; F[t] = [...(F[t] || []), {n:String(n).slice(0, 40), k:Math.max(0, Math.round(k)), p:Math.max(0, Math.round(p))}];
   for (const d of Object.keys(F)) if (d < addDays(t, -14)) delete F[d]; nutRewards(); }
+// What you've eaten lately, newest first and each food once: one tap to log it again
+function foodRecent(n = 8){ const F = S.food || {}, seen = new Set(), out = [];
+  for (const d of Object.keys(F).sort().reverse()) for (const x of [...F[d]].reverse()){ const key = x.n.toLowerCase(); if (seen.has(key)) continue; seen.add(key); out.push(x); if (out.length >= n) return out; }
+  return out; }
+// The last 7 days of calories against your target, protein days marked
+function foodWeekHTML(t){ const days = Array.from({length:7}, (_, i) => addDays(todayIso(), i - 6)), sums = days.map(d => foodSum(d)), top = Math.max(t.kcal * 1.25, ...sums.map(s => s.k)); if (!sums.some(s => s.k)) return '';
+  const ty = 56 - t.kcal / top * 50;
+  return `<span class="rl-sec">Last 7 days</span><svg class="food-week" viewBox="0 0 300 74" role="img" aria-label="Calories for the last 7 days">${sums.map((s, i) => { const bh = s.k / top * 50, ok = s.k && Math.abs(s.k - t.kcal) <= t.kcal * .1;
+      return `<rect x="${10 + i * 41}" y="${56 - bh}" width="30" height="${Math.max(1, bh)}" rx="3" class="${ok ? 'ok' : s.k > t.kcal * 1.1 ? 'hi' : ''}"><title>${fmt(s.k)} kcal, ${s.p}g protein</title></rect>${s.p >= t.protein * .95 ? `<circle cx="${25 + i * 41}" cy="${50 - bh}" r="2.5" class="pro"/>` : ''}<text x="${25 + i * 41}" y="70" text-anchor="middle">${fromYmd(days[i]).toLocaleDateString(undefined, {weekday:'narrow'})}</text>`; }).join('')}
+    <line x1="4" x2="296" y1="${ty}" y2="${ty}"/></svg><p class="fine">Bars are calories (green when within 10% of ${fmt(t.kcal)}); dots are days you hit your protein.</p>`; }
 // Protein and water streaks: hit them and they pay out once a day
 const waterDay = (iso = todayIso()) => (S.water || {})[iso] || 0;
 // Your targets, or a starting estimate until About you is filled in (so the food log and streaks work from day one)
@@ -6458,9 +6483,11 @@ function nutritionHTML(T){
         <span class="w-btns"><button type="button" class="icon-btn" data-act="water" data-v="-1" aria-label="One glass less">−</button><button type="button" class="icon-btn" data-act="water" data-v="1" aria-label="One more glass">+</button></span></div></div>
     <p class="fine nut-streaks">🔥 Protein streak <b>${ps}</b> day${ps === 1 ? '' : 's'} · 💧 Water streak <b>${ws}</b> day${ws === 1 ? '' : 's'} · each pays XP and Grind</p>
     <div class="food-today">${foodDay().map((x, i) => `<div class="food-row"><span>${esc(x.n)}</span><small>${x.k} kcal · ${x.p}g</small><button type="button" class="icon-btn" data-act="foodDel" data-i="${i}" aria-label="Remove ${esc(x.n)}">×</button></div>`).join('') || '<p class="fine">Nothing logged yet today.</p>'}</div>
-    <button type="button" class="btn ${foodOpen ? 'btn-ghost' : 'btn-power'} btn-sm" data-act="foodOpen">${foodOpen ? 'Close' : '+ Log food'}</button>
+    <div class="food-acts"><button type="button" class="btn ${foodOpen ? 'btn-ghost' : 'btn-power'} btn-sm" data-act="foodOpen">${foodOpen ? 'Close' : '+ Log food'}</button>${(S.food || {})[addDays(todayIso(), -1)] && !foodDay().length ? '<button type="button" class="btn btn-ghost btn-sm" data-act="foodCopy">Copy yesterday</button>' : ''}</div>
+    ${(rc => rc.length ? `<div class="food-recent"><span class="fine">Recent</span>${rc.map((x, i) => `<button type="button" class="chip-btn" data-act="foodAgain" data-i="${i}">${esc(x.n)}<small>${x.k}</small></button>`).join('')}</div>` : '')(foodRecent())}
     ${foodOpen ? `<div class="food-pick"><div class="food-presets">${FOODS.map(([n, k, p], i) => `<button type="button" class="opt" data-act="foodPreset" data-i="${i}">${n}<small>${k} kcal · ${p}g</small></button>`).join('')}</div>
       <div class="food-custom"><input id="foodN" type="text" maxlength="40" placeholder="Something else" aria-label="Food name"><input id="foodK" type="number" inputmode="numeric" placeholder="kcal" aria-label="Calories"><input id="foodP" type="number" inputmode="numeric" placeholder="protein" aria-label="Protein grams"><button type="button" class="btn btn-power btn-sm" data-act="foodCustom">Add</button></div></div>` : ''}
+    ${foodWeekHTML(t)}
     <span class="rl-sec">Meal plan for your ${fmt(t.kcal)} calories</span>
     <div class="meals">${plan.map(m => `<div class="meal"><div class="row-between"><b>${m.slot} · ${m.name}</b><button type="button" class="wk-link" data-act="mealSwap" data-v="${m.slot}">Swap</button></div>
       <p class="fine">${m.items.map(x => `${qtyText(x.q, x.u)} ${x.n.toLowerCase()}`).join(' · ')}</p><small class="meal-m">${fmt(m.k)} kcal · ${m.p}g protein</small></div>`).join('')}</div>
@@ -6504,18 +6531,59 @@ function plateaus(){ return Object.keys(LIFTS).filter(l => { const W = liftWeeks
 function muscleSets(days = 7){ const from = addDays(todayIso(), -days + 1), out = Object.fromEntries(MUSCLES.map(([m]) => [m, 0]));
   for (const l of S.log) if (l.iso && l.iso >= from) for (const x of l.ex || []) for (const [m, re] of MUSCLES) if (re.test(x.name)){ out[m] += (x.sets || []).length; }
   return out; }
+// The muscle heatmap: every set counts toward each muscle its exercise works (a squat is quads and glutes)
+var HEAT = [['chest', 'Chest', /bench|chest press|push-?up|fly|flye|dip|floor press|pec/i], ['shoulders', 'Shoulders', /overhead|ohp|shoulder|lateral|delt|push press|military|arnold|landmine press|upright row|reverse fly|face pull/i],
+  ['biceps', 'Biceps', /(?<!leg )curl|chin-?up/i], ['triceps', 'Triceps', /tricep|pushdown|skull|close-?grip|dip|(?<!leg )extension|kickback|bench|push-?up|overhead press|ohp/i],
+  ['forearms', 'Forearms', /wrist|farmer|carry|grip|hammer|dead hang|deadlift|row/i], ['core', 'Core', /plank|crunch|leg raise|knee raise|\bab\b|abs|twist|hollow|sit-?up|pallof|dead bug|rollout|squat|deadlift/i],
+  ['quads', 'Quads', /squat|lunge|leg press|leg ext|step-?up|hack|split|pistol|wall sit|clean/i], ['hams', 'Hamstrings', /deadlift|rdl|romanian|leg curl|nordic|good morning|swing|clean/i],
+  ['glutes', 'Glutes', /hip thrust|glute|bridge|squat|lunge|deadlift|step-?up|swing|split/i], ['calves', 'Calves', /calf|jump rope|skip|box jump|sprint|run/i],
+  ['lats', 'Lats & upper back', /row|pull-?up|chin|pulldown|\blat\b|face pull|pullover/i], ['traps', 'Traps', /shrug|deadlift|clean|upright row|farmer|rack pull|face pull|carry/i],
+  ['lowback', 'Lower back', /deadlift|good morning|back extension|hyperextension|superman|rack pull|clean|rdl|romanian/i]];
+function muscleHeat(days = 7){ const from = addDays(todayIso(), -days + 1), out = Object.fromEntries(HEAT.map(([k]) => [k, 0]));
+  for (const l of S.log) if (l.iso && l.iso >= from) for (const x of l.ex || []) for (const [k, , re] of HEAT) if (re.test(x.name)) out[k] += (x.sets || []).length;
+  return out; }
+const heatCol = n => !n ? 'var(--heat-0)' : n < 5 ? '#4a6fb0' : n < 10 ? '#3da5c9' : n <= 20 ? '#3ddc97' : '#ff6a4d';
+function heatSVG(h){ const P = (k, d) => `<path class="hm-m" d="${d}" fill="${heatCol(h[k])}"><title>${HEAT.find(x => x[0] === k)[1]}: ${h[k]} sets</title></path>`, E = (k, cx, cy, rx, ry) => P(k, `M${cx - rx} ${cy}a${rx} ${ry} 0 1 0 ${rx * 2} 0a${rx} ${ry} 0 1 0 ${-rx * 2} 0`);
+  // a body outline under each figure, then the muscles laid on it: front on the left, back on the right
+  const body = cx => `<g class="hm-body"><circle cx="${cx}" cy="17" r="10"/><rect x="${cx - 5}" y="25" width="10" height="8" rx="3"/><path d="M${cx - 20} 36q-6 2-7 10l-4 40q-1 6 3 8l4-1 4-30 2 24h36l2-24 4 30 4 1q4-2 3-8l-4-40q-1-8-7-10z"/><path d="M${cx - 15} 96l-3 46 2 40h8l3-38 3-48zM${cx + 15} 96l3 46-2 40h-8l-3-38-3-48z"/></g>`;
+  // mirrored pairs: a path drawn for the left side and flipped about the figure's center for the right
+  const M = (k, cx, d) => P(k, d) + `<g transform="translate(${cx * 2} 0) scale(-1 1)">${P(k, d)}</g>`;
+  const abs = [0, 1, 2].map(r => M('core', 50, `M43.5 ${63 + r * 9}h5.5v7.5h-5.5q-1.5 0-1.5-1.5v-4.5q0-1.5 1.5-1.5z`)).join('');
+  return `<svg class="hm-svg" viewBox="0 0 200 190" role="img" aria-label="Muscles trained in the last 7 days">${body(50)}${body(150)}
+    ${M('shoulders', 50, 'M30 49q-4-10 3-13q6-2 9 2q-5 3-6 9z')}${M('chest', 50, 'M49 42h-8q-6 1-7 7q0 6 6 8q6 1 9-2z')}
+    ${M('biceps', 50, 'M30 51q-5 4-5 12q1 6 4 7q4-3 4-10q0-6-3-9z')}${M('forearms', 50, 'M26 72q-4 6-4 16q1 5 3 6q3-1 4-8q1-8-1-13z')}
+    ${abs}${M('core', 50, 'M41 61q-3 10-1 30l2 1v-30z')}
+    ${M('quads', 50, 'M37 98q-3 14-1 30q2 8 7 8q4-6 4-20q0-12-3-18z')}${M('calves', 50, 'M38 146q-3 8-2 18q1 6 4 6q3-4 3-12q0-8-3-12z')}
+    ${P('traps', 'M140 35q10-5 20 0l3 6q-6 4-13 13q-7-9-13-13z')}${M('shoulders', 150, 'M130 49q-4-10 3-13q6-2 9 2q-5 3-6 9z')}
+    ${M('lats', 150, 'M137 44q-3 6-1 16q3 12 11 18l2-4q1-14-1-26q-5-4-11-4z')}${M('triceps', 150, 'M130 51q-5 4-5 12q1 6 4 7q4-3 4-10q0-6-3-9z')}
+    ${M('forearms', 150, 'M126 72q-4 6-4 16q1 5 3 6q3-1 4-8q1-8-1-13z')}${P('lowback', 'M146 76h8q2 6 1 14h-10q-1-8 1-14z')}
+    ${M('glutes', 150, 'M149 94h-9q-5 4-4 11q2 6 9 6q4-1 4-5z')}${M('hams', 150, 'M137 112q-2 12 0 24q2 6 6 6q4-6 4-18q0-8-2-12z')}${M('calves', 150, 'M138 146q-4 8-3 18q1 6 5 6q3-4 3-12q0-8-3-12z')}
+    <text x="50" y="188" text-anchor="middle">Front</text><text x="150" y="188" text-anchor="middle">Back</text></svg>`; }
+// Projected max: the trend of your weekly bests, carried 8 weeks forward
+function projectMax(W){ const pts = W.map((x, i) => [i, x.best]).filter(p => p[1]); if (pts.length < 3) return null; const n = pts.length, sx = pts.reduce((a, p) => a + p[0], 0), sy = pts.reduce((a, p) => a + p[1], 0),
+  sxy = pts.reduce((a, p) => a + p[0] * p[1], 0), sxx = pts.reduce((a, p) => a + p[0] * p[0], 0), k = (n * sxy - sx * sy) / Math.max(1, n * sxx - sx * sx); if (!(k > 0)) return null;
+  return Math.round(pts[n - 1][1] + Math.min(k, pts[n - 1][1] * .02) * 8); }
+// Training volume by week: weight × reps of every working set
+function volWeeks(n = 8){ const w0 = weekStart(todayIso()); return Array.from({length:n}, (_, i) => { const ws = addDays(w0, -7 * (n - 1 - i)); let v = 0;
+  for (const l of S.log) if (l.iso && weekStart(l.iso) === ws) for (const x of l.ex || []) for (const [w, r] of x.sets || []) if (w > 0) v += w * r * (l.unit && l.unit !== S.unit ? (S.unit === 'kg' ? 1 / 2.20462 : 2.20462) : 1);
+  return {ws, v:Math.round(v)}; }); }
 var statLift = 'squat';
 function advStatsHTML(){
-  if (!isPremium()) return `<section class="panel adv locked"><div class="row-between"><h3>Advanced stats</h3><span class="prem">Premium</span></div><p class="fine">Estimated-max trends for every lift, weekly sets per muscle group with the ranges that build muscle, and a plateau finder with fixes.</p><button type="button" class="btn btn-ghost btn-sm" data-act="premiumHub">See what's in Premium</button></section>`;
+  if (!isPremium()) return `<section class="panel adv locked"><div class="row-between"><h3>Advanced stats</h3><span class="prem">Premium</span></div><p class="fine">A muscle heatmap of what you trained this week, estimated-max trends with 8-week projections, weekly volume, and a plateau finder with fixes.</p><button type="button" class="btn btn-ghost btn-sm" data-act="premiumHub">See what's in Premium</button></section>`;
   const W = liftWeeks(statLift), vals = W.map(x => x.best), has = vals.filter(Boolean), u = S.unit;
   const chart = has.length >= 2 ? (() => { const lo = Math.min(...has), hi = Math.max(...has), span = Math.max(5, hi - lo), pts = W.map((x, i) => x.best ? [12 + i * (276 / (W.length - 1)), 64 - (x.best - lo) / span * 52] : null).filter(Boolean);
     return `<svg class="bw-chart" viewBox="0 0 300 80" role="img" aria-label="${LIFTS[statLift]} estimated max by week"><polyline points="${pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ')}"/>${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5"/>`).join('')}
-      <text x="12" y="78">12 wks ago</text><text x="288" y="78" text-anchor="end">This week</text></svg><p class="fine">Best estimated max ${fmt(hi)} ${u}${has.length ? ` · latest ${fmt(has[has.length - 1])} ${u}` : ''}.</p>`; })() : '<p class="fine">Log this lift in a couple of workouts to see its trend.</p>';
-  const ms = muscleSets(7), maxS = Math.max(20, ...Object.values(ms)), pl = plateaus();
+      <text x="12" y="78">12 wks ago</text><text x="288" y="78" text-anchor="end">This week</text></svg><p class="fine">Best estimated max ${fmt(hi)} ${u}${has.length ? ` · latest ${fmt(has[has.length - 1])} ${u}` : ''}.${(pj => pj && pj > has[has.length - 1] ? ` At this pace: about <b>${fmt(pj)} ${u}</b> in 8 weeks.` : '')(projectMax(W))}</p>`; })() : '<p class="fine">Log this lift in a couple of workouts to see its trend.</p>';
+  const heat = muscleHeat(7), pl = plateaus(), cold = HEAT.filter(([k]) => !heat[k]).map(([, n]) => n), VW = volWeeks(8), vmax = Math.max(1, ...VW.map(x => x.v));
+  const vchart = VW.some(x => x.v) ? `<svg class="vol-chart" viewBox="0 0 300 74" role="img" aria-label="Training volume by week">${VW.map((x, i) => { const bh = x.v / vmax * 52; return `<rect x="${8 + i * 36}" y="${58 - bh}" width="28" height="${Math.max(1, bh)}" rx="3" class="${i === VW.length - 1 ? 'now' : ''}"><title>${fmt(x.v)} ${u}</title></rect>`; }).join('')}
+      <text x="8" y="72">8 wks ago</text><text x="292" y="72" text-anchor="end">This week ${fmt(Math.round(VW[VW.length - 1].v / 1000))}k ${u}</text></svg>` : '<p class="fine">Log some weighted sets to see your weekly volume.</p>';
   return `<section class="panel adv"><div class="row-between"><h3>Advanced stats</h3><span class="prem on">Premium</span></div>
     <span class="rl-sec">Estimated max by week</span><div class="seg seg-fill" role="group" aria-label="Lift">${Object.keys(LIFTS).map(l => `<button type="button" data-act="statLift" data-v="${l}" aria-pressed="${statLift === l}">${({squat:'Squat', bench:'Bench', deadlift:'Dead', ohp:'OHP', clean:'Clean'})[l]}</button>`).join('')}</div>${chart}
-    <span class="rl-sec">Hard sets per muscle, last 7 days</span><div class="msets">${Object.entries(ms).map(([m, n]) => `<div class="mset"><span>${m}</span><div class="bar"><i style="width:${Math.min(100, n / maxS * 100)}%" class="${n >= 10 && n <= 20 ? 'ok' : n > 20 ? 'hi' : ''}"></i><em style="left:${10 / maxS * 100}%"></em><em style="left:${20 / maxS * 100}%"></em></div><b class="num">${n}</b></div>`).join('')}</div>
-    <p class="fine">About 10–20 hard sets per muscle a week (between the marks) is the range that builds the most muscle for most people.</p>
+    <span class="rl-sec">Muscle heatmap, last 7 days</span>${heatSVG(heat)}
+    <div class="hm-key"><span><i style="background:var(--heat-0)"></i>0</span><span><i style="background:#4a6fb0"></i>1–4</span><span><i style="background:#3da5c9"></i>5–9</span><span><i style="background:#3ddc97"></i>10–20</span><span><i style="background:#ff6a4d"></i>20+</span><small>sets</small></div>
+    <div class="hm-list">${HEAT.map(([k, n]) => `<span><i style="background:${heatCol(heat[k])}"></i>${n}<b class="num">${heat[k]}</b></span>`).join('')}</div>
+    <p class="fine">${cold.length && cold.length < HEAT.length ? `Not trained this week: <b>${cold.join(', ')}</b>. ` : ''}About 10–20 hard sets per muscle a week (green) builds the most muscle for most people.</p>
+    <span class="rl-sec">Training volume by week</span>${vchart}
     <span class="rl-sec">Plateau finder</span>${pl.length ? pl.map(l => `<div class="plat"><b>${LIFTS[l]} has stalled for 4+ weeks.</b><p class="fine">Try a deload week to recover, swap to a variation for two weeks (${(LIFT_SWAPS[l] || [])[0] ? LIFT_SWAPS[l][0][0] : 'a variation'}), or add a set of lighter back-off work.</p></div>`).join('') : '<p class="fine">No stalls. Every lift you train is still moving up.</p>'}</section>`;
 }
 
@@ -6548,24 +6616,296 @@ function premiumItems(){ const I = TA_SHOP_DATA.items, near = (type, hex) => { c
       if (s > .25 && (h < 22 || h > 335)){ const [r, g, b] = hslRgb(250, .12, Math.max(.04, l * .42)); d[i] = r; d[i + 1] = g; d[i + 2] = b; } }
     x.putImageData(D, 0, 0); I.pm_gi.icon = c.toDataURL(); delete ICONPX.pm_gi; }; im.src = gi.icon; }
   return ['pm_gi', 'pm_cape', 'pm_aura'].filter(id => I[id]); }
+/* ---------- Premium: the monthly raid boss ---------- */
+// Twelve bosses of their own (raid-bosses.js), one for each month's season. Every set you log that month hits it;
+// bring it down and it drops a cape and a title of its own (plus Glory and XP). Its HP is sized to how often you train.
+var PB_ORDER = window.TA_RAID ? TA_RAID.list.map(b => b.id) : [];
+const pbShort = b => b.name.replace(/^THE /, '').split(' ').map(w => w[0] + w.slice(1).toLowerCase()).join(' ');
+// an icon recolored to a new hue (its shading kept), for loot drawn in the boss's colors
+function recolorIcon(src, hex){ return new Promise(res => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d'); x.drawImage(im, 0, 0);
+  const D = x.getImageData(0, 0, c.width, c.height), d = D.data, [th, ts] = rgbHsl(...hexRgbA(hex)); for (let i = 0; i < d.length; i += 4){ if (d[i + 3] < 20) continue; const [h, s, l] = rgbHsl(d[i], d[i + 1], d[i + 2]);
+    if (s > .2){ const [r, g, b] = hslRgb(th, Math.min(1, ts * .9 + .1), l); d[i] = r; d[i + 1] = g; d[i + 2] = b; } } x.putImageData(D, 0, 0); res(c.toDataURL()); }; im.onerror = () => res(src); im.src = src; }); }
+function pbLoot(id){ const I = window.TA_SHOP_DATA && TA_SHOP_DATA.items, b = window.TA_RAID && TA_RAID.list.find(x => x.id === id); if (!I || !b) return [];
+  const short = pbShort(b), col = b.theme.accent, capeId = `pb_${id}_cape`, titleId = `pb_${id}_title`;
+  if (!I[capeId]){ const base = Object.values(I).find(i => i.type === 'cape' && i.icon && !/^(pb|pm)_/.test(i.id)); if (base){ I[capeId] = {id:capeId, type:'cape', name:`${short} Cape`, r:'L', price:0, cur:'g', icon:base.icon, color:col, desc:`Raid loot from ${b.name.toLowerCase().replace(/^the /, 'the ').replace(/\b\w/g, m => m.toUpperCase())}. Premium.`, premium:true};
+      recolorIcon(base.icon, col).then(u => { I[capeId].icon = u; }); } }
+  if (!I[titleId]){ const base = Object.values(I).find(i => i.type === 'title' && i.icon && i.r === 'L'); if (base) I[titleId] = {id:titleId, type:'title', name:`${short} Slayer`, text:`${short.toUpperCase()} SLAYER`, r:'L', price:0, cur:'g', icon:base.icon, color:col, desc:`Brought down ${short}. Premium raid.`, premium:true}; }
+  const auraId = `pb_${id}_aura`;
+  if (!I[auraId]){ const base = Object.values(I).find(i => i.type === 'aura' && i.icon && !/^(pb|pm)_/.test(i.id)); if (base){ I[auraId] = {id:auraId, type:'aura', name:`${short} Aura`, r:'L', price:0, cur:'g', icon:base.icon, color:col, desc:`${short}'s power, yours now. Premium raid.`, premium:true};
+      recolorIcon(base.icon, col).then(u => { I[auraId].icon = u; }); } }
+  return [capeId, auraId, titleId].filter(x => I[x]); }
+// the raid's HP is set once a month from your own pace: ~75% of the workouts your weekly goal plans for the days that are left, at your usual sets per workout.
+// A single day only hits for 1.5x a usual workout, so one marathon session can't skip the month.
+const PB_CHESTS = [{at:.25, coins:150, label:'150 Grind'}, {at:.5, coins:300, label:'300 Grind'}, {at:.75, gems:25, xp:250, label:'25 Glory + 250 XP'}];
+function pbStats(ym){ S.pbHp = S.pbHp || {}; const had = S.pbHp[ym]; if (had && typeof had === 'object') return had;
+  const L = S.log.filter(l => l.sets && !l.bossFight && l.iso && l.iso < ym).sort((a, b) => b.iso < a.iso ? -1 : 1).slice(0, 20);
+  const avg = L.length >= 3 ? Math.min(30, Math.max(12, L.reduce((a, l) => a + l.sets, 0) / L.length)) : 18, goal = typeof weekGoal === 'function' ? weekGoal() : 3;
+  // joining partway through a month only counts the days that are left, unless you've already been training this month
+  const dim = new Date(+ym.slice(0, 4), +ym.slice(5), 0).getDate(), today = todayIso(), fresh = today.startsWith(ym) && !S.log.some(l => l.iso && l.iso.startsWith(ym) && l.iso < today);
+  const days = dim - (fresh ? +today.slice(8) : 1) + 1, st = {hp:Math.max(60, Math.round(avg * goal * (days / 7) * .75 / 10) * 10), cap:Math.round(avg * 1.5), avg:Math.round(avg), goal};
+  S.pbHp[ym] = st; return st; }
+function premBoss(iso = todayIso()){ if (!window.TA_RAID) return null; const ym = iso.slice(0, 7), b = TA_RAID.forMonth(+ym.slice(5)); if (!b) return null;
+  const {hp, cap, avg, goal} = pbStats(ym), days = {};
+  for (const l of S.log) if (l.iso && l.iso.startsWith(ym) && !l.bossFight) days[l.iso] = (days[l.iso] || 0) + (l.sets || 0);
+  const hits = Object.values(days).map(v => Math.min(cap, v)), dmg = hits.reduce((a, v) => a + v, 0);
+  const end = new Date(+ym.slice(0, 4), +ym.slice(5), 0), left = Math.max(0, Math.round((end - fromYmd(todayIso())) / 864e5)), dim = end.getDate();
+  const gone = dim - left, rate = dmg / Math.max(1, gone), eta = dmg >= hp ? 0 : rate > 0 ? Math.ceil((hp - dmg) / rate) : Infinity;
+  const nx = TA_RAID.forMonth(+ym.slice(5) % 12 + 1), won = !!(S.pbWon || {})[ym], opened = (S.pbChest || {})[ym] || 0, ready = PB_CHESTS.filter(c => dmg >= hp * c.at).length - opened;
+  return {ym, id:b.id, b, hp, cap, avg, goal, dmg:Math.min(hp, dmg), best:Math.max(0, ...hits), name:b.name, taunt:b.taunt, left, eta, onPace:eta <= left, next:nx.name, won, opened, ready:Math.max(0, ready), early:!won && dmg >= hp && left >= 7, loot:pbLoot(b.id)}; }
+// grants every chest that's ready and returns them for the opening animation
+function pbChestOpenAll(P){ const q = []; let xp = 0;
+  for (const c of PB_CHESTS.slice(P.opened, P.opened + P.ready)){ const r = []; if (c.coins){ TA_SHOP.addCoins(c.coins); r.push({big:`+${c.coins}`, name:'Grind'}); }
+    if (c.gems){ TA_SHOP.addGems(c.gems); r.push({big:`+${c.gems}`, name:'Glory'}); } if (c.xp){ xp += c.xp; r.push({big:`+${c.xp}`, name:'XP'}); }
+    q.push({id:P.id, title:`${pbShort(P)} · ${Math.round(c.at * 100)}% chest`, rewards:r}); }
+  if (P.ready) S.pbChest = {...(S.pbChest || {}), [P.ym]:P.opened + P.ready}; return {q, xp}; }
+function pbChest(){ const P = premBoss(); if (!P || !P.ready) return; const old = S.xp, {q, xp} = pbChestOpenAll(P); S.xp += xp; save(); render(); pbChestFx(q, () => { if (xp) rankCheck(old); }); }
+// the chest opening: it drops in, you tap it, it shakes and bursts open in the boss's own colours and particles, then the loot pops out
+let pbFxRaf = 0;
+// queue items: {id: the art (a boss's chest, or tier_C..tier_L for the shop), title, sub?, grand?, rewards: [{img | big, name, r?}],
+//   onOpen?: () => ({rewards, tint} | {error}) for a paid open, cost?: the open button's label, again?: offer "Open another"}
+const FX_GAP = {C:.22, R:.38, E:.8, L:1.35}, FX_WORD = {E:'EPIC!', L:'LEGENDARY!'};
+function pbChestFx(queue, done){ if (!queue.length || !window.TA_RAID || !TA_RAID.chest){ done && done(); return; }
+  let d = document.getElementById('pbFx'); if (!d){ d = document.createElement('dialog'); d.id = 'pbFx'; d.className = 'pbfx'; d.setAttribute('aria-label', 'Opening loot'); document.body.appendChild(d); }
+  let qi = 0, timers = []; const o = document.createElement('canvas'); o.width = o.height = 96; const ox = o.getContext('2d'), RC = (window.TA_SHOP_DATA || {}).rarity || {};
+  const clear = () => { timers.forEach(clearTimeout); timers = []; };
+  const finish = () => { clear(); cancelAnimationFrame(pbFxRaf); if (d.open) d.close(); const f = done; done = null; f && f(); };
+  d.oncancel = e => { e.preventDefault(); finish(); };
+  const show = () => { clear(); const q = queue[qi], art = TA_RAID.list.find(x => x.id === q.id), acc = art ? art.theme.accent : RC[q.id.slice(-1)] || '#ffd23f'; cancelAnimationFrame(pbFxRaf);
+    let rewards = q.onOpen ? null : q.rewards, tint = q.tint || null;
+    d.innerHTML = `<div class="pbfx-in${q.grand ? ' grand' : ''}" style="--bc:${acc};--be:${acc}"><p class="pbfx-t"><b>${esc(q.title)}</b>${queue.length > 1 ? `<small>${qi + 1} of ${queue.length}</small>` : ''}${q.sub ? `<small>${q.sub}</small>` : ''}</p>
+      <div class="pbfx-art"><canvas class="pbfx-cv" width="320" height="320" role="button" tabindex="0" aria-label="Open it"></canvas><b class="pbfx-word" aria-hidden="true"></b></div>
+      <p class="pbfx-tap">${q.onOpen ? '' : 'Tap to open it'}</p>${q.odds ? `<div class="pbfx-odds">${q.odds}</div>` : ''}
+      <div class="pbfx-loot" aria-live="polite"></div>
+      <div class="pbfx-acts">${q.onOpen ? `<button type="button" class="btn btn-power pbfx-buy">${q.cost}</button><button type="button" class="wk-link pbfx-x">Close</button>` : ''}</div></div>`;
+    const cv = d.querySelector('.pbfx-cv'), x = cv.getContext('2d'), word = d.querySelector('.pbfx-word'), acts = d.querySelector('.pbfx-acts'); x.imageSmoothingEnabled = false;
+    let phase = reduceMotion ? 'idle' : 'drop', t0 = performance.now(), tp = 0, b2 = -1, tint2 = null, big2 = false, flashCol = '255,255,255', flash0 = 0;
+    const later = (s, fn) => timers.push(setTimeout(fn, s * 1000));
+    // the loot comes out one at a time, rarest last, and the rarer it is the bigger its entrance
+    const reveal = () => { const box = d.querySelector('.pbfx-loot'); let at = 0;
+      (rewards || []).forEach((r, i) => { const rr = r.r || 'C'; at += reduceMotion ? 0 : FX_GAP[rr] || .2;
+        later(at, () => { if (!d.open) return; if (FX_WORD[rr] && !reduceMotion){ b2 = performance.now(); tint2 = RC[rr]; big2 = rr === 'L'; flashCol = rr === 'L' ? '255,214,90' : '200,140,255'; flash0 = performance.now();
+            word.textContent = FX_WORD[rr]; word.style.setProperty('--wc', RC[rr]); word.classList.remove('on'); void word.offsetWidth; word.classList.add('on'); buzz(rr === 'L' ? [40, 60, 40, 60, 80] : [30, 40, 30]); }
+          else buzz(12);
+          box.insertAdjacentHTML('beforeend', `<div class="pbfx-card r-${rr}${r.dupe ? ' dupe' : ''}" style="--rc:${RC[rr] || acc}">${r.img ? `<img src="${r.img}" alt="">` : `<b>${esc(r.big)}</b>`}<span>${esc(r.name)}</span>${r.note ? `<small>${esc(r.note)}</small>` : ''}</div>`); }); });
+      later(at + .45, () => { if (!d.open) return; const last = qi >= queue.length - 1;
+        acts.innerHTML = `${q.again && q.onOpen ? `<button type="button" class="btn btn-ghost pbfx-again">Open another · ${q.cost.replace(/^Open · /, '')}</button>` : ''}<button type="button" class="btn btn-power pbfx-go">${last ? (q.onOpen ? 'Done' : 'Collect') : 'Next'}</button>`;
+        acts.querySelector('.pbfx-go').onclick = () => { qi++; if (qi < queue.length) show(); else finish(); }; const ag = acts.querySelector('.pbfx-again'); if (ag) ag.onclick = show;
+        setTimeout(() => acts.querySelector('.pbfx-go')?.focus({preventScroll:true}), 40); }); };
+    const open = () => { if (phase !== 'idle' && phase !== 'drop') return;
+      if (q.onOpen){ const res = q.onOpen(); if (!res || res.error){ const tp = d.querySelector('.pbfx-tap'); tp.textContent = res ? res.error : 'Can\'t open that right now.'; tp.classList.add('err'); cv.classList.remove('no'); void cv.offsetWidth; cv.classList.add('no'); return; }
+        rewards = res.rewards; tint = res.tint || null; acts.innerHTML = ''; const od = d.querySelector('.pbfx-odds'); if (od) od.hidden = true; }
+      d.querySelector('.pbfx-tap').textContent = ''; tp = performance.now(); if (reduceMotion){ phase = 'done'; reveal(); } else { phase = 'shake'; buzz(10); } };
+    cv.onclick = open; cv.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); } };
+    const buy = d.querySelector('.pbfx-buy'); if (buy) buy.onclick = open; const cx = d.querySelector('.pbfx-x'); if (cx) cx.onclick = finish;
+    const tick = now => { if (!d.open || !cv.isConnected) return; const t = (now - t0) / 1000, st = {open:0, shake:0, glow:0, burst:-1, grand:!!q.grand}; let dy = 0, flash = 0;
+      if (phase === 'drop'){ const u = Math.min(1, t / .6); dy = -80 * (1 - u) * (1 - u) - (u > .7 ? Math.sin((u - .7) / .3 * Math.PI) * 4 : 0); if (u >= 1) phase = 'idle'; }
+      if (phase === 'idle' && !reduceMotion){ const w = t % 2.2; st.shake = w < .4 ? Math.sin(w * 30) * .18 * (1 - w / .4) : 0; }
+      if (phase === 'shake'){ const s = (now - tp) / 1000; st.shake = Math.sin(s * 40) * Math.min(1, .3 + s * 1.2) * .7; st.glow = s * .12; dy = -Math.abs(Math.sin(s * 20)) * s * 2;
+        if (tint && s > .4) st.tint = tint;                                                  // the light gives away the best thing inside
+        if (s > (tint ? 1.05 : .8)){ phase = 'burst'; tp = now; buzz(35); } }
+      if (phase === 'burst' || phase === 'done'){ const s = reduceMotion ? 9 : (now - tp) / 1000; st.open = Math.min(1, s / .3); st.glow = Math.min(1, s / .25); st.burst = reduceMotion ? -1 : s; flash = Math.max(0, 1 - s * 3); if (tint) st.tint = tint;
+        if (phase === 'burst' && s > .45){ phase = 'done'; reveal(); } }
+      if (b2 >= 0){ st.burst2 = (now - b2) / 1000; st.tint2 = tint2; st.big2 = big2; dy += big2 && st.burst2 < .35 ? Math.sin(st.burst2 * 60) * 1.2 : 0; }
+      const f2 = flash0 ? Math.max(0, .55 - (now - flash0) / 700) : 0;
+      ox.clearRect(0, 0, 96, 96); ox.save(); ox.translate(0, dy); TA_RAID.chest(ox, q.id, t, st); ox.restore();
+      x.clearRect(0, 0, 320, 320); x.drawImage(o, 0, 0, 320, 320);
+      if (flash > 0){ x.fillStyle = `rgba(255,255,255,${flash * .75})`; x.fillRect(0, 0, 320, 320); } if (f2 > 0){ x.fillStyle = `rgba(${flashCol},${f2})`; x.fillRect(0, 0, 320, 320); }
+      pbFxRaf = requestAnimationFrame(tick); };
+    pbFxRaf = requestAnimationFrame(tick); setTimeout(() => (d.querySelector('.pbfx-buy') || cv).focus({preventScroll:true}), 50); };
+  if (!d.open) d.showModal(); show(); }
+// the shop's chests: a preview with the odds, then pay and open (gym bag, locker, technique scroll, spirit orb)
+const SHOP_CHEST_ART = {C:'tier_C', R:'tier_R', E:'tier_E', L:'tier_L'};
+function shopChest(tid, after){ const C = TA_SHOP.chests().find(c => c.id === tid), D = TA_SHOP_DATA; if (!C) return;
+  const cur = C.cur === 'c' ? 'Grind' : 'Glory', icon = `<img class="pbfx-cur" src="${C.cur === 'c' ? D.coinIcon : D.gemIcon}" alt="">`, RANK = {C:0, R:1, E:2, L:3};
+  const odds = () => `${Object.entries(C.odds).map(([r, p]) => `<span style="--rc:${D.rarity[r]}"><i></i>${D.rarityName[r][0] + D.rarityName[r].slice(1).toLowerCase()} ${p}%</span>`).join('')}
+    <small>${C.rolls} find${C.rolls > 1 ? 's' : ''} inside · no repeats of things you own · Epic+ guaranteed in ${10 - TA_SHOP.chestPity()}</small>`;
+  const q = {id:SHOP_CHEST_ART[tid], title:C.name, sub:esc(C.desc), get odds(){ return odds(); }, cost:`Open · ${icon}${fmt(C.price)}`, again:true,
+    onOpen(){ const res = TA_SHOP.openChest(tid); if (!res) return null; if (res.error) return {error:`You need ${fmt(res.short)} more ${cur}. ${C.cur === 'c' ? 'Every workout pays Grind.' : 'Big wins pay Glory.'}`};
+      const rewards = res.got.map(g => g.dupe ? {big:g.coins ? `+${g.coins}` : `+${g.gems}`, name:g.coins ? 'Grind' : 'Glory', r:g.r, dupe:true, note:'All found: paid back'}
+        : {img:D.items[g.id].icon, name:D.items[g.id].name, r:g.r, note:D.rarityName[g.r]}).sort((a, b) => RANK[a.r] - RANK[b.r]);
+      if (res.coins) rewards.unshift({big:`+${res.coins}`, name:'Grind', r:'C'});
+      const best = res.got.reduce((m, g) => RANK[g.r] > RANK[m] ? g.r : m, 'C'); after && after(); return {rewards, tint:best === 'C' ? null : D.rarity[best]}; }};
+  pbChestFx([q], () => { after && after(); paintHeroes(); }); }
+function premBossHTML(){ if (!isPremium()) return ''; const P = premBoss(); if (!P) return ''; const pct = Math.round((1 - P.dmg / P.hp) * 100), down = P.dmg >= P.hp, I = TA_SHOP_DATA.items;
+  return `<section class="panel pboss" style="--bc:${P.b.theme.accent};--bh:${P.b.theme.hp}"><div class="row-between"><span class="eyebrow">Premium raid · ${P.left} day${P.left === 1 ? '' : 's'} left</span><button type="button" class="wk-link pb-more" data-act="pbOpen">Details ›</button></div>
+    <div class="pb-main" data-act="pbOpen" role="button" tabindex="0" aria-label="${esc(P.name)}: see details"><canvas class="pb-art" width="256" height="256" data-boss="${P.id}" aria-hidden="true"></canvas>
+      <div class="pb-info"><b class="pb-name">${esc(P.name)}</b><span class="pb-taunt">${esc(P.taunt)}</span><span class="fine">${P.won ? `Defeated! Next month: ${esc(pbShort({name:P.next}))}.` : down ? 'It\'s down! Claim your loot.' : `Every set you log hits it. ${P.hp - P.dmg} more sets to bring it down.`}</span>
+        ${pbBar(P)}<span class="fine num">${P.won || down ? 0 : P.hp - P.dmg} / ${P.hp} HP${P.won || down ? '' : ` · <span class="${P.onPace ? 'pb-ok' : 'pb-warn'}">${pbPace(P)}</span>`}</span></div></div>
+    <div class="pb-loot"><span class="fine">Loot:</span>${P.loot.map(id => `<span class="pb-item" title="${esc(I[id].name)}"><img src="${I[id].icon}" alt=""><small>${esc(I[id].name)}</small></span>`).join('')}<span class="pb-item"><b>+100</b><small>Glory</small></span><span class="pb-item"><b>+1K</b><small>XP</small></span></div>
+    ${P.ready && !(down && !P.won) ? `<button type="button" class="btn btn-ghost" data-act="pbChest">Open raid chest${P.ready > 1 ? `s (${P.ready})` : ''}</button>` : ''}
+    ${down && !P.won ? '<button type="button" class="btn btn-power" data-act="pbClaim">Claim the loot</button>' : ''}</section>`; }
+// the HP bar, with a chest marker at each quarter of damage
+function pbBar(P){ const pct = P.won ? 0 : Math.round((1 - P.dmg / P.hp) * 100);
+  return `<div class="pb-hp" role="img" aria-label="${pct}% health left"><i style="width:${pct}%"></i>${PB_CHESTS.map((c, i) => `<b class="pb-pip${i < P.opened ? ' open' : P.dmg >= P.hp * c.at ? ' ready' : ''}" style="right:${c.at * 100}%" title="Chest: ${c.label}"></b>`).join('')}</div>`; }
+function pbPace(P){ if (P.eta === Infinity) return 'log a workout to start the fight'; if (P.onPace) return P.eta <= 1 ? 'one more workout could do it' : `on pace, about ${P.eta} days to go`;
+  const need = Math.ceil((P.hp - P.dmg) / Math.max(1, P.avg)), per = Math.ceil(need / (P.left / 7));
+  return P.left < 7 ? `behind pace: about ${need} workout${need === 1 ? '' : 's'} left to win` : `behind pace: about ${per} workout${per === 1 ? '' : 's'} a week to win`; }
+// the raid boss's sprite, animated
+const PB_SHEETS = {}; let pbRaf = 0;
+function paintPremBoss(){ cancelAnimationFrame(pbRaf); const cv = document.querySelector('canvas.pb-art'); if (!cv || !window.TA_RAID) return;
+  const b = TA_RAID.get(cv.dataset.boss); if (b) animPremBoss(cv, b); }
+function animPremBoss(cv, b){ cancelAnimationFrame(pbRaf); if (cv.width !== b.fw){ cv.width = b.fw; cv.height = b.fh; }
+  const img = PB_SHEETS[b.id] || (PB_SHEETS[b.id] = Object.assign(new Image(), {src:b.sheet})), x = cv.getContext('2d');
+  const tick = now => { if (!cv.isConnected) return; if (img.complete && img.naturalWidth){ const f = reduceMotion ? 0 : Math.floor(now / (1000 / b.fps)) % b.frames; x.clearRect(0, 0, b.fw, b.fh); x.drawImage(img, f * b.fw, 0, b.fw, b.fh, 0, 0, b.fw, b.fh); }
+    if (!reduceMotion || !img.complete) pbRaf = requestAnimationFrame(tick); };
+  const first = () => tick(0); if (img.complete && img.naturalWidth) first(); else img.addEventListener('load', first, {once:true});   // the first frame right away
+  pbRaf = requestAnimationFrame(tick); }
+function pbClaim(){ const P = premBoss(); if (!P || P.won || P.dmg < P.hp) return; const old = S.xp, gems = 100 + (P.early ? 50 : 0), I = TA_SHOP_DATA.items, {q, xp} = pbChestOpenAll(P);
+  S.pbWon = {...(S.pbWon || {}), [P.ym]:1}; for (const id of P.loot) TA_SHOP.grant(id); TA_SHOP.addGems(gems); S.xp += 1000 + xp; save(); render();
+  q.push({id:P.id, grand:true, title:`${pbShort(P)} defeated!`, rewards:[...P.loot.map(id => ({img:I[id].icon, name:I[id].name, r:I[id].r, note:"Raid loot"})), {big:`+${gems}`, name:P.early ? 'Glory (early kill!)' : 'Glory'}, {big:'+1,000', name:'XP'}]});
+  pbChestFx(q, () => rankCheck(old)); }
+// every raid boss you've beaten, by month
+function pbTrophies(){ const won = S.pbWon || {}, got = {}; for (const ym of Object.keys(won)){ const b = TA_RAID.forMonth(+ym.slice(5)); if (b) got[b.id] = (got[b.id] || 0) + 1; } return got; }
+// who each raid boss is: an epithet, where it lives, what it does, what beats it, and what it says as the fight goes on
+const RAID_LORE = {
+  glacier_warden:{ep:'Keeper of the Frozen Gate', el:'Ice', home:'The Frost Oath Pass', move:'Permafrost Slam', weak:'Showing up on cold mornings',
+    lore:'Carved from the first ice of the year, the Warden guards the pass every January when resolutions are loudest and quietest a week later. It doesn\'t fight you. It waits for you to stop.',
+    intro:['"Your fire dies here."', '"Every January they come. Every February they\'re gone."', '"I have stood here a thousand years. You can\'t stand here a thousand reps."'],
+    mid:['"Cracks? Ice remembers its shape."', '"Hm. You\'re warmer than the others."', '"Keep moving. Stop, and you freeze."'],
+    low:['"No. No, it\'s too early for the thaw!"', '"You\'re melting the pass..."', '"How are you still showing up?"'],
+    down:['"The gate opens. Go on, then."', '"Spring came early this year."'],
+    poke:['"Don\'t tap the ice."', '"Cold hands, cold heart, cold gains."', '"Brr. That\'s you shivering, not me."', '"I can wait. Can you?"']},
+  heartbreaker:{ep:'The Knight of Broken Promises', el:'Heart', home:'The Rose Keep', move:'Shatterlance Charge', weak:'Keeping your word to yourself',
+    lore:'Every promise you broke to yourself became a link in its armor. Heartbreaker rides out each February to collect the rest, lance first, shield polished with your excuses.',
+    intro:['"I\'ll take your heart. And your gains."', '"You promised yourself. I heard it. I\'m here to collect."', '"Roses are red. Your legs will be too."'],
+    mid:['"A dent? My armor\'s seen worse breakups."', '"You actually came back. Interesting."', '"Stop being consistent, it\'s ruining my whole thing."'],
+    low:['"My shield... it\'s cracking!"', '"You\'re keeping your promises? That\'s illegal."', '"Please. Skip one leg day. For me."'],
+    down:['"Fine. Keep your heart. You earned it."', '"Nobody\'s broken me before. I kind of respect it."'],
+    poke:['"Hands off the armor."', '"Is that a heart rate or a crush?"', '"Flowers won\'t save you."', '"I\'m not crying, it\'s rust."']},
+  bog_troll:{ep:'Lord of the Muddy Weeks', el:'Earth', home:'The Thaw Mire', move:'Sinking Swamp Club', weak:'Not skipping when it\'s gross out',
+    lore:'March melts the snow and the Bog Troll crawls out of what\'s left. It feeds on rainy-day excuses and grows fat on "I\'ll go tomorrow". The flies are its friends. The mushrooms are its lunch.',
+    intro:['"Mud season never ends."', '"Rain today. Rain tomorrow. Stay home, little hero."', '"Troll smell gains. Troll want."'],
+    mid:['"Ow. Troll did not like that."', '"Why you not stay on couch?"', '"Mud in your shoes and you still come?"'],
+    low:['"Troll is... sinking?"', '"Okay, okay, troll will take a shower."', '"Flies are leaving. Bad sign."'],
+    down:['"Troll go back to swamp. Troll think about life."', '"You strong. Smell bad, but strong."'],
+    poke:['"No poke troll."', '"Want mushroom? Is mostly safe."', '"Troll counting flies. Lost count."', '"That is not mud. Do not ask."']},
+  bloom_hydra:{ep:'Mother of a Hundred Sprouts', el:'Nature', home:'The Bloom Arc Garden', move:'Pollen Tempest', weak:'Training through the distractions',
+    lore:'Each head is a different distraction: one says sleep in, one says scroll, one says snacks. Cut one down and two bloom back. The only way through is to keep swinging every week of April.',
+    intro:['"Cut one head, three more bloom."', '"Sleep in," says the left head. "Scroll," says the right.', '"Every plan you make, I grow around it."'],
+    mid:['"You pruned one. Cute. It\'ll grow back."', '"Hey, the middle head is getting nervous."', '"Stop watering your discipline!"'],
+    low:['"We\'re wilting. Why are we wilting?"', '"Two heads agree: this one\'s dangerous."', '"Petals... falling..."'],
+    down:['"Fine. Bloom where you\'re planted, hero."', '"All three heads tap out."'],
+    poke:['"Which head did you poke? They\'re arguing now."', '"Achoo. Allergies."', '"Don\'t smell the flowers. Seriously."', '"Left head says hi. Right head says go home."']},
+  thunder_roc:{ep:'The Storm That Never Lands', el:'Lightning', home:'The Storm Season Peaks', move:'Skyfall Strike', weak:'Staying grounded and steady',
+    lore:'The Roc rides the May storms and strikes anything that stands still. It never lands. It thinks the ground is for the weak. It has never once done leg day.',
+    intro:['"The sky is mine. The ground is yours to fall to."', '"I strike once. You don\'t get back up."', '"Thunder doesn\'t miss."'],
+    mid:['"Static in my feathers? Impossible."', '"You\'re still standing. Bold."', '"The storm is... slowing?"'],
+    low:['"My wings... too heavy..."', '"Wait. Is this what legs are for?"', '"Lightning\'s running out."'],
+    down:['"Grounded. By a mortal. Ugh."', '"Fine. The ground\'s nice. I guess."'],
+    poke:['"Zap."', '"Feathers are charged. Don\'t."', '"I\'m not flapping, I\'m warming up."', '"Look up. No, higher."']},
+  solar_lion:{ep:'King of the Longest Day', el:'Sun', home:'The Solstice Plains', move:'Noon Roar', weak:'Training early before the heat',
+    lore:'At the solstice the Lion sits on the hottest rock in the world and dares anyone to train in the noon sun. It was born in a sunrise and it has never once been cold.',
+    intro:['"Stand in my light and burn."', '"The longest day. The longest fight."', '"Kneel. Or sweat. Your choice."'],
+    mid:['"You\'re out at dawn? Coward. Smart coward."', '"My mane is singed. Who did that?"', '"Hydrate, little cub. You\'ll need it."'],
+    low:['"The sun... is setting?"', '"Is it cloudy in here or is it me?"', '"Even kings get tired."'],
+    down:['"The sun sets on my reign. You may have the crown."', '"Good fight. Go drink some water."'],
+    poke:['"Do not pet the lion."', '"Purr. That was a threat."', '"I am the sunscreen\'s enemy."', '"My mane took nine hours."']},
+  heat_djinn:{ep:'The Wish That Burns', el:'Heat', home:'The Mirage Lamp', move:'Sweltering Wish', weak:'Earning it instead of wishing',
+    lore:'Rub the lamp in July and the Djinn appears offering three wishes: abs without crunches, strength without sets, rest without work. It has never once granted a wish. It only grants reps.',
+    intro:['"Three wishes? You get three reps."', '"You wish to get strong? Wishing is free. Reps aren\'t."', '"I grant nothing. You earn everything."'],
+    mid:['"You\'re not even wishing. You\'re just... working."', '"My lamp is getting cold. That\'s new."', '"Three reps became thirty?"'],
+    low:['"I\'m being sucked back into the lamp!"', '"No wishes needed... that\'s my weakness!"', '"Okay, okay, one free wish. Please."'],
+    down:['"Your wish came true. You did it yourself."', '"Back in the lamp. Wake me next July."'],
+    poke:['"Rub the lamp, not me."', '"That is not a wish, that is a poke."', '"The tail is not a slide."', '"Heat ripples are free."']},
+  cerberus:{ep:'The Three-Headed Rest Day Thief', el:'Fire', home:'The Dog Days Gate', move:'Triple Bite', weak:'Smart recovery and coming back',
+    lore:'One head is laziness, one is burnout, one is the injury you didn\'t rest. August heat makes them all hungry. Feed none of them. Train, rest properly, then train again.',
+    intro:['"Three heads. Zero rest days."', '"Left head is hungry. Right head is hungrier."', '"Bark. Bark. BARK."'],
+    mid:['"Middle head wants to play fetch now."', '"Grr. You rested AND came back?"', '"One of us is wagging. Stop it."'],
+    low:['"All three heads are tired."', '"Is this... a nap? We need a nap."', '"Good human? Good human."'],
+    down:['"Okay, you can pass. Belly rub first."', '"Three heads, one verdict: you\'re strong."'],
+    poke:['"Which one of us did you pat? Now we\'re jealous."', '"Drool happens."', '"Snarl. That\'s a smile, probably."', '"We bite. Lightly."']},
+  scarecrow_king:{ep:'Lord of the Skipped Harvest', el:'Shadow', home:'The Harvest Moon Fields', move:'Reaping Swing', weak:'Showing up on the days you skip',
+    lore:'Stuffed with straw from every field you abandoned, he wears a crown he grew himself. Each September he walks the rows and counts the skipped days. He reaps what you didn\'t sow.',
+    intro:['"I reap what you skip."', '"I counted your missed days. All of them."', '"The harvest is mine this year."'],
+    mid:['"Straw\'s falling out. Rude."', '"You came on a Monday? Who does that?"', '"My crows are worried about you."'],
+    low:['"My stuffing... my royal stuffing!"', '"The fields are full again. Why?"', '"A king without a harvest is just a hat."'],
+    down:['"Take the crown. It itches anyway."', '"You planted the work. Here\'s the harvest."'],
+    poke:['"Hey. I\'m stuffed, not ticklish."', '"Caw. That was my crow."', '"The price tag stays. It\'s vintage."', '"Mind the scythe."']},
+  lantern_wraith:{ep:'The Light That Leads You Off Course', el:'Spirit', home:'The Spirit Night Hollow', move:'Lantern Lure', weak:'Knowing exactly where you\'re going',
+    lore:'On the darkest nights of October a green lantern bobs at the edge of the path. Follow it and you lose the plan: one easy day becomes a week. The Wraith collects lost routines in its chains.',
+    intro:['"Follow my light. Never come back."', '"Just one rest day. Then another. Then forever."', '"Lost? Let me guide you. Away."'],
+    mid:['"You have a plan? How annoying."', '"My chains are rattling. That\'s nerves."', '"The lantern\'s flickering. Stop that."'],
+    low:['"The light... is going out..."', '"You found your way. Nobody finds their way."', '"I am fading. Boo. Weakly."'],
+    down:['"Keep your path. Mine is dark enough."', '"Happy Spirit Night, hero."'],
+    poke:['"Boo."', '"That\'s ectoplasm. You\'ll never wash it out."', '"My chain is not a necklace."', '"The little ghost is my friend. Leave him alone."']},
+  ember_phoenix:{ep:'The Fire That Rises Twice', el:'Fire', home:'The Ember Fall Nest', move:'Rebirth Blaze', weak:'Getting back up as fast as it does',
+    lore:'The Phoenix burns out and rises again every November. It mocks anyone who stops after a bad week. To beat it you have to do the one thing it does best: come back hotter.',
+    intro:['"Knock me down. I rise hotter."', '"You fell off last month? I fell off a volcano."', '"Ashes are just a warm-up."'],
+    mid:['"You came back after a bad week. Copycat."', '"My feathers are scorched. By you?"', '"Stop rising. That\'s my move!"'],
+    low:['"I can\'t... rise... fast enough!"', '"The ash is cold. Mine is never cold."', '"Okay. You burn hotter."'],
+    down:['"Rest. Then rise. You know the move now."', '"See you in the ashes next year."'],
+    poke:['"Hot. Don\'t touch."', '"Every feather is a little fire."', '"Sparks are free."', '"I molt for drama."']},
+  yeti_monarch:{ep:'Sovereign of the Last Summit', el:'Frost', home:'The Winter Summit', move:'Avalanche Hug', weak:'Finishing the year strong',
+    lore:'At the end of the year, on the highest peak, the Yeti waits for whoever made it all the way. The cold up there makes most people quit before New Year. The Monarch has never been beaten in December.',
+    intro:['"Up here, only the strong breathe."', '"You climbed the whole year to reach me? Brave."', '"Holidays. Cookies. Couch. Join me."'],
+    mid:['"Hm. You trained on a holiday."', '"My crown is slipping."', '"Brr. Even I felt that."'],
+    low:['"The summit... is yours?"', '"No one finishes the year. No one!"', '"Avalanche... cancelled..."'],
+    down:['"The peak is yours. Happy New Year, champion."', '"Rest well. January\'s coming."'],
+    poke:['"Hugs are for the strong."', '"Fur is not a blanket."', '"Snow in my crown again."', '"Grr. That means hi."']}
+};
+// tap the raid card: a full page on the boss, alive and talking
+let pbBigRaf = 0, pbSay = 0;
+function pbLines(P){ const L = RAID_LORE[P.id] || {}, pct = 1 - P.dmg / P.hp;
+  return (P.won || pct <= 0 ? L.down : pct > .66 ? L.intro : pct > .33 ? L.mid : L.low) || [P.taunt]; }
+function pbOpen(){ const P = premBoss(); if (!P) return; const L = RAID_LORE[P.id] || {}, I = TA_SHOP_DATA.items, m = +P.ym.slice(5), pct = Math.round((1 - P.dmg / P.hp) * 100), down = P.dmg >= P.hp;
+  const best = P.best, lines = pbLines(P), tr = pbTrophies(); pbSay = 0;
+  const d = document.getElementById('rvDlg');
+  d.innerHTML = `<div class="pc-card pbd" style="--rc:${P.b.theme.accent};--bc:${P.b.theme.accent};--bh:${P.b.theme.hp}">
+    <div class="row-between"><span class="eyebrow">${esc(SEASON_NAMES[m - 1] || '')} · Premium raid</span><button type="button" class="icon-btn me-x" data-act="rvClose" aria-label="Close">×</button></div>
+    <div class="pbd-stage"><p class="pbd-say" aria-live="polite">${esc(lines[0])}</p>
+      <button type="button" class="pbd-boss" data-act="pbTalk" aria-label="Talk to ${esc(P.name)}"><canvas class="pbd-art" width="160" height="160" data-boss="${P.id}" aria-hidden="true"></canvas></button>
+      <span class="fine pbd-tip">Tap ${esc(pbShort(P))} to talk</span></div>
+    <div class="pbd-head"><b class="pb-name">${esc(P.name)}</b><span class="pbd-ep">${esc(L.ep || '')}</span></div>
+    ${pbBar(P)}${P.won || down ? '' : `<p class="fine ${P.onPace ? 'pb-ok' : 'pb-warn'}" style="margin:0;text-align:center">${pbPace(P)}</p>`}
+    <div class="me-stats pbd-stats"><div><b class="num">${P.won || down ? 0 : P.hp - P.dmg}</b><span>HP left</span></div><div><b class="num">${P.dmg}</b><span>Sets landed</span></div><div><b class="num">${best}</b><span>Best hit</span></div><div><b class="num">${P.left}</b><span>Days left</span></div></div>
+    <p class="pbd-lore">${esc(L.lore || P.taunt)}</p>
+    <div class="pbd-traits">${[['Element', L.el], ['Lair', L.home], ['Signature move', L.move], ['Weak to', L.weak]].filter(r => r[1]).map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div>
+    <p class="pbd-how"><b>How the fight works:</b> every set you log this month is one hit. One day hits for up to <b>${P.cap}</b> sets, so steady training beats one huge session. Its <b>${P.hp} HP</b> is set from your goal of ${P.goal} workouts a week at about ${P.avg} sets each: miss more than a week and it gets away.</p>
+    <span class="eyebrow">Raid chests</span>
+    <div class="pbd-chests">${PB_CHESTS.map((c, i) => { const st = i < P.opened ? 'open' : P.dmg >= P.hp * c.at ? 'ready' : ''; return `<div class="${st}"><b>${Math.round(c.at * 100)}% damage</b><span>${c.label}</span><span>${st === 'open' ? 'Opened' : st ? 'Ready!' : 'Locked'}</span></div>`; }).join('')}</div>
+    ${P.ready && !(down && !P.won) ? `<button type="button" class="btn btn-ghost btn-sm" data-act="pbChest">Open raid chest${P.ready > 1 ? `s (${P.ready})` : ''}</button>` : ''}
+    <div class="pbd-loot"><span class="eyebrow">Loot for the kill</span>${P.loot.map(id => `<div class="pbd-li"><img src="${I[id].icon}" alt=""><div><b>${esc(I[id].name)}</b><span>${esc(I[id].desc || '')}</span></div></div>`).join('')}
+      <div class="pbd-li"><b class="pbd-n">+100</b><div><b>Glory</b><span>Spend it in the shop.</span></div></div><div class="pbd-li"><b class="pbd-n">+1K</b><div><b>XP</b><span>A big push toward your next rank.</span></div></div>
+      <div class="pbd-li"><b class="pbd-n">+50</b><div><b>Early kill bonus</b><span>Extra Glory if you beat it with a week or more left.</span></div></div></div>
+    <span class="eyebrow">Trophy case · ${Object.keys(tr).length} / 12</span>
+    <div class="pbd-troph">${TA_RAID.list.map(b => { const g = tr[b.id], sh = g ? TA_RAID.get(b.id).sheet : ''; return `<span class="${g ? 'got' : ''}${b.id === P.id ? ' now' : ''}" style="--tc:${b.theme.accent}${g ? `;background-image:url(${sh});background-size:1600% 100%;background-position:0 0` : ''}" title="${esc(g ? b.name : '???')}">${g ? (g > 1 ? '×' + g : '') : new Date(2000, b.month - 1, 1).toLocaleString(undefined, {month:'short'})}</span>`; }).join('')}</div>
+    <p class="fine">${P.won ? `Defeated. Next month: ${esc(pbShort({name:P.next}))}.` : down ? 'It\'s down. Claim your loot.' : `Every set you log this month hits it. ${P.hp - P.dmg} more to bring it down.`}</p>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button>${down && !P.won ? '<button type="button" class="btn btn-power btn-sm" data-act="pbClaim">Claim the loot</button>' : ''}</div></div>`;
+  if (!d.open) d.showModal();
+  const cv = d.querySelector('.pbd-art'), b = TA_RAID.get(P.id); if (!cv || !b) return;
+  const img = PB_SHEETS[b.id] || (PB_SHEETS[b.id] = Object.assign(new Image(), {src:b.sheet})), x = cv.getContext('2d'); cancelAnimationFrame(pbBigRaf);
+  const tick = now => { if (!cv.isConnected || !d.open) return; if (img.complete && img.naturalWidth){ const f = reduceMotion ? 0 : Math.floor(now / (1000 / b.fps)) % b.frames; x.clearRect(0, 0, 160, 160); x.drawImage(img, f * b.fw, 0, b.fw, b.fh, 0, 0, 160, 160); }
+    if (!reduceMotion || !img.complete) pbBigRaf = requestAnimationFrame(tick); };
+  if (img.complete && img.naturalWidth) tick(0); else img.addEventListener('load', () => tick(0), {once:true});
+  pbBigRaf = requestAnimationFrame(tick); }
+function pbTalk(){ const P = premBoss(), el = document.querySelector('#rvDlg .pbd-say'); if (!P || !el) return; const L = RAID_LORE[P.id] || {};
+  const pool = [...pbLines(P), ...(L.poke || [])]; pbSay = (pbSay + 1) % pool.length; el.textContent = pool[pbSay];
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); const bt = document.querySelector('#rvDlg .pbd-boss'); bt.classList.remove('hit'); void bt.offsetWidth; bt.classList.add('hit'); buzz(10); }
 const premiumMonthly = () => { const L = premiumItems(); return L.length ? L[(new Date().getFullYear() * 12 + new Date().getMonth()) % L.length] : null; };
 function premiumGrant(){ if (!isPremium() || !window.TA_SHOP || !TA_SHOP.grant) return; premiumItems(); const got = [];
   if (TA_SHOP.grant('pm_title')) got.push('the Premium title'); const m = premiumMonthly(); if (m && TA_SHOP.grant(m)) got.push(TA_SHOP.item(m).name);
   if (got.length) setTimeout(() => toast(`Premium: ${got.join(' and ')} added to your items.`), 800); }
 const APP_THEMES = {default:['Default', {}], crimson:['Crimson', {'--power':'#ff4d6a', '--violet-glow':'rgba(255,77,106,.28)'}], ocean:['Ocean', {'--power':'#4cc3ff', '--violet-glow':'rgba(76,195,255,.26)'}],
   emerald:['Emerald', {'--power':'#3ddc97', '--violet-glow':'rgba(61,220,151,.24)'}], sakura:['Sakura', {'--power':'#ff8ac8', '--violet-glow':'rgba(255,138,200,.26)'}], frost:['Frost', {'--power':'#d4f2ff', '--violet-glow':'rgba(212,242,255,.22)'}]};
+Object.assign(APP_THEMES, {gold:['Gold Rush', {'--power':'#ffb000', '--violet-glow':'rgba(255,176,0,.26)', '--aura':'#ff7a1a'}], toxic:['Toxic', {'--power':'#b6ff3a', '--violet-glow':'rgba(182,255,58,.2)', '--aura':'#3affc8'}],
+  void:['Void', {'--power':'#c084fc', '--violet-glow':'rgba(192,132,252,.32)', '--aura':'#ff4fa3'}]});
 function applyTheme(){ const el = document.documentElement, all = new Set(Object.values(APP_THEMES).flatMap(([, v]) => Object.keys(v)));
   for (const k of all) el.style.removeProperty(k); const th = isPremium() && APP_THEMES[S.appTheme] ? APP_THEMES[S.appTheme][1] : {}; for (const [k, v] of Object.entries(th)) el.style.setProperty(k, v); }
 const PERKS = [['🍽️', 'Nutrition', 'Daily calories and macros for your goal, a food log, meal plans scaled to you, a grocery list and supplement basics.'],
   ['🔥', 'Protein and water streaks', 'Hit your daily protein and water for XP and Grind every day.'], ['📅', 'Weekly check-in', 'Every week your calories adjust to your weight trend, with the reason why.'],
   ['🍌', 'Training-day fueling', 'What to eat before and after each workout, right on Today.'], ['📈', 'Advanced stats', 'Estimated-max trends, sets per muscle group and a plateau finder.'],
   ['🧠', 'Smart coach', 'Suggests weight changes when you crush a lift or miss reps.'], ['👑', 'Exclusive cosmetics', 'A gold card frame, the Premium title and a new exclusive item every month.'],
-  ['🎁', 'Bonus season rewards', '+50% Grind and extra Glory on every season tier.'], ['🛡️', 'Bigger crews', 'Crews of up to 10 and a weekly crew battle.'], ['🎨', 'App themes', 'Color the whole app your way.']];
+  ['🎁', 'Bonus season rewards', '+50% Grind and extra Glory on every season tier.'], ['🛡️', 'Bigger crews', 'Crews of up to 10 and a weekly crew battle.'], ['🎨', 'App themes', 'Color the whole app your way, nine themes.'],
+  ['🫀', 'Muscle heatmap', 'A body map of what you trained this week and what you skipped, plus volume charts and max projections.'],
+  ['🌌', 'Exclusive stages', 'Aurora Peak, Neon Rain and Sakura Night: animated stages only Premium players get.'],
+  ['🐉', 'Monthly raid boss', 'Twelve bosses of their own, a new one each month. Every set you log hits it; bring it down for its own cape and title.'],
+  ['🛡️', 'Two streak shields', 'Miss two training days a week and keep your streak.'], ['⚡', 'Double XP weekend', 'The first weekend of every month, workouts earn twice the XP.'],
+  ['✨', 'Holographic card', 'Your character card shimmers with an animated holo frame, and shares that way too.']];
 function premiumHub(){ const on = isPremium(), m = premiumMonthly();
   rvDlg(`<div class="row-between"><b class="rl-h">Training Arc Premium</b><span class="prem${on ? ' on' : ''}">${on ? 'Active' : 'Premium'}</span></div>
     <ul class="perks">${PERKS.map(([i, t, d]) => `<li><span aria-hidden="true">${i}</span><div><b>${t}</b><p class="fine">${d}</p></div></li>`).join('')}</ul>
-    ${m ? `<p class="fine">This month's exclusive: <b>${TA_SHOP.item(m).name}</b>.</p>` : ''}
-    ${on ? `<span class="rl-sec">App theme</span><div class="opt-chips">${Object.entries(APP_THEMES).map(([k, [n]]) => `<button type="button" class="opt" data-act="appTheme" data-v="${k}" aria-pressed="${(S.appTheme || 'default') === k}">${n}</button>`).join('')}</div>` : '<p class="fine">Premium is coming soon. For now it can be switched on in Settings › Testing.</p>'}
+    ${m ? `<p class="fine">This month's exclusive: <b>${TA_SHOP.item(m).name}</b>.${(P => P ? ` Raid boss: <b>${esc(P.name)}</b>.` : '')(premBoss())}</p>` : ''}
+    ${on ? `<span class="rl-sec">App theme</span><div class="opt-chips">${Object.entries(APP_THEMES).map(([k, [n, v]]) => `<button type="button" class="opt theme-opt" data-act="appTheme" data-v="${k}" aria-pressed="${(S.appTheme || 'default') === k}"><i style="background:${v['--power'] || '#ffd23f'}"></i>${n}</button>`).join('')}</div>` : '<p class="fine">Premium is coming soon. For now it can be switched on in Settings › Testing.</p>'}
     <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="rvClose">Close</button></div>`); }
 // Strength levels by bodyweight multiple, the common gym standards (approximate), for the hero you play.
 // Each list is where Beginner, Novice, Intermediate, Advanced and Elite start.
@@ -7637,7 +7977,8 @@ function completeWorkout(){
   const ap = auraPerk(), auraXp = ap ? Math.round((base + streakXp) * ap.pct / 100) : 0;   // the aura you wear adds a little XP
   const recoveryXp = dl ? Math.round(base * .25) : 0;   // a deload is never a step back: a little Recovery XP on top
   const petXpB = petBonus(3) ? Math.round((base + streakXp) * .05) : 0;   // a Legendary pet: +5% XP
-  const gain = base + streakXp + auraXp + recoveryXp + petXpB + (bossWon ? bossXp(p) : 0) + prs.length * 100 + questXp;
+  const dxpXp = dxpOn() ? base : 0;   // Premium's double-XP weekend
+  const gain = base + streakXp + auraXp + recoveryXp + petXpB + dxpXp + (bossWon ? bossXp(p) : 0) + prs.length * 100 + questXp;
   entry.xp = gain;
   S.xp += gain; S.sets += n; S.prs += prs.length;
   const seasonGot = seasonAdd(10 + n), seasonTier = seasonState().got;   // the monthly season track
@@ -7683,6 +8024,7 @@ function completeWorkout(){
   if (streakXp) parts.push([`${streakN}-week streak (×${sm.toFixed(2)})`, streakXp]);
   if (auraXp) parts.push([`Aura: ${shopItem(shopEq().aura).name} (+${ap.pct}%)`, auraXp]);
   if (recoveryXp) parts.push(['Recovery (deload session)', recoveryXp]);
+  if (dxpXp) parts.push(['Double XP weekend (Premium)', dxpXp]);
   if (bossWon) parts.push([`Boss defeated: ${bossName(p)}`, bossXp(p)]);
   if (prs.length) parts.push([prs.length > 1 ? `${prs.length} new maxes` : 'New max', prs.length * 100]);
   parts.push(...quests);
@@ -8037,6 +8379,8 @@ document.addEventListener('click', e => {
   else if (a === 'foodPreset'){ const f = FOODS[+t.dataset.i]; if (f){ foodAdd(...f); save(); render(); toast(`Logged ${f[0]}.`); } }
   else if (a === 'foodCustom'){ const n = document.getElementById('foodN')?.value.trim(), k = parseFloat(document.getElementById('foodK')?.value), p = parseFloat(document.getElementById('foodP')?.value) || 0;
     if (!(k >= 0) || k > 5000 || p > 500){ toast('Add the calories (and protein if you know it).'); return; } foodAdd(n || 'Food', k, p); save(); render(); toast('Logged.'); }
+  else if (a === 'foodAgain'){ const x = foodRecent()[+t.dataset.i]; if (x){ foodAdd(x.n, x.k, x.p); save(); render(); toast(`Logged ${x.n}.`); } }
+  else if (a === 'foodCopy'){ const y = (S.food || {})[addDays(todayIso(), -1)] || []; for (const x of y) foodAdd(x.n, x.k, x.p); save(); render(); toast(`Copied ${y.length} item${y.length === 1 ? '' : 's'} from yesterday.`); }
   else if (a === 'foodDel'){ const d = (S.food || {})[todayIso()]; if (d){ d.splice(+t.dataset.i, 1); save(); render(); } }
   else if (a === 'water'){ const W = S.water = S.water || {}, td = todayIso(); W[td] = Math.max(0, Math.min(12, (W[td] || 0) + +t.dataset.v));
     for (const d of Object.keys(W)) if (d < addDays(td, -30)) delete W[d]; nutRewards(); save(); render(); if (+t.dataset.v > 0) buzz(8); }
@@ -8045,6 +8389,9 @@ document.addEventListener('click', e => {
   else if (a === 'coachYes' || a === 'coachNo'){ const N = S.coachNotes || [], n = N[+t.dataset.i]; if (!n) return; N.splice(+t.dataset.i, 1);
     if (a === 'coachYes'){ S.tmAdd[n.lift] = (S.tmAdd[n.lift] || 0) + n.d; toast(`${LIFTS[n.lift]} working weights ${n.d > 0 ? '+' : '−'}${fmt(Math.abs(n.d))} ${S.unit}.`); } save(); render(); }
   else if (a === 'premiumHub'){ closeDialog('settings'); premiumHub(); }
+  else if (a === 'pbClaim'){ const inDlg = t.closest('#rvDlg'); pbClaim(); if (inDlg) pbOpen(); }
+  else if (a === 'pbOpen') pbOpen(); else if (a === 'pbTalk') pbTalk();
+  else if (a === 'pbChest'){ const inDlg = t.closest('#rvDlg'); pbChest(); if (inDlg) pbOpen(); }
   else if (a === 'appTheme'){ S.appTheme = t.dataset.v; applyTheme(); save(); premiumHub(); }
   else if (a === 'premiumToggle' && SHOW_TEST_TOOLS){ S.premium = !S.premium; applyTheme(); premiumGrant(); save(); renderSettings(); render(); toast(S.premium ? 'Premium unlocked for testing.' : 'Premium locked again.'); }
   else if (a === 'tourReplay'){ closeDialog('settings'); S.wkTourDone = 0; S.tourOff = 0; save(); setTimeout(() => tourStart('main'), 300); }
@@ -8662,12 +9009,12 @@ function tickPlayers(now){
 requestAnimationFrame(tickPlayers);
 function paintHeroes(){
   const g = S.hero.gender;
-  document.documentElement.dataset.stage = STAGES[S.hero[g].stage].toLowerCase();
+  { const s = STAGES[S.hero[g].stage] || 'Arena'; document.documentElement.dataset.stage = (PREM_STAGES.has(s) && !isPremium() ? 'Arena' : s).toLowerCase(); }   // a Premium stage waits while Premium is off
   for (const id of ['heroImg', 'bannerImg', 'cardImg', 'coachImg']) if (document.getElementById(id)) setSprite(id, formIdx(g), g);
   if (document.getElementById('ruImg')) setSprite('ruImg', rankIdx(), g);   // a rank-up shows the new rank
   for (const id of ['heroImg', 'bannerImg', 'cardImg']){ const el = document.getElementById(id); if (el) el.style.filter = glowCss(auraColor()); }   // your aura, at any rank
   if (hasArt(editG)) setSprite('heImg', previewRank, editG);
-  paintEditorExtras(); paintMe();
+  paintEditorExtras(); paintMe(); paintPremBoss();
 }
 function cheer(){
   if (reduceMotion) return;
@@ -8725,15 +9072,16 @@ function renderHeroEditor(){
         .map(part => `<div class="he-crow"><span class="he-clbl">${part.label}${part.note ? `<small>${part.note}</small>` : ''}</span>${sw(part)}</div>`).join('')}</div>`,
     items: invEditorHTML() + gearHTML(pr),
     stage: `<div class="he-group"><h4>Stage <span class="he-note">the backdrop behind your hero</span></h4><div class="opt-chips">${STAGES.map((s, i) => { const lv = stageLv(s);
-        return lv && curLevel() < lv ? `<button class="opt locked" disabled title="Unlocks at Lv ${lv}">${s} · Lv ${lv}</button>`
-          : `<button class="opt" data-act="heroStage" data-v="${i}" aria-pressed="${pr.stage === i}">${s}</button>`; }).join('')}</div></div>`
+        return PREM_STAGES.has(s) && !isPremium() ? `<button class="opt locked prem-stage" data-act="premiumHub" title="Premium stage">${s} · Premium</button>`
+          : lv && curLevel() < lv ? `<button class="opt locked" disabled title="Unlocks at Lv ${lv}">${s} · Lv ${lv}</button>`
+          : `<button class="opt${PREM_STAGES.has(s) ? ' prem-stage' : ''}" data-act="heroStage" data-v="${i}" aria-pressed="${pr.stage === i}">${s}</button>`; }).join('')}</div></div>`
       + `<div id="heFlairs" class="he-flairs-pick">${flairsHTML()}</div>`   // the backdrops that stack on your stage, right under the stages
   };
   document.getElementById('heOpts').innerHTML = bar + `<div class="he-sec" role="tabpanel">${sec[heSec] || sec.style}</div>`
     + `<div class="he-foot"><button class="btn btn-ghost btn-sm" data-act="heroReset"${Object.keys(look).length || pr.stage || pr.style !== G.defStyle ? '' : ' disabled'}>Reset ${G.label.toLowerCase()} look</button></div>`;
 }
 
-premiumItems(); applyTheme(); premiumGrant();   // Premium items exist for anyone who owns them; perks and theme only while Premium
+premiumItems(); PB_ORDER.forEach(pbLoot); applyTheme(); premiumGrant();   // Premium items exist for anyone who owns them; perks and theme only while Premium
 checkItems(); checkAch(); save();   // gear and achievements already earned before they existed unlock on first load
 render();
 startQuotes();

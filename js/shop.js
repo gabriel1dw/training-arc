@@ -114,6 +114,13 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
   const load = () => { const st = window.TA_SHOP_STORE; if (st) return st.get(); try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
   const persist = s => { const st = window.TA_SHOP_STORE; if (st) return st.set(JSON.parse(JSON.stringify(s))); try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} };
   const START = { coins: 500, gems: 50, owned: [], equipped: {} };   // welcome gift for brand-new players
+  // chests sold every day: odds are % per roll; every 10th chest without an epic or better is guaranteed one
+  const CHESTS = [
+    { id: 'C', name: 'Gym Bag', cur: 'c', price: 300, rolls: 1, odds: { C: 70, R: 25, E: 4.5, L: .5 }, bonus: [20, 60], desc: 'Somebody left it in the locker room. Finders keepers.' },
+    { id: 'R', name: 'Gym Locker', cur: 'c', price: 900, rolls: 2, odds: { C: 40, R: 45, E: 12, L: 3 }, bonus: [40, 120], desc: 'Locker 07 has not been opened in years. Two finds inside.' },
+    { id: 'E', name: 'Technique Scroll', cur: 'g', price: 120, rolls: 2, odds: { R: 45, E: 45, L: 10 }, desc: 'A master\'s sealed technique. Rare or better, two finds.' },
+    { id: 'L', name: 'Spirit Orb', cur: 'g', price: 300, rolls: 3, odds: { R: 20, E: 50, L: 30 }, desc: 'Power condensed from a thousand training arcs. Three finds, legends likely.' }];
+  const PITY = 10, DUPE = { C: { coins: 60 }, R: { coins: 150 }, E: { gems: 30 }, L: { gems: 80 } };
   let ST = window.TA_SHOP_STORE ? JSON.parse(JSON.stringify(START)) : load() || JSON.parse(JSON.stringify(START));
   const listeners = new Set();
   const changed = () => { persist(ST); listeners.forEach(f => f()); };
@@ -228,6 +235,26 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     // Grind put up as a showdown stake: false (and nothing taken) if you don't have that much
     spendCoins(n) { n = Math.max(0, n | 0); if (ST.coins < n) return false; ST.coins -= n; changed(); return true; },
     coins: () => ST.coins,
+    // ---------- chests: pay, then each roll picks a rarity by chance and an item of that rarity you don't own yet ----------
+    chests: () => CHESTS,
+    chestPity: () => ST.chestPity || 0,
+    openChest(tid) {
+      const ch = CHESTS.find(c => c.id === tid), d = D(); if (!ch) return null;
+      const bal = ch.cur === 'c' ? ST.coins : ST.gems; if (bal < ch.price) return { error: 'funds', short: ch.price - bal, chest: ch };
+      if (ch.cur === 'c') ST.coins -= ch.price; else ST.gems -= ch.price;
+      const limited = new Set((d.seasons || []).flatMap(s => s.items)), pool = Object.values(d.items).filter(i => !i.drop && !i.premium && !/^(pb|pm)_/.test(i.id) && i.price > 0 && !limited.has(i.id));
+      const roll = w => { let r = Math.random() * Object.values(w).reduce((a, b) => a + b, 0); for (const [k, v] of Object.entries(w)) if ((r -= v) < 0) return k; return Object.keys(w)[0]; };
+      const pity = (ST.chestPity || 0) >= PITY - 1, got = [];
+      for (let k = 0; k < ch.rolls; k++) {
+        const r = roll(pity && k === 0 ? { E: ch.odds.E || 80, L: ch.odds.L || 20 } : ch.odds);
+        const left = pool.filter(i => i.r === r && !ST.owned.includes(i.id) && !got.some(g => g.id === i.id));
+        if (left.length) { const it = left[Math.floor(Math.random() * left.length)]; got.push({ id: it.id, r }); ST.owned.push(it.id); }
+        else { const back = DUPE[r]; got.push(Object.assign({ dupe: true, r }, back)); if (back.coins) ST.coins += back.coins; if (back.gems) ST.gems += back.gems; }   // you have them all: paid back instead
+      }
+      const coins = ch.bonus ? ch.bonus[0] + Math.floor(Math.random() * (ch.bonus[1] - ch.bonus[0] + 1) / 5) * 5 : 0; ST.coins += coins;
+      ST.chestPity = got.some(g => g.r === 'E' || g.r === 'L') ? 0 : (ST.chestPity || 0) + 1; ST.chestsOpened = (ST.chestsOpened || 0) + 1;
+      changed(); return { chest: ch, got, coins, pity: ST.chestPity, wasPity: pity };
+    },
     // load the wallet of the profile now in use (new profiles get the welcome gift)
     bind() { const s = load(); ST = s ? Object.assign(JSON.parse(JSON.stringify(START)), s) : JSON.parse(JSON.stringify(START)); if (!s) persist(ST); listeners.forEach(f => f()); },
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -286,6 +313,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
 .tsh-card .tsh-pr s{opacity:.55;font-weight:600;margin-right:2px}
 .tsh-card .rk{position:absolute;left:2px;top:2px;width:0;height:0;border-top:7px solid var(--rc);border-right:7px solid transparent}
 .tsh-card .tg{position:absolute;right:2px;top:2px;padding:0 3px;border-radius:2px;background:#e63c3c;color:#fff;font:900 6px/9px var(--ff)}
+.tsh-card .tg.tsh-cx{background:var(--rc);color:#14121c}.tsh-chest .ic{width:52px;height:52px;top:2px}
 .tsh-card .tg.own{background:#3c8250}.tsh-card .tg.dr{background:#c8402f}
 .tsh-card .tsh-pr.gear{padding:0 4px;font-size:6px;letter-spacing:.3px;max-width:62px;overflow:hidden}.tsh-card.lock img.ic{filter:brightness(0) opacity(.55)}.tsh-card.lock .nm{color:var(--muted)}
 .tsh-btn.lk{background:#4a4a56;box-shadow:none}.tsh-card .tg.tsh-wk{background:#7a5cff}.tsh-card .tg.tsh-ss{background:#ff8a1a;color:#1b1b22}.tsh-card .tg.eq{background:var(--accent);color:var(--tagtxt)}
@@ -452,14 +480,15 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
 
     // ---------- tabs ----------
     // five tabs: everything today, things you wear, things that glow, companions, titles
-    const TABS = [['FEATURED', null], ['LOOK', ['outfit', 'hair', 'shoes', 'cape']], ['POWER', ['aura', 'fx']], ['PETS', ['pet']], ['TITLES', ['title']]];
+    const TABS = [['FEATURED', null], ['LOOT', 'chest'], ['LOOK', ['outfit', 'hair', 'shoes', 'cape']], ['POWER', ['aura', 'fx']], ['PETS', ['pet']], ['TITLES', ['title']]];
     const SORTS = ['FEATURED', 'PRICE', 'RARITY'], RANK_R = { L: 0, E: 1, R: 2, C: 3 };
     const heroLook = opts.hero ? opts.hero($('.tsh-hero')) : liveLook ? TA_LOOK.create($('.tsh-hero'), { body: opts.body || 'm', rank: opts.rank || 'B' }) : null;
     let tab = 0, selId = stock.items[0], showOwned = false, sortBy = 0;
-    const inTab = id => { const t = TABS[tab][1]; return !t || t.includes(data.items[id].type); };
+    const chestTab = () => TABS[tab][1] === 'chest';
+    const inTab = id => { const t = TABS[tab][1]; return !t || t !== 'chest' && t.includes(data.items[id].type); };
     function renderTabs() {
       $('.tsh-tabs').innerHTML = TABS.map(([n, t], i) => {
-        const cnt = t ? stock.items.filter(id => t.includes(data.items[id].type) && !ST.owned.includes(id)).length : 0;
+        const cnt = t && t !== 'chest' ? stock.items.filter(id => t.includes(data.items[id].type) && !ST.owned.includes(id)).length : 0;
         return `<button class="tsh-tab${i === tab ? ' on' : ''}" data-i="${i}">${n}${cnt && i !== tab ? `<b>${cnt}</b>` : ''}</button>`;
       }).join('');
       stage.querySelectorAll('.tsh-tab').forEach(b => b.onclick = () => { tab = +b.dataset.i; render(); });
@@ -467,7 +496,19 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
       $('.tsh-bar .n').textContent = `${shown} ITEM${shown === 1 ? '' : 'S'}${!showOwned && own ? ` · ${own} OWNED HIDDEN` : ''}`;
       const ob = $('.tsh-own'); ob.textContent = showOwned ? '✓ OWNED' : 'SHOW OWNED'; ob.classList.toggle('on', showOwned); ob.setAttribute('aria-pressed', showOwned); ob.hidden = !own;
       $('.tsh-sort').textContent = 'SORT: ' + SORTS[sortBy];
+      if (chestTab()) { const p = PITY - (ST.chestPity || 0); $('.tsh-bar .n').textContent = `LOOT · EPIC+ GUARANTEED IN ${p}`; ob.hidden = true; }
+      $('.tsh-sort').hidden = chestTab();
     }
+    // the chests tab: tap one to see its odds and open it (the app plays the opening; without it, it just opens)
+    function chestCards() {
+      const icon = c => window.TA_RAID && TA_RAID.chestIcon ? TA_RAID.chestIcon('tier_' + c.id, c.id === 'L') : data.chestIcon;
+      return CHESTS.map(c => `<button class="tsh-card tsh-chest" role="listitem" data-chest="${c.id}" style="--rc:${data.rarity[c.id]}" aria-label="${esc(c.name)}, ${fmt(c.price)} ${c.cur === 'c' ? 'Grind' : 'Glory'}">
+        <span class="rk"></span><span class="ped"></span><img class="ic" src="${icon(c)}" alt="">${c.id === 'L' ? '<i class="spk" style="left:12px;top:8px"></i><i class="spk" style="left:50px;top:20px;animation-delay:.6s"></i>' : ''}<span class="nm">${esc(c.name)}</span>
+        <span class="tsh-pr"><img src="${c.cur === 'c' ? data.coinIcon : data.gemIcon}" alt="">${fmt(c.price)}</span><span class="tg tsh-cx">×${c.rolls}</span></button>`).join('');
+    }
+    function quickChest(tid) { const res = TA_SHOP.openChest(tid); if (!res) return;
+      if (res.error) { toast(res.chest.cur === 'c' ? `Need ${fmt(res.short)} more Grind. Go train!` : `Need ${fmt(res.short)} more Glory. Beat a boss!`); return; }
+      toast(res.got.map(g => g.dupe ? 'a refund' : data.items[g.id].name).join(', ') + '!'); render(); opts.onChange && opts.onChange(TA_SHOP.state()); }
     // today's stock in this tab; things you own are hidden unless you ask; sorted the way you picked
     const visible = () => { const v = stock.items.filter(id => inTab(id) && (showOwned || !ST.owned.includes(id)));
       if (sortBy === 1) v.sort((a, b) => (data.items[a].cur === 'g') - (data.items[b].cur === 'g') || priceOf(a) - priceOf(b));
@@ -485,6 +526,11 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
 
     // ---------- grid ----------
     function renderGrid() {
+      if (chestTab()) { $('.tsh-grid').innerHTML = chestCards();
+        stage.querySelectorAll('.tsh-chest').forEach(b => b.onclick = () => { const tid = b.dataset.chest, c = CHESTS.find(x => x.id === tid);
+          say(c.desc + ' Odds per find: ' + Object.entries(c.odds).map(([r, p]) => `${data.rarityName[r].toLowerCase()} ${p}%`).join(', ') + '.');
+          if (opts.onChest) opts.onChest(tid, () => { render(); opts.onChange && opts.onChange(TA_SHOP.state()); }); else quickChest(tid); });
+        return; }
       const v = visible();
       $('.tsh-grid').innerHTML = v.length ? v.map(id => {
         const it = data.items[id], i = stock.items.indexOf(id), owned = ST.owned.includes(id), eq = ST.equipped[it.type] === id, deal = i >= 0 && i === stock.deal && !owned;

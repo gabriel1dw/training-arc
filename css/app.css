@@ -621,6 +621,7 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 #view>.rl-actions{margin:0 0 14px}
 /* your profile: a small round portrait top left, and the sheet it opens */
 .me-wrap{display:flex;align-items:center;gap:10px;min-width:0}
+@media (max-width:370px){.me-wrap{gap:8px}.me-wrap .sec{font-size:28px}.me-btn{width:36px;height:36px}}
 .me-btn{position:relative;width:40px;height:40px;flex:none;padding:0;border-radius:50%;border:2px solid var(--power);background:radial-gradient(circle at 50% 30%,var(--violet-glow),var(--surface-2) 70%);overflow:hidden;cursor:pointer}
 .me-btn::after{content:"";position:absolute;inset:-4px}
 .me-btn:active{transform:scale(.94)}
@@ -1272,6 +1273,10 @@ span.fd-r{min-height:28px;cursor:default}
 .opt.worn{position:relative;border-color:var(--good)}
 .opt.worn::after{content:"";position:absolute;left:50%;bottom:3px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--good)}
 .he-form-btn{margin-left:6px;vertical-align:middle}
+/* the nine forms always fit the row, however narrow the phone */
+#heRanks{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px}
+#heRanks .opt{min-width:0;padding:7px 0;font-size:13px;letter-spacing:0}
+.he-stage{overflow:hidden}
 .opt[aria-pressed="true"]{background:var(--power);color:var(--power-ink);border-color:var(--power)}
 /* Polish: press feedback, touch-safe hover, motion */
 button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}

@@ -66,6 +66,10 @@ canvas.stage-cv{position:absolute!important;inset:0!important;width:100%!importa
 .stage-bg{background:linear-gradient(0deg,var(--surface-2) 0 16%,transparent 16%),radial-gradient(circle at 50% 40%,var(--violet-glow),transparent 70%),repeating-linear-gradient(115deg,transparent 0 10px,var(--speed) 10px 11px),var(--surface)}
 .banner{display:flex;flex-direction:column;width:100%;padding:0;border:1px solid var(--line);border-radius:18px;overflow:hidden;cursor:pointer;color:var(--fg);font:inherit;text-align:left;background:var(--surface)}
 .banner-stage{position:relative;display:grid;place-items:end center;height:262px;width:100%;align-self:stretch}
+/* Every hero stage is one grid cell that all its layers share. Without this, iPhone Safari can give the painted backdrop
+   and other layers rows of their own and push the hero down out of view. */
+:is(.banner-stage,.tcard-art,.pf-art){grid-template-columns:minmax(0,1fr)}
+:is(.banner-stage,.tcard-art,.pf-art) > *{grid-area:1/1}
 /* iOS Safari shrink-wraps the children of a flex <button>, which pulled the hero left under the quote bubble; force them full width */
 .banner>.banner-stage,.banner>.banner-foot{width:100%;align-self:stretch;flex:0 0 auto}
 .banner-img{display:block;width:var(--hero-w,168px);height:calc(var(--hero-w,168px) * 273 / 168);image-rendering:pixelated;image-rendering:crisp-edges;margin-bottom:-6px}
@@ -1448,6 +1452,9 @@ span.fd-r{min-height:28px;cursor:default}
 #heRanks{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px}
 #heRanks .opt{min-width:0;padding:7px 0;font-size:13px;letter-spacing:0}
 .he-stage{overflow:hidden;z-index:0;contain:paint}   /* iPhone: keep the hero (a canvas) under the sticky header and tabs */
+/* The editor hero is pinned, not centered by the grid: iPhone Safari was pushing it to the bottom of the stage */
+.he-stage{display:block;position:relative;height:332px;padding:0}
+#heImg{position:absolute;left:0;right:0;bottom:10px;margin:0 auto;width:192px;height:312px;aspect-ratio:auto;z-index:1}
 .opt[aria-pressed="true"]{background:var(--power);color:var(--power-ink);border-color:var(--power)}
 /* Polish: press feedback, touch-safe hover, motion */
 button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}

@@ -1,5 +1,5 @@
-// Training Arc service worker (built by build-app.ps1, version 20261028-232636)
-const VERSION = 'ta-20261028-232636';
+// Training Arc service worker (built by build-app.ps1, version 20261028-233725)
+const VERSION = 'ta-20261028-233725';
 const CORE = [
   'index.html',
   'css/app.css',
@@ -285,7 +285,10 @@ const LATER = [
   'fonts/files/X_b8E6guJgQpgeWI58Te8uielyPJ6ZAaK6bmkcYKCbZkgNrDM5VpzwmxsEl1jfypbUtsdMi3xGCetyRdffAHE6gTTafN_skey_6dc04d704ebee13c_v_v12',
   'fonts/files/_7vycV3O3ty8B0GJVrf3t_OkWLSe8uaC_3CO_FW3Dm_gaJGyLGBYdQEtQMuJynQ84bzOGEQ2ws6vjm_gEphO5n5njBwlg_skey_8981a104a025316d_v_v9',
   'icons/icon-512.png',
-  'icons/icon-maskable-512.png'
+  'icons/icon-maskable-512.png',
+  'legal/legal.css',
+  'legal/privacy.html',
+  'legal/terms.html'
 ];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE.map(u => new Request(u, {cache: 'reload'})))).then(() => self.skipWaiting()));
@@ -312,7 +315,9 @@ self.addEventListener('message', e => {
 self.addEventListener('fetch', e => {
   const req = e.request; if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put('index.html', copy)); return r; }).catch(() => caches.match('index.html')));
+    // only the app's own page is kept as the offline copy (not the legal pages or anything else opened here)
+    const app = /\/(index\.html)?$/.test(new URL(req.url).pathname);
+    e.respondWith(fetch(req).then(r => { if (app && r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put('index.html', copy)); } return r; }).catch(() => app ? caches.match('index.html') : caches.match(req)));
     return;
   }
   e.respondWith(caches.match(req, {ignoreSearch: true}).then(hit => hit || fetch(req).then(r => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); } return r; })));

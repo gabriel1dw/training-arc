@@ -3395,6 +3395,9 @@ const EXPERIENCE = [['E', 'Just starting', 'New to training, or coming back afte
 let ob = null;
 const obArc = () => PROGRAMS.find(p => p.id === ob.arcId);
 const obLifts = () => { const p = obArc(); return p ? [...new Set(p.weeks.flatMap(w => w.days.flatMap(d => d.ex.map(x => x.lift))).filter(Boolean))] : []; };
+// The privacy policy and terms live on the website (the App Store links to the same pages)
+const LEGAL_URL = 'https://gabriel1dw.github.io/training-arc/legal/';
+const HEALTH_NOTE = 'Training Arc gives general fitness and nutrition guidance, not medical advice. Check with a doctor before starting a new program, especially with a health condition, injury or pregnancy. Stop if you feel pain, dizziness or chest pain.';
 const obSteps = () => ['title', 'hero', 'path', 'exp', ...(obLifts().length ? ['maxes'] : []), 'days', 'ready'];
 const OB_EP = {hero:'The hero', path:'The path', exp:'The past', maxes:'Power level', days:'The schedule', ready:'The arc begins'};
 function openWelcome(){
@@ -3456,7 +3459,8 @@ function renderOb(){
       <p class="ob-lede">Every set you log earns XP. Rank up every 25 levels, and your hero transforms with you.</p>
       ${window.TA_SHOP_DATA ? `<div class="ob-cur"><p><img src="${TA_SHOP_DATA.coinIcon}" alt=""><span><b>Grind</b>Every workout and quest pays it. Spend it in the Shop on outfits, pets and more.</span></p>
         <p><img src="${TA_SHOP_DATA.gemIcon}" alt=""><span><b>Glory</b>For big wins: beating a boss the first time, ranking up and finishing an arc.</span></p></div>` : ''}</div>
-      <div class="ob-foot"><button type="button" class="btn btn-power ob-primary" data-ob="finish">Start my arc</button></div>`; }
+      <div class="ob-foot"><button type="button" class="btn btn-power ob-primary" data-ob="finish">Start my arc</button>
+        <p class="ob-legal">General fitness guidance, not medical advice. Check with a doctor before starting if you have a health condition. By starting you agree to the <a href="${LEGAL_URL}terms.html" target="_blank" rel="noopener">Terms</a> and <a href="${LEGAL_URL}privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</p></div>`; }
   const ep = ob.step === 'title' ? '' : `<p class="ob-ep"><b>${ob.step === 'ready' ? 'Final episode' : `Episode ${i}`}</b><span>${OB_EP[ob.step]}</span></p>`;
   page.innerHTML = head + ep + body;
   // Plays like an anime opening: a new step gets a slash wipe and its parts slide in one after another.
@@ -6005,6 +6009,9 @@ function renderSettings(){
     <button type="button" class="st-row st-link" data-act="maxProfile"><div><b>Make a maxed-out test profile</b><span>A new "Max Test" profile with everything unlocked: Lv 250, every boss, item and gear. Your own profile stays as it is.</span></div><span aria-hidden="true">›</span></button></div>` : ''}
     <h4 class="st-h">Your data</h4>
     ${backupHTML()}
+    <h4 class="st-h">About</h4>
+    <div class="st-group">${[['privacy', 'Privacy Policy', 'What\'s stored, where, and how to delete it'], ['terms', 'Terms of Use', 'The rules, loot and Premium']].map(([pg, t, s]) => `<a class="st-row st-link" href="${LEGAL_URL}${pg}.html" target="_blank" rel="noopener"><div><b>${t}</b><span>${s}</span></div><span aria-hidden="true">›</span></a>`).join('')}
+      <div class="st-row st-col"><div><b>Not medical advice</b><span>${HEALTH_NOTE}</span></div></div></div>
     <h4 class="st-h">Danger zone</h4>
     <div class="st-group st-danger"><div class="st-row st-col"><div><b>Reset all progress</b><span>Erases levels, gear, achievements, maxes and history on this device. Back up first.</span></div>
       <button class="btn btn-danger btn-sm" data-act="reset">${resetArmed ? 'Tap again to erase everything' : 'Reset all progress'}</button></div></div>

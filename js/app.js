@@ -4130,12 +4130,30 @@ function cleanCard(o, base){
     pw:(Array.isArray(o.pw) ? o.pw : []).slice(0, 3).filter(p => p && iso(p.ws)).map(p => ({ws:p.ws, wx:int(p.wx, 0, 1e6), wsets:int(p.wsets, 0, 5000), wwk:int(p.wwk, 0, 50), wv:int(p.wv, 0, 1e8), ...lifts(p)})),   // the last 3 finished weeks, for showdowns
     tr:(Array.isArray(o.tr) ? o.tr : []).filter(id => TROPHIES.some(x => x[0] === id)).slice(0, TROPHIES.length),
     p4p:int(o.p4p, 0, 1000),   // pound-for-pound score (no bodyweight is shared, just the score)
-    cr:o.cr && /^[a-z0-9]{6,24}$/i.test(o.cr.id || '') ? {id:o.cr.id, n:str(o.cr.n, 20).replace(/[<>]/g, '') || 'Crew'} : null};
+    cr:o.cr && /^[a-z0-9]{6,24}$/i.test(o.cr.id || '') ? {id:o.cr.id, n:str(o.cr.n, 20).replace(/[<>]/g, '') || 'Crew'} : null,
+    // for their player card: OVR, the four stats, their path, and whether it gets the Premium frame (older cards don't have these)
+    o:o.o == null ? null : int(o.o, 0, 99), sv:o.sv && typeof o.sv === 'object' ? Object.fromEntries(STAT_KEYS.map(([k]) => [k, int(o.sv[k], 0, 99)])) : null,
+    pa:own(POS, o.pa) ? o.pa : null, pr:o.pr ? 1 : 0, xp:int(o.xp, 0, 100)};
 }
 function myCard(){ const g = S.hero.gender, h = S.hero[g], pid = shopEq().pet;
   return {t:'f', id:socialId(), n:S.hero.name || 'Hero', g, ri:rankIdx(), lv:levelInfo(S.xp).L, title:heroTitle(), u:S.unit,
     m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, Math.round(bestMax(l))])), md:Object.keys(S.ach).length, st:weekStreak(), wk:S.log.length,
-    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso(), wh:weekHits(), tr:S.trophies || [], cr:S.crew ? {id:S.crew.id, n:S.crew.n} : null, p4p:dots()}; }
+    look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso(), wh:weekHits(), tr:S.trophies || [], cr:S.crew ? {id:S.crew.id, n:S.crew.n} : null, p4p:dots(),
+    o:ovr(prog().path), sv:Object.fromEntries(STAT_KEYS.map(([k]) => [k, statVal(k)])), pa:prog().path, pr:isPremium() ? 1 : 0, xp:Math.round(levelInfo(S.xp).pct)}; }
+// A friend's player card, drawn like yours: their hero on a stage, OVR, rank, title, level and stats
+function friendCardHTML(r){ const rk = RANKS[r.ri].k, o = r.o, sv = r.sv, pa = r.pa || null, pth = PATHS.find(x => x.id === pa);
+  return `<section class="tcard fcard${r.pr ? ' prem-frame' : ''}" style="--rc:var(--rank-${rk.toLowerCase()})"><div class="tcard-in">
+    <div class="tcard-art stage-bg">${o != null ? `<span class="tcard-ovr" style="--tc:${tierColor(o)}" aria-label="Overall ${o}"><b class="num">${o}</b><span>OVR</span>${pa ? `<span>${POS[pa]}</span>` : ''}</span>` : ''}
+      ${r.pet ? `<img class="fcard-pet" src="${petArt(r.pet.id, r.pet.f) || ''}" alt="">` : ''}${r.pr ? '<span class="fcard-prem">Premium</span>' : ''}
+      <canvas class="card-img" data-rv="${r.id}" width="128" height="208" role="img" aria-label="${esc(r.n)}'s hero"></canvas></div>
+    <div class="tcard-head"><div class="tcard-who">${emblem(rk, 'xs')}<div class="tcard-name">${esc(r.n)}</div></div><div class="tcard-title">${rk}-Rank${r.title ? ` · "${esc(r.title)}"` : ''}</div></div>
+    <div><div class="row-between"><span class="eyebrow num">Level ${r.lv} / ${MAX_LEVEL}</span>${r.cr ? `<span class="fine">Crew: ${esc(r.cr.n)}</span>` : ''}</div>
+      <div class="bar" style="margin-top:6px" role="img" aria-label="Level ${r.lv}"><i style="width:${r.lv >= MAX_LEVEL ? 100 : r.xp || 0}%"></i></div></div>
+    ${sv ? `<div class="tcard-stats">${STAT_KEYS.map(([k, ab, name]) => `<div class="tcard-stat" title="${name}"><span>${ab}<b class="num" style="color:${tierColor(sv[k])}">${sv[k]}</b></span><div class="bar" role="img" aria-label="${name} ${sv[k]} out of 99"><i style="--sc:${STAT_COLOR[k]};width:${sv[k]}%"></i></div></div>`).join('')}</div>`
+      : `<p class="fine">Their stats show up once they open the latest version of the app.</p>`}
+    <div class="fcard-nums"><div><b class="num">${fmt(r.wk)}</b><span>Workouts</span></div><div><b class="num">${r.st}</b><span>Week streak</span></div><div><b class="num">${r.md}</b><span>Medals</span></div><div><b class="num">${(r.tr || []).length}</b><span>Trophies</span></div></div>
+    <div class="tcard-foot"><span>${pth ? `${pth.name} OVR` : 'Player card'}</span><span>${r.p4p ? `P4P ${r.p4p}` : ''}</span></div>
+  </div></section>`; }
 const inMyUnit = (v, u) => u === S.unit ? v : S.unit === 'kg' ? v / 2.20462 : v * 2.20462;
 // Opening a code: a card adds or updates a rival, a challenge goes on Today
 function takeCode(text, quiet){
@@ -4355,6 +4373,7 @@ function rvShareBox(title, sub, text, code, link){   // link: a ready-made addre
   rvShareBox.cur = {text, url:link};
 }
 function rvShareCard(){ rvShareBox('Your rival card', 'Your hero, rank, maxes, medals and pet. Send it to a friend; they open the link or paste it under Rivals.', `Add me as a rival in Training Arc: ${S.hero.name || 'Hero'}, ${rankFor(S.xp).k}-Rank, Lv ${levelInfo(S.xp).L}.`, toCode(myCard())); }
+let rvView = 'card';   // a friend's page opens on their player card; Compare puts you side by side
 let rlTn = null;   // the taunt picked in the challenge composer
 function rvNewChal(){
   const lifts = Object.keys(LIFTS).filter(l => bestMax(l)), K = RL_KINDS;
@@ -4378,7 +4397,8 @@ function rvTauntOnly(){ if (rlTn == null) return; const o = {t:'t', id:socialId(
   msgSendTo('taunt', {tn:rlTn}, `“${TAUNTS[rlTn]}”`, () => rvShareBox('Taunt ready', `“${TAUNTS[rlTn]}” Send it and see if they answer.`, `${o.n} in Training Arc: “${TAUNTS[rlTn]}”`, toCode(o))); }
 function rvOpen(id){ const r = (S.rivals || {})[id] || (netFriends || []).find(f => f.id === id); if (!r) return; const me = myCard(), live = !(S.rivals || {})[id], rel = relOf(id, live);
   const row = (label, a, b, unit = '') => { const w = a > b ? 'me' : b > a ? 'them' : ''; return `<div class="rl-cmp-row"><b class="num${w === 'me' ? ' win' : ''}">${a ? fmt(a) + unit : '-'}</b><span>${label}</span><b class="num${w === 'them' ? ' win' : ''}">${b ? fmt(b) + unit : '-'}</b></div>`; };
-  rvDlg(`<div class="rl-vs"><div><canvas class="rl-big" id="rvMe" width="128" height="208" aria-hidden="true"></canvas><b>${esc(me.n)}</b><small>${RANKS[me.ri].k}-Rank · Lv ${me.lv}</small>${me.pet ? `<img class="rl-pet" src="${petArt(me.pet.id, me.pet.f) || ''}" alt="">` : ''}</div>
+  rvDlg(`<div class="seg seg-wide fc-seg" role="group" aria-label="View"><button type="button" data-act="rvView" data-id="${r.id}" data-v="card" aria-pressed="${rvView === 'card'}">Player card</button><button type="button" data-act="rvView" data-id="${r.id}" data-v="cmp" aria-pressed="${rvView !== 'card'}">Compare</button></div>
+    ${rvView === 'card' ? friendCardHTML(r) : `<div class="rl-vs"><div><canvas class="rl-big" id="rvMe" width="128" height="208" aria-hidden="true"></canvas><b>${esc(me.n)}</b><small>${RANKS[me.ri].k}-Rank · Lv ${me.lv}</small>${me.pet ? `<img class="rl-pet" src="${petArt(me.pet.id, me.pet.f) || ''}" alt="">` : ''}</div>
       <span class="rl-vs-x">VS</span>
       <div><canvas class="rl-big" data-rv="${r.id}" width="128" height="208" aria-hidden="true"></canvas><b>${esc(r.n)}</b><small>${RANKS[r.ri].k}-Rank · Lv ${r.lv}</small>${r.pet ? `<img class="rl-pet" src="${petArt(r.pet.id, r.pet.f) || ''}" alt="">` : ''}</div></div>
     ${(d => d ? `<p class="rl-duo">🔥 <b>${d}-week streak together</b> · you both hit your goal ${d} week${d === 1 ? '' : 's'} in a row</p>` : `<p class="rl-duo off">Hit your weekly goal together to start a streak.</p>`)(duoStreak(r))}
@@ -4388,7 +4408,7 @@ function rvOpen(id){ const r = (S.rivals || {})[id] || (netFriends || []).find(f
     ${(r.tr || []).length ? `<span class="rl-sec">${esc(r.n)}'s trophies</span>${trophyShelf(r.tr, false)}` : ''}
     <div class="rl-cmp">${Object.keys(LIFTS).map(l => row(LIFTS[l], me.m[l], Math.round(inMyUnit(r.m[l], r.u)), ` ${S.unit}`)).join('')}
       ${row('Level', me.lv, r.lv)}${row('Medals', me.md, r.md)}${row('Week streak', me.st, r.st)}${row('Workouts', me.wk, r.wk)}</div>
-    <p class="fine">${live ? `Live card · updated ${agoText(r.at)}.` : `${esc(r.n)}'s card is from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. Ask for a new one to see their latest.`}</p>
+    <p class="fine">${live ? `Live card · updated ${agoText(r.at)}.` : `${esc(r.n)}'s card is from ${fromYmd(r.d).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. Ask for a new one to see their latest.`}</p>`}
     <div class="seg seg-wide rl-relseg" role="group" aria-label="${esc(r.n)} is your"><button type="button" data-act="rvRel" data-id="${r.id}" data-v="friend" data-stay="1" aria-pressed="${rel === 'friend'}">🤝 Friend</button><button type="button" data-act="rvRel" data-id="${r.id}" data-v="rival" data-stay="1" aria-pressed="${rel === 'rival'}">⚔️ Rival</button></div>
     <div class="story-foot"><button type="button" class="wk-link" data-act="${live ? 'netDel' : 'rvDel'}" data-id="${r.id}">Remove</button><button type="button" class="wk-link" data-act="rvClose">Close</button>${rel === 'rival' ? '<button type="button" class="btn btn-power btn-sm" data-act="rvNew">Challenge</button>' : '<button type="button" class="btn btn-power btn-sm" data-act="rvCheer">Cheer</button>'}</div>`);
   drawRival(document.getElementById('rvMe'), me); }
@@ -4642,7 +4662,7 @@ function rvAct(a, t){
   if (a === 'rvSdOk') return sdAnswer(t.dataset.id, true);
   if (a === 'rvSdNo') return sdAnswer(t.dataset.id, false);
   if (a === 'rvShare') rvShareCard(); else if (a === 'rvNew') rvNewChal(); else if (a === 'rvMake') rvMake(t.dataset.k, t.dataset.v);
-  else if (a === 'rvOpen') rvOpen(t.dataset.id); else if (a === 'rvClose') document.getElementById('rvDlg').close();
+  else if (a === 'rvOpen'){ rvView = 'card'; rvOpen(t.dataset.id); } else if (a === 'rvView'){ rvView = t.dataset.v; rvOpen(t.dataset.id); } else if (a === 'rvClose') document.getElementById('rvDlg').close();
   else if (a === 'rvAdd'){ const el = document.getElementById('rvCode'); if (el && takeCode(el.value)) el.value = ''; }
   else if (a === 'rvDel'){ const r = (S.rivals || {})[t.dataset.id]; if (!r) return; if (t.dataset.sure){ const R = {...S.rivals}; delete R[r.id]; S.rivals = R; save(); document.getElementById('rvDlg').close(); render(); toast(`${r.n} removed.`); }
     else { t.dataset.sure = 1; t.textContent = `Remove ${r.n}?`; } }

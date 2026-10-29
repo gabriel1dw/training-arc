@@ -993,6 +993,17 @@ span.fd-r{min-height:28px;cursor:default}
 /* Settings: grouped rows and switches */
 .ru-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .tcard-share{align-self:stretch}
+/* a friend's player card, inside their page */
+.fc-seg{flex:none}
+.fcard{flex:none}
+.fcard .tcard-art{cursor:default}
+.fcard .tcard-ovr,.fcard-pet,.fcard-prem{z-index:2}
+.fcard-pet{position:absolute;right:12px;bottom:10px;width:48px;height:48px;image-rendering:pixelated;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+.fcard-prem{position:absolute;right:10px;top:10px;padding:3px 8px;border-radius:7px;background:linear-gradient(135deg,#fff3b0,#e6ad22);color:#2a1a00;font-family:var(--label);font-weight:700;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+.fcard-nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.fcard-nums div{display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px;border-radius:10px;background:var(--surface-2);text-align:center}
+.fcard-nums b{font-family:var(--display);font-size:20px;line-height:1}
+.fcard-nums span{font-size:10.5px;line-height:1.15;color:var(--dim)}
 .st-h{margin:4px 0 -6px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .st-group{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;background:var(--surface-2);overflow:hidden}
 .st-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;padding:10px 14px;border-top:1px solid var(--line)}

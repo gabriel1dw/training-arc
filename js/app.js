@@ -3174,14 +3174,35 @@ function clearedBackfill(){
     const i = w * perWeek + d; if (i >= last) break; last = i; if (l.id && !clearedDay(p, w, d)) markCleared(p, w, d, l.id); }
 }
 var redoDay = null;   // "Do it again" on a finished day shows its sets once more
+// A finished workout: the badge, when, how much, and every exercise with what you did (Today and History both show it)
+const doneSets = st => st.length > 1 && st.every(s => s[0] === st[0][0] && s[1] === st[0][1]) ? `${st.length}×${st[0][1]}${st[0][0] > 0 ? ` @ ${fmt(st[0][0])}` : ''}` : st.map(([wt, r]) => wt > 0 ? `${fmt(wt)}×${r}` : `${r} reps`).join(', ');
+// The Grind a workout paid: saved on it since this was added; older ones are worked out from the sets, the full clear and the boss
+// (without new maxes, quests or pet bonuses, so they show as about)
+const doneGrind = l => l.coins != null ? {v:l.coins} : {v:Math.round((l.sets || 0) * COIN_SET * (XP_MULT[l.bossFight ? 'C' : l.rank] || 1)) + (l.full && !l.bossFight ? Math.round(COIN_FULL * (XP_MULT[l.rank] || 1)) : 0) + (l.boss || l.bossFight ? COIN_BOSS : 0), est:true};
+const doneVol = l => l.vol ? Math.round(l.unit && l.unit !== S.unit ? (S.unit === 'kg' ? l.vol / 2.20462 : l.vol * 2.20462) : l.vol) : 0;
+const doneBoxHTML = (cl, when) => { const g = doneGrind(cl), v = doneVol(cl);
+  return `<div class="stage-done"><span class="sd-badge">✓ Workout completed</span><span class="fine">${when || cl.date || cl.iso} · ${cl.sets} set${cl.sets === 1 ? '' : 's'}${cl.boss || cl.bossFight ? ' · boss defeated' : ''}</span>
+  <div class="sd-tiles"><div><b class="num">+${fmt(cl.xp || 0)}</b><small>XP</small></div><div><b class="num">${g.est ? '≈' : '+'}${fmt(g.v)}</b><small>Grind${cl.gems ? ` · +${cl.gems} Glory` : ''}</small></div>
+    <div><b class="num">${v ? fmt(v) : '–'}</b><small>${v ? `${S.unit} moved` : 'Bodyweight'}</small></div></div>
+  ${(cl.ex || []).length ? `<ul class="sd-ex">${cl.ex.map(x => `<li><span>${esc(x.name)}</span><b>${doneSets(x.sets || [])}</b></li>`).join('')}</ul>` : ''}</div>`; };
+// History: every workout you've finished, as the same card Today shows, newest first, by month
+var histShow = 12;
+function historyHTML(){ const L = S.log.filter(l => l.sets || l.bossFight), shown = L.slice(0, histShow); if (!L.length) return '<section class="panel"><p class="empty">Clear your first stage on the Today tab and it shows up here.</p></section>';
+  let month = ''; return shown.map(l => { const d = l.iso ? fromYmd(l.iso) : null, m = d ? d.toLocaleDateString(undefined, {month:'long', year:'numeric'}) : 'Earlier';
+    const head = m !== month ? `<h3 class="hist-month">${m}</h3>` : ''; month = m; const p = PROGRAMS.find(x => x.name === l.prog);
+    return `${head}<section class="stage hist-card">
+      <div class="stage-top">${l.rank ? `<span class="tag rank-${String(l.rank).toLowerCase()}">${esc(l.rank)}-Rank</span>` : ''}${l.boss || l.bossFight ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${p ? `${esc(pathOf(p).name)} · ` : ''}${esc(l.prog || 'Workout')}</span></div>
+      <h2 class="stage-title">${esc(l.day || 'Workout')}</h2>
+      ${l.week ? `<div class="stage-meta">Week ${l.week}${p && p.weekNames && p.weekNames[l.week - 1] ? `: ${esc(p.weekNames[l.week - 1])}` : ''}</div>` : ''}
+      ${doneBoxHTML(l, d ? d.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'}) : '')}</section>`; }).join('')
+    + (L.length > shown.length ? `<button type="button" class="btn btn-ghost hist-more" data-act="histMore">Show ${Math.min(12, L.length - shown.length)} more · ${L.length - shown.length} left</button>` : ''); }
 function viewToday(){
   deloadMissedCheck(); if (!S.clearedInit) clearedBackfill();
   const p = prog(), {w, d} = curPos(), wk = p.weeks[w], day = liveDay(p, w, d);
   const perWeek = wk.days.length, total = p.weeks.length * perWeek, idx = w * perWeek + d;
   const pips = Array.from({length:total}, (_, i) => `<span class="pip${i === idx ? ' cur' : i < idx || clearedDay(p, Math.floor(i / perWeek), i % perWeek) ? ' on' : ''}"></span>`).join('');
   const n = sessionSets(), key = `${p.id}|${w}|${d}`, cl = n || deloadOn() ? null : clearedDay(p, w, d), shut = cl && redoDay !== key;
-  const doneHTML = cl ? `<div class="stage-done"><span class="sd-badge">✓ Workout completed</span><span class="fine">${cl.date || cl.iso} · ${cl.sets} set${cl.sets === 1 ? '' : 's'} · +${fmt(cl.xp || 0)} XP${cl.boss ? ' · boss defeated' : ''}</span>
-      ${(cl.ex || []).length ? `<ul class="sd-ex">${cl.ex.map(x => `<li><span>${esc(x.name)}</span><b>${(st => st.length > 1 && st.every(s => s[0] === st[0][0] && s[1] === st[0][1]) ? `${st.length}×${st[0][1]}${st[0][0] > 0 ? ` @ ${fmt(st[0][0])}` : ''}` : st.map(([wt, r]) => wt > 0 ? `${fmt(wt)}×${r}` : `${r} reps`).join(', '))(x.sets || [])}</b></li>`).join('')}</ul>` : ''}</div>
+  const doneHTML = cl ? `${doneBoxHTML(cl)}
     <button class="btn btn-power wk-start" data-act="nextOpen">Go to your next workout ›</button><button type="button" class="wk-link boss-plain" data-act="redoDay">Do this workout again</button>` : '';
   let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + dxpHTML() + premBossHTML() + coachHTML() + fuelHTML() + nutTodayHTML() +restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
@@ -5769,7 +5790,8 @@ function bossWon(id, r, rematch){
   if (!rematch) shopExtra = [[`First win: ${bossTitle(boss)}`, GEM_BOSS]];
   const pay = shopPay({n:r.sets, total:0, rank:'C', bossDay:!rematch, oldXp:old}), payTxt = ` · +${fmt(pay.coins)} Grind${pay.gems ? ` · +${fmt(pay.gems)} Glory` : ''}`;
   S.log.unshift({date:today(), iso:todayIso(), prog:'Boss battle', path:prog().path, rank:rankFor(S.xp).k, day:bossTitle(boss), week:0,
-    sets:r.sets, total:r.sets, full:true, bossFight:id, vol:r.volume ? Math.round(r.volume) : undefined, unit:r.volume ? S.unit : undefined, xp:won, id:logId()});
+    sets:r.sets, total:r.sets, full:true, bossFight:id, vol:r.volume ? Math.round(r.volume) : undefined, unit:r.volume ? S.unit : undefined, xp:won, id:logId(),
+    coins:pay.coins, gems:pay.gems || undefined});
   feedPost('boss', {name:bossTitle(boss)});
   checkItems(); save(); render(); paintHeroes(); cheer(); buzz(PR_BUZZ);
   toast(rematch ? `${boss.name} beaten again · +${fmt(won)} XP${payTxt}` : `${boss.name} defeated! +${fmt(won)} XP${payTxt}${nb ? ` · ${nb.name} unlocked` : ' · every boss beaten'}`);
@@ -6437,16 +6459,58 @@ function nutCheckin(tries = 0){
   rvDlg(`<b class="rl-h">Weekly nutrition check-in</b>${T && T.perWk != null ? `<p class="fine">Trend: ${T.perWk > 0 ? '+' : ''}${fmt(Math.round(T.perWk * 10) / 10)} ${S.unit} a week.</p>` : ''}
     <p>${why}</p><div class="nut-kcal"><b class="num">${fmt(t.kcal)}</b><span>calories a day this week</span></div><p class="fine">Protein ${t.protein}g · carbs ${t.carbs}g · fat ${t.fat}g</p>
     <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="rvClose">Got it</button></div>`); render(); }
-// Food log: quick presets (one serving each) or your own entry; kept 14 days
-const FOODS = [['Chicken breast (6 oz)', 280, 52], ['Eggs (2)', 140, 12], ['Greek yogurt (1 cup)', 150, 20], ['Protein shake (1 scoop)', 120, 24], ['Rice (1 cup)', 205, 4], ['Oatmeal (1 cup)', 150, 5],
-  ['Banana', 105, 1], ['Apple', 95, 0], ['Peanut butter (2 tbsp)', 190, 8], ['Ground beef (6 oz)', 340, 38], ['Salmon (6 oz)', 350, 38], ['Tuna (1 can)', 120, 26], ['Bread (2 slices)', 160, 8],
-  ['Pasta (1 cup)', 220, 8], ['Potato', 160, 4], ['Milk (1 cup)', 150, 8], ['Cheese (1 oz)', 110, 7], ['Cottage cheese (1 cup)', 220, 26], ['Steak (8 oz)', 540, 62], ['Turkey sandwich', 380, 28],
-  ['Salad with chicken', 400, 35], ['Protein bar', 220, 20], ['Almonds (1 oz)', 165, 6], ['Burger', 550, 28], ['Pizza (2 slices)', 570, 24], ['Burrito', 650, 28], ['Takeout rice bowl', 700, 30],
-  ['Chips (1 bag)', 160, 2], ['Soda (1 can)', 140, 0], ['Coffee with cream', 60, 1]];
+// Food log. The food list: [name, category, serving, kcal, protein, carbs, fat] for one serving.
+const FOOD_CATS = [['all', 'All'], ['recent', 'Recent'], ['mine', 'My foods'], ['protein', 'Protein'], ['carbs', 'Carbs'], ['fruit', 'Fruit'], ['veg', 'Veg'], ['dairy', 'Dairy'], ['fats', 'Fats & extras'], ['snack', 'Snacks'], ['drink', 'Drinks'], ['meal', 'Fast food & meals']];
+const FOOD_DB = [
+  ['Chicken breast', 'protein', '4 oz cooked', 185, 35, 0, 4], ['Chicken thigh', 'protein', '4 oz cooked', 230, 28, 0, 13], ['Rotisserie chicken', 'protein', '¼ chicken', 300, 34, 0, 18],
+  ['Ground beef 90/10', 'protein', '4 oz cooked', 230, 27, 0, 13], ['Ground beef 80/20', 'protein', '4 oz cooked', 290, 25, 0, 21], ['Ground turkey 93%', 'protein', '4 oz cooked', 200, 24, 0, 11],
+  ['Sirloin steak', 'protein', '6 oz', 350, 52, 0, 15], ['Ribeye steak', 'protein', '8 oz', 620, 50, 0, 46], ['Pork chop', 'protein', '6 oz', 300, 44, 0, 13], ['Bacon', 'protein', '3 slices', 130, 9, 0, 10],
+  ['Deli turkey', 'protein', '3 oz', 90, 15, 3, 1], ['Deli ham', 'protein', '3 oz', 90, 15, 2, 3], ['Salmon', 'protein', '6 oz', 350, 38, 0, 21], ['Tuna, canned', 'protein', '1 can (5 oz)', 120, 26, 0, 1],
+  ['Shrimp', 'protein', '4 oz', 120, 24, 1, 2], ['Tilapia', 'protein', '6 oz', 220, 44, 0, 4], ['Cod', 'protein', '6 oz', 180, 39, 0, 2], ['Eggs', 'protein', '1 large', 72, 6, 0, 5],
+  ['Egg whites', 'protein', '½ cup', 60, 13, 1, 0], ['Tofu, firm', 'protein', '½ cup', 180, 20, 4, 11], ['Tempeh', 'protein', '3 oz', 160, 17, 8, 9], ['Black beans', 'protein', '½ cup', 115, 8, 20, 0],
+  ['Chickpeas', 'protein', '½ cup', 135, 7, 22, 2], ['Lentils', 'protein', '½ cup cooked', 115, 9, 20, 0], ['Whey protein', 'protein', '1 scoop', 120, 24, 3, 2], ['Protein bar', 'protein', '1 bar', 220, 20, 24, 8],
+  ['Beef jerky', 'protein', '1 oz', 80, 13, 4, 1],
+  ['White rice', 'carbs', '1 cup cooked', 205, 4, 45, 0], ['Brown rice', 'carbs', '1 cup cooked', 215, 5, 45, 2], ['Pasta', 'carbs', '1 cup cooked', 220, 8, 43, 1], ['Oatmeal', 'carbs', '1 cup cooked', 150, 5, 27, 3],
+  ['Oats, dry', 'carbs', '½ cup', 150, 5, 27, 3], ['Bread', 'carbs', '1 slice', 80, 4, 14, 1], ['Whole wheat bread', 'carbs', '1 slice', 80, 4, 13, 1], ['Bagel', 'carbs', '1 bagel', 280, 11, 55, 2],
+  ['English muffin', 'carbs', '1 muffin', 130, 5, 26, 1], ['Flour tortilla', 'carbs', '1 large', 210, 6, 35, 5], ['Corn tortillas', 'carbs', '2 small', 100, 3, 21, 1], ['Baked potato', 'carbs', '1 medium', 160, 4, 37, 0],
+  ['Sweet potato', 'carbs', '1 medium', 115, 2, 27, 0], ['Quinoa', 'carbs', '1 cup cooked', 220, 8, 39, 4], ['Cereal', 'carbs', '1 cup', 140, 3, 30, 1], ['Granola', 'carbs', '½ cup', 220, 5, 32, 8],
+  ['Pancakes', 'carbs', '3 medium', 270, 8, 45, 6], ['Waffle', 'carbs', '1 waffle', 220, 6, 25, 11], ['French fries', 'carbs', 'medium', 365, 4, 48, 17], ['Couscous', 'carbs', '1 cup cooked', 175, 6, 36, 0],
+  ['Banana', 'fruit', '1 medium', 105, 1, 27, 0], ['Apple', 'fruit', '1 medium', 95, 0, 25, 0], ['Orange', 'fruit', '1 orange', 62, 1, 15, 0], ['Strawberries', 'fruit', '1 cup', 50, 1, 12, 0],
+  ['Blueberries', 'fruit', '1 cup', 85, 1, 21, 0], ['Grapes', 'fruit', '1 cup', 105, 1, 27, 0], ['Pineapple', 'fruit', '1 cup', 80, 1, 22, 0], ['Mango', 'fruit', '1 cup', 100, 1, 25, 1],
+  ['Watermelon', 'fruit', '2 cups', 90, 2, 23, 0], ['Avocado', 'fruit', '½ avocado', 120, 2, 6, 11], ['Raisins', 'fruit', '¼ cup', 120, 1, 32, 0], ['Dates', 'fruit', '2 dates', 130, 1, 36, 0],
+  ['Broccoli', 'veg', '1 cup', 55, 4, 11, 1], ['Spinach', 'veg', '2 cups raw', 14, 2, 2, 0], ['Side salad', 'veg', '2 cups', 20, 1, 4, 0], ['Green beans', 'veg', '1 cup', 44, 2, 10, 0],
+  ['Carrots', 'veg', '1 cup', 50, 1, 12, 0], ['Corn', 'veg', '1 cup', 130, 5, 29, 2], ['Peas', 'veg', '1 cup', 120, 8, 21, 1], ['Peppers and onions', 'veg', '1 cup', 45, 1, 10, 0],
+  ['Mixed veggies', 'veg', '1 cup', 60, 3, 12, 0], ['Asparagus', 'veg', '1 cup', 40, 4, 7, 0], ['Mushrooms', 'veg', '1 cup', 20, 3, 3, 0],
+  ['Milk, 2%', 'dairy', '1 cup', 120, 8, 12, 5], ['Whole milk', 'dairy', '1 cup', 150, 8, 12, 8], ['Skim milk', 'dairy', '1 cup', 85, 8, 12, 0], ['Almond milk', 'dairy', '1 cup', 35, 1, 1, 3],
+  ['Greek yogurt, plain', 'dairy', '1 cup', 130, 23, 9, 0], ['Yogurt, flavored', 'dairy', '1 cup', 200, 9, 33, 3], ['Cottage cheese', 'dairy', '1 cup', 220, 26, 8, 9], ['Cheddar cheese', 'dairy', '1 oz', 115, 7, 0, 9],
+  ['Mozzarella', 'dairy', '1 oz', 85, 6, 1, 6], ['String cheese', 'dairy', '1 stick', 80, 7, 1, 6], ['Cream cheese', 'dairy', '2 tbsp', 100, 2, 1, 10], ['Ice cream', 'dairy', '½ cup', 140, 2, 16, 7],
+  ['Peanut butter', 'fats', '2 tbsp', 190, 8, 7, 16], ['Almonds', 'fats', '1 oz', 165, 6, 6, 14], ['Walnuts', 'fats', '1 oz', 185, 4, 4, 18], ['Cashews', 'fats', '1 oz', 157, 5, 9, 12],
+  ['Olive oil', 'fats', '1 tbsp', 120, 0, 0, 14], ['Butter', 'fats', '1 tbsp', 100, 0, 0, 11], ['Mayonnaise', 'fats', '1 tbsp', 95, 0, 0, 10], ['Ranch dressing', 'fats', '2 tbsp', 130, 0, 2, 13],
+  ['Hummus', 'fats', '¼ cup', 100, 4, 8, 6], ['Ketchup', 'fats', '1 tbsp', 20, 0, 5, 0], ['Honey', 'fats', '1 tbsp', 64, 0, 17, 0], ['Jam', 'fats', '1 tbsp', 50, 0, 13, 0],
+  ['Chips', 'snack', '1 oz', 155, 2, 15, 10], ['Pretzels', 'snack', '1 oz', 110, 3, 23, 1], ['Popcorn', 'snack', '3 cups', 95, 3, 19, 1], ['Crackers', 'snack', '5 crackers', 80, 1, 10, 4],
+  ['Granola bar', 'snack', '1 bar', 190, 3, 29, 7], ['Rice cakes', 'snack', '2 cakes', 70, 2, 15, 0], ['Trail mix', 'snack', '¼ cup', 175, 5, 16, 11], ['Dark chocolate', 'snack', '1 oz', 170, 2, 13, 12],
+  ['Cookies', 'snack', '2 cookies', 160, 2, 22, 7], ['Donut', 'snack', '1 donut', 260, 3, 31, 14], ['Muffin', 'snack', '1 muffin', 420, 6, 60, 17],
+  ['Coffee, black', 'drink', '1 cup', 2, 0, 0, 0], ['Coffee with cream and sugar', 'drink', '1 cup', 70, 1, 8, 4], ['Latte', 'drink', '16 oz', 190, 13, 19, 7], ['Orange juice', 'drink', '1 cup', 110, 2, 26, 0],
+  ['Soda', 'drink', '1 can', 140, 0, 39, 0], ['Diet soda', 'drink', '1 can', 0, 0, 0, 0], ['Sports drink', 'drink', '20 oz', 140, 0, 34, 0], ['Energy drink', 'drink', '1 can', 110, 0, 28, 0],
+  ['Protein shake with milk', 'drink', '1 shake', 240, 32, 15, 6], ['Smoothie', 'drink', '16 oz', 300, 6, 60, 3], ['Beer', 'drink', '12 oz', 150, 2, 13, 0], ['Wine', 'drink', '5 oz', 125, 0, 4, 0],
+  ['Burger', 'meal', '1 burger', 550, 28, 40, 30], ['Double cheeseburger', 'meal', '1 burger', 750, 42, 40, 45], ['Chicken sandwich', 'meal', '1 sandwich', 500, 30, 45, 22], ['Chicken nuggets', 'meal', '10 pieces', 430, 24, 26, 26],
+  ['Pizza', 'meal', '1 slice', 285, 12, 36, 10], ['Burrito', 'meal', '1 burrito', 650, 28, 75, 25], ['Burrito bowl', 'meal', '1 bowl', 650, 40, 60, 25], ['Tacos', 'meal', '2 tacos', 340, 18, 30, 16],
+  ['Hot dog', 'meal', '1 hot dog', 290, 10, 24, 17], ['Sub sandwich', 'meal', '6 inch', 400, 22, 46, 13], ['Turkey sandwich', 'meal', '1 sandwich', 380, 28, 40, 11], ['Grilled chicken salad', 'meal', '1 salad', 400, 35, 15, 22],
+  ['Chicken Caesar salad', 'meal', '1 salad', 470, 32, 18, 30], ['Chicken and rice bowl', 'meal', '1 bowl', 650, 45, 75, 15], ['Fried rice', 'meal', '1 cup', 240, 6, 34, 9], ['Pad thai', 'meal', '1 plate', 680, 25, 85, 26],
+  ['Sushi roll', 'meal', '8 pieces', 300, 9, 45, 8], ['Ramen', 'meal', '1 bowl', 450, 15, 60, 16], ['Mac and cheese', 'meal', '1 cup', 350, 13, 40, 15], ['Spaghetti with meat sauce', 'meal', '1 plate', 550, 25, 70, 18],
+  ['Chili', 'meal', '1 cup', 260, 20, 25, 9], ['Chicken noodle soup', 'meal', '1 cup', 90, 6, 10, 3], ['Omelette, 3 eggs', 'meal', '1 omelette', 300, 20, 2, 23], ['Breakfast sandwich', 'meal', '1 sandwich', 400, 18, 30, 22],
+  ['Quesadilla', 'meal', '1 quesadilla', 500, 24, 38, 28], ['Chicken wings', 'meal', '6 wings', 480, 36, 0, 36]];
+const FOOD_MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+const mealNow = () => { const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 15 ? 'Lunch' : h < 21 ? 'Dinner' : 'Snack'; };
+// a logged food: its name, serving, how many servings, which meal, and one serving's [kcal, protein, carbs, fat]; k p c f are the totals
+// (older entries only have n, k and p: they read as one serving with no carbs or fat counted)
+const foodBase = x => x.b || [x.k || 0, x.p || 0, x.c || 0, x.f || 0];
 const foodDay = (iso = todayIso()) => (S.food || {})[iso] || [];
-const foodSum = (iso = todayIso()) => foodDay(iso).reduce((a, x) => ({k:a.k + x.k, p:a.p + x.p}), {k:0, p:0});
-function foodAdd(n, k, p){ const t = todayIso(), F = S.food = S.food || {}; F[t] = [...(F[t] || []), {n:String(n).slice(0, 40), k:Math.max(0, Math.round(k)), p:Math.max(0, Math.round(p))}];
-  for (const d of Object.keys(F)) if (d < addDays(t, -14)) delete F[d]; nutRewards(); }
+const foodSum = (iso = todayIso()) => foodDay(iso).reduce((a, x) => ({k:a.k + (x.k || 0), p:a.p + (x.p || 0), c:a.c + (x.c || 0), f:a.f + (x.f || 0)}), {k:0, p:0, c:0, f:0});
+function foodEntry({n, sv = '', q = 1, m = mealNow(), b}){ q = Math.max(.05, Math.min(50, +q || 1)); const t = b.map(v => Math.max(0, Math.round((+v || 0) * q)));
+  return {n:String(n || 'Food').slice(0, 40), sv:String(sv).slice(0, 24), q:Math.round(q * 100) / 100, m:FOOD_MEALS.includes(m) ? m : mealNow(), b:b.map(v => Math.max(0, +v || 0)), k:t[0], p:t[1], c:t[2], f:t[3]}; }
+function foodLog(iso, e){ const F = S.food = S.food || {}; F[iso] = [...(F[iso] || []), foodEntry(e)];
+  for (const d of Object.keys(F)) if (d < addDays(todayIso(), -14)) delete F[d]; if (iso === todayIso()) nutRewards(); }
 // What you've eaten lately, newest first and each food once: one tap to log it again
 function foodRecent(n = 8){ const F = S.food || {}, seen = new Set(), out = [];
   for (const d of Object.keys(F).sort().reverse()) for (const x of [...F[d]].reverse()){ const key = x.n.toLowerCase(); if (seen.has(key)) continue; seen.add(key); out.push(x); if (out.length >= n) return out; }
@@ -6492,14 +6556,95 @@ const qtyText = (q, u) => { const w = Math.floor(q), fr = q - w, frs = fr >= .74
 const SUPPS = [['Creatine', 'The most proven supplement for strength. 3–5 g a day, any time, every day. Safe for healthy people.'], ['Protein powder', 'Just food in powder form. Handy when you can\'t hit protein from meals.'],
   ['Caffeine', 'Boosts training performance. A coffee or two before training is plenty; skip it late in the day so you sleep well.'], ['Vitamin D', 'Worth it if you get little sun. Many people are low in winter.'],
   ['Fish oil', 'Helpful if you rarely eat fish. Not essential otherwise.'], ['Skip', 'Fat burners, testosterone boosters and BCAAs (if you already eat enough protein). Mostly marketing.']];
-var foodOpen = false, groceryOpen = false;
+var groceryOpen = false, foodIso = null;   // foodIso: the day the food log shows (null = today)
+const dayLabel = iso => iso === todayIso() ? 'Today' : iso === addDays(todayIso(), -1) ? 'Yesterday' : fromYmd(iso).toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'});
+const servText = x => `${x.q !== 1 ? `${qtyText(x.q, '')} × ` : ''}${x.sv || 'serving'}`;
+// the day's food, meal by meal; tap anything to change it
+function foodMealsHTML(iso){ const day = foodDay(iso); if (!day.length) return `<p class="fine">Nothing logged ${iso === todayIso() ? 'yet today' : 'this day'}.</p>`;
+  return FOOD_MEALS.map(m => { const its = day.map((x, i) => [x, i]).filter(([x]) => (x.m || 'Snack') === m); if (!its.length) return '';
+    return `<div class="food-meal"><div class="row-between"><b>${m}</b><small class="num">${fmt(its.reduce((a, [x]) => a + x.k, 0))} kcal</small></div>
+      ${its.map(([x, i]) => `<button type="button" class="food-row" data-act="foodEdit" data-i="${i}"><span><b>${esc(x.n)}</b><small>${esc(servText(x))}</small></span><small class="num">${x.k} kcal · ${x.p}g P</small><span aria-hidden="true">›</span></button>`).join('')}</div>`; }).join(''); }
+// ---------- the food sheet: find a food, set how much, log it; or edit something already logged; or make your own ----------
+let FS = null;   // {view:'find'|'item'|'make', q, cat, iso, item:{n, sv, q, m, b}, edit:index|null, list:[]}
+const foodMine = () => S.myFoods || [];
+function foodResults(){ const q = FS.q.trim().toLowerCase(), all = FOOD_DB.map(([n, c, sv, ...b]) => ({n, c, sv, b}));
+  let L = FS.cat === 'recent' ? foodRecent(40).map(x => ({n:x.n, sv:x.sv || 'serving', b:foodBase(x), c:'recent'}))
+    : FS.cat === 'mine' ? foodMine().map((x, i) => ({...x, c:'mine', mi:i})) : FS.cat === 'all' ? [...foodMine().map((x, i) => ({...x, c:'mine', mi:i})), ...all] : all.filter(x => x.c === FS.cat);
+  if (q) L = L.filter(x => x.n.toLowerCase().includes(q)).sort((a, b) => a.n.toLowerCase().indexOf(q) - b.n.toLowerCase().indexOf(q));
+  return FS.list = L.slice(0, 80); }
+function foodListHTML(){ const L = foodResults();
+  return L.length ? L.map((x, i) => `<button type="button" class="fs-item" data-act="fsPick" data-i="${i}"><span><b>${esc(x.n)}</b><small>${esc(x.sv)}${x.c === 'mine' ? ' · yours' : ''}</small></span><small class="num">${Math.round(x.b[0])} kcal<br>${Math.round(x.b[1])}g P</small></button>`).join('')
+    : `<p class="fine">No match${FS.q ? ` for "${esc(FS.q)}"` : ''}. <button type="button" class="wk-link" data-act="fsMake">Make it a food</button></p>`; }
+function foodSheet(){ const v = FS.view, it = FS.item, mealSeg = `<div class="seg seg-wide fs-meals" role="group" aria-label="Meal">${FOOD_MEALS.map(m => `<button type="button" data-act="fsMeal" data-v="${m}" aria-pressed="${it && it.m === m}">${m}</button>`).join('')}</div>`;
+  const nums = (lbl, id, val, unit) => `<label class="fs-num"><span>${lbl}</span><input id="${id}" type="number" inputmode="decimal" min="0" step="any" value="${Math.round(val * 10) / 10}"><small>${unit}</small></label>`;
+  let body;
+  if (v === 'find') body = `<b class="rl-h">Log food</b><p class="fine">${dayLabel(FS.iso)} · search, or browse by kind. Tap a food to set how much.</p>
+    <input id="fsQ" class="ac-in" type="search" placeholder="Search foods" value="${esc(FS.q)}" aria-label="Search foods" autocomplete="off">
+    <div class="fs-cats" role="group" aria-label="Kind of food">${FOOD_CATS.map(([k, l]) => `<button type="button" class="chip-btn${FS.cat === k ? ' on' : ''}" data-act="fsCat" data-v="${k}" aria-pressed="${FS.cat === k}">${l}</button>`).join('')}</div>
+    <div class="fs-list" id="fsList">${foodListHTML()}</div>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Close</button><button type="button" class="btn btn-ghost btn-sm" data-act="fsMake">+ Make a food</button></div>`;
+  else if (v === 'item'){ const tot = it.b.map(x => Math.round(x * it.q));
+    body = `<div class="row-between"><button type="button" class="wk-link" data-act="${FS.edit == null ? 'fsBack' : 'rvClose'}">‹ ${FS.edit == null ? 'Foods' : 'Close'}</button><span class="fine">${dayLabel(FS.iso)}</span></div>
+    <input id="fsN" class="ac-in fs-name" type="text" maxlength="40" value="${esc(it.n)}" aria-label="Food name">
+    <span class="rl-sec">How much</span>
+    <div class="fs-qty"><button type="button" class="icon-btn" data-act="fsQty" data-v="-0.25" aria-label="Less">−</button><input id="fsQn" type="number" inputmode="decimal" min="0.05" step="0.25" value="${it.q}" aria-label="Servings"><button type="button" class="icon-btn" data-act="fsQty" data-v="0.25" aria-label="More">+</button>
+      <span class="fs-sv">× <input id="fsSv" type="text" maxlength="24" value="${esc(it.sv)}" aria-label="Serving size"></span></div>
+    <div class="fs-quick">${[.5, 1, 1.5, 2, 3].map(q => `<button type="button" class="chip-btn${it.q === q ? ' on' : ''}" data-act="fsQtySet" data-v="${q}">${qtyText(q, '')}</button>`).join('')}</div>
+    <div class="fs-total" id="fsTot"><div><b class="num">${tot[0]}</b><small>kcal</small></div><div><b class="num">${tot[1]}g</b><small>protein</small></div><div><b class="num">${tot[2]}g</b><small>carbs</small></div><div><b class="num">${tot[3]}g</b><small>fat</small></div></div>
+    <span class="rl-sec">Meal</span>${mealSeg}
+    ${it.mi != null ? '<button type="button" class="wk-link" data-act="fsMakeEdit">Edit this food in My foods</button>' : ''}
+    <details class="fs-edit"><summary>Nutrition for one serving</summary><div class="fs-nums">${nums('Calories', 'fsK', it.b[0], 'kcal')}${nums('Protein', 'fsP', it.b[1], 'g')}${nums('Carbs', 'fsC', it.b[2], 'g')}${nums('Fat', 'fsF', it.b[3], 'g')}</div></details>
+    <div class="story-foot">${FS.edit != null ? '<button type="button" class="wk-link fs-del" data-act="fsDel">Delete</button>' : '<span></span>'}<button type="button" class="btn btn-power btn-sm" data-act="fsSave">${FS.edit != null ? 'Save' : 'Log it'}</button></div>`; }
+  else body = `<div class="row-between"><button type="button" class="wk-link" data-act="fsBack">‹ Foods</button><span class="fine">Saved to My foods</span></div>
+    <b class="rl-h">Make a food</b><p class="fine">Copy the numbers from the label. It's saved to My foods so it's one tap next time.</p>
+    <input id="fsN" class="ac-in" type="text" maxlength="40" placeholder="Name, e.g. Mom's lasagna" value="${esc(it.n)}" aria-label="Food name">
+    <input id="fsSv" class="ac-in" type="text" maxlength="24" placeholder="Serving, e.g. 1 plate" value="${esc(it.sv)}" aria-label="Serving size">
+    <div class="fs-nums">${nums('Calories', 'fsK', it.b[0], 'kcal')}${nums('Protein', 'fsP', it.b[1], 'g')}${nums('Carbs', 'fsC', it.b[2], 'g')}${nums('Fat', 'fsF', it.b[3], 'g')}</div>
+    ${it.mi != null ? '<button type="button" class="wk-link fs-del" data-act="fsMyDel">Remove from My foods</button>' : ''}
+    <div class="story-foot"><button type="button" class="wk-link" data-act="fsBack">Cancel</button><button type="button" class="btn btn-ghost btn-sm" data-act="fsMakeSave" data-v="0">Save</button><button type="button" class="btn btn-power btn-sm" data-act="fsMakeSave" data-v="1">Save and log</button></div>`;
+  return body; }
+// what's typed in the sheet, read back before anything re-draws it
+function fsRead(){ const it = FS.item; if (!it) return; const g = id => document.getElementById(id), num = id => { const e = g(id); return e && e.value !== '' ? Math.max(0, +e.value || 0) : null; };
+  if (g('fsN')) it.n = g('fsN').value.trim() || it.n; if (g('fsSv')) it.sv = g('fsSv').value.trim(); const q = num('fsQn'); if (q) it.q = Math.min(50, q);
+  ['fsK', 'fsP', 'fsC', 'fsF'].forEach((id, i) => { const v = num(id); if (v != null) it.b[i] = v; }); }
+function fsShow(focus){ rvDlg(foodSheet()); const d = document.querySelector('#rvDlg .pc-card'); if (d){ d.classList.add('fs-card'); d.classList.toggle('fs-find', FS.view === 'find'); }
+  const q = document.getElementById('fsQ'); if (q){ q.oninput = () => { FS.q = q.value; document.getElementById('fsList').innerHTML = foodListHTML(); }; if (focus) setTimeout(() => q.focus({preventScroll:true}), 60); }
+  // live totals as the amount or the numbers change
+  const tot = () => { if (FS.view !== 'item') return; fsRead(); const el = document.getElementById('fsTot'); if (!el) return; const t = FS.item.b.map(x => Math.round(x * FS.item.q));
+    el.querySelectorAll('b').forEach((b, i) => b.textContent = i ? `${t[i]}g` : t[i]); };
+  ['fsQn', 'fsK', 'fsP', 'fsC', 'fsF'].forEach(id => { const e = document.getElementById(id); if (e) e.oninput = tot; }); }
+function foodOpenSheet(meal){ FS = {view:'find', q:'', cat:'all', iso:foodIso || todayIso(), item:null, edit:null, meal:meal || mealNow(), list:[]}; fsShow(true); }
+function foodEditSheet(i){ const x = foodDay(foodIso || todayIso())[i]; if (!x) return;
+  FS = {view:'item', q:'', cat:'all', iso:foodIso || todayIso(), edit:i, item:{n:x.n, sv:x.sv || 'serving', q:x.q || 1, m:x.m || 'Snack', b:[...foodBase(x)]}, list:[]}; fsShow(); }
+function fsAct(a, t){ if (!FS) return false;
+  if (a === 'fsCat'){ FS.cat = t.dataset.v; fsShow(); }
+  else if (a === 'fsPick'){ const x = FS.list[+t.dataset.i]; if (!x) return true; FS.view = 'item'; FS.item = {n:x.n, sv:x.sv, q:1, m:FS.meal, b:[...x.b], mi:x.mi}; fsShow(); }
+  else if (a === 'fsMakeEdit'){ fsRead(); FS.view = 'make'; FS.item.q = 1; fsShow(); }
+  else if (a === 'fsBack'){ FS.view = 'find'; FS.item = null; fsShow(); }
+  else if (a === 'fsQty'){ fsRead(); FS.item.q = Math.max(.25, Math.round((FS.item.q + +t.dataset.v) * 4) / 4); fsShow(); }
+  else if (a === 'fsQtySet'){ fsRead(); FS.item.q = +t.dataset.v; fsShow(); }
+  else if (a === 'fsMeal'){ fsRead(); FS.item.m = t.dataset.v; fsShow(); }
+  else if (a === 'fsSave'){ fsRead(); const F = S.food = S.food || {};
+    if (FS.edit != null){ const day = F[FS.iso] || []; day[FS.edit] = foodEntry(FS.item); F[FS.iso] = day; if (FS.iso === todayIso()) nutRewards(); toast(`${FS.item.n} updated.`); }
+    else { foodLog(FS.iso, FS.item); toast(`Logged ${FS.item.n}.`); buzz(10); }
+    save(); document.getElementById('rvDlg').close(); FS = null; render(); }
+  else if (a === 'fsDel'){ const day = (S.food || {})[FS.iso]; if (day){ const [x] = day.splice(FS.edit, 1); toast(`Removed ${x ? x.n : 'it'}.`); } save(); document.getElementById('rvDlg').close(); FS = null; render(); }
+  else if (a === 'fsMake'){ const pre = FS.q.trim(); FS.view = 'make'; FS.item = {n:pre, sv:'1 serving', q:1, m:FS.meal, b:[0, 0, 0, 0]}; fsShow(); }
+  else if (a === 'fsMakeSave'){ fsRead(); const it = FS.item; if (!it.n){ toast('Give it a name.'); return true; }
+    const mine = S.myFoods = [...foodMine()], rec = {n:it.n.slice(0, 40), sv:it.sv || '1 serving', b:it.b.map(v => Math.round(v * 10) / 10)};
+    const at = it.mi != null ? it.mi : mine.findIndex(x => x.n.toLowerCase() === rec.n.toLowerCase()); if (at >= 0) mine[at] = rec; else mine.unshift(rec); S.myFoods = mine.slice(0, 100);
+    if (t.dataset.v === '1'){ foodLog(FS.iso, {...rec, q:1, m:it.m}); save(); document.getElementById('rvDlg').close(); FS = null; render(); toast(`Saved and logged ${rec.n}.`); }
+    else { save(); FS.view = 'find'; FS.cat = 'mine'; FS.item = null; fsShow(); toast(`${rec.n} saved to My foods.`); } }
+  else if (a === 'fsMyDel'){ const mine = [...foodMine()]; mine.splice(FS.item.mi, 1); S.myFoods = mine; save(); FS.view = 'find'; FS.item = null; fsShow(); }
+  else return false;
+  return true; }
 function nutritionHTML(T){
   if (!S.bw && !isPremium()) return '';
   if (!isPremium()) return `<div class="nut locked"><div class="row-between"><span class="eyebrow">Nutrition</span><span class="prem">Premium</span></div>
     <p class="fine">Your daily calories and protein, carbs and fat for ${({lose:'losing', gain:'gaining', keep:'maintaining'})[S.bwGoal || 'keep']} weight, a food log with protein and water streaks, meal plans scaled to you, a weekly check-in and training-day fueling tips.</p>
     <div class="nut-blur" aria-hidden="true"><b>2,350</b><span>kcal</span><b>180g</b><span>protein</span></div><button type="button" class="btn btn-ghost btn-sm" data-act="premiumHub">See what's in Premium</button></div>`;
   const t = nutGoals(T), goal = S.bwGoal || 'keep', tips = NUT_TIPS[goal], di = dayNum(todayIso());
-  const sum = foodSum(), wtr = waterDay(), ring = (v, max, label, unit) => { const pc = Math.min(1, v / max), C = 2 * Math.PI * 26;
+  const fiso = foodIso || todayIso(), isToday = fiso === todayIso(), sum = foodSum(fiso), wtr = waterDay(fiso), ring =(v, max, label, unit) => { const pc = Math.min(1, v / max), C = 2 * Math.PI * 26;
     return `<div class="ring"><svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" class="rb"/><circle cx="32" cy="32" r="26" class="rf${v > max * 1.1 ? ' over' : ''}" stroke-dasharray="${(C * pc).toFixed(1)} ${C.toFixed(1)}"/></svg><b class="num">${fmt(Math.round(v))}</b><small>of ${fmt(max)}${unit} ${label}</small></div>`; };
   const plan = mealPlan(t.kcal), ps = nutStreak(proteinHit), ws = nutStreak(waterHit);
   const groceries = (() => { const g = {}; for (const m of plan) for (const x of m.items){ const k = `${x.n}|${x.u}`; g[k] = (g[k] || 0) + x.q * 7; } return Object.entries(g).map(([k, q]) => { const [n, u] = k.split('|'); return `<li><span>${n}</span><b>${qtyText(Math.round(q * 4) / 4, u)}</b></li>`; }).join(''); })();
@@ -6508,16 +6653,16 @@ function nutritionHTML(T){
     <div class="nut-kcal"><b class="num">${fmt(t.kcal)}</b><span>calories a day${t.est ? ' (estimate)' : ''}</span></div>
     <div class="nut-mac"><div><b class="num">${t.protein}g</b><small>Protein</small></div><div><b class="num">${t.carbs}g</b><small>Carbs</small></div><div><b class="num">${t.fat}g</b><small>Fat</small></div></div>
     <p class="fine">${goal === 'keep' ? `Your maintenance is about ${fmt(t.tdee)}.` : `About ${fmt(Math.abs(t.kcal - t.tdee))} ${t.kcal < t.tdee ? 'under' : 'over'} your maintenance (${fmt(t.tdee)}).`} ${t.why}</p>
-    <span class="rl-sec">Today</span>
+    <div class="food-dayhead"><button type="button" class="icon-btn" data-act="foodDay" data-v="-1" aria-label="Day before"${fiso <= addDays(todayIso(), -6) ? ' disabled' : ''}>‹</button>
+      <span class="rl-sec">${dayLabel(fiso)}</span><button type="button" class="icon-btn" data-act="foodDay" data-v="1" aria-label="Day after"${isToday ? ' disabled' : ''}>›</button></div>
     <div class="nut-rings">${ring(sum.k, t.kcal, 'kcal', '')}${ring(sum.p, t.protein, 'protein', 'g')}
       <div class="ring water"><div class="w-cups" aria-label="${wtr} of 8 glasses of water">${Array.from({length:8}, (_, i) => `<i class="${i < wtr ? 'on' : ''}"></i>`).join('')}</div><b class="num">${wtr}/8</b><small>glasses of water</small>
-        <span class="w-btns"><button type="button" class="icon-btn" data-act="water" data-v="-1" aria-label="One glass less">−</button><button type="button" class="icon-btn" data-act="water" data-v="1" aria-label="One more glass">+</button></span></div></div>
-    <p class="fine nut-streaks">🔥 Protein streak <b>${ps}</b> day${ps === 1 ? '' : 's'} · 💧 Water streak <b>${ws}</b> day${ws === 1 ? '' : 's'} · each pays XP and Grind</p>
-    <div class="food-today">${foodDay().map((x, i) => `<div class="food-row"><span>${esc(x.n)}</span><small>${x.k} kcal · ${x.p}g</small><button type="button" class="icon-btn" data-act="foodDel" data-i="${i}" aria-label="Remove ${esc(x.n)}">×</button></div>`).join('') || '<p class="fine">Nothing logged yet today.</p>'}</div>
-    <div class="food-acts"><button type="button" class="btn ${foodOpen ? 'btn-ghost' : 'btn-power'} btn-sm" data-act="foodOpen">${foodOpen ? 'Close' : '+ Log food'}</button>${(S.food || {})[addDays(todayIso(), -1)] && !foodDay().length ? '<button type="button" class="btn btn-ghost btn-sm" data-act="foodCopy">Copy yesterday</button>' : ''}</div>
-    ${(rc => rc.length ? `<div class="food-recent"><span class="fine">Recent</span>${rc.map((x, i) => `<button type="button" class="chip-btn" data-act="foodAgain" data-i="${i}">${esc(x.n)}<small>${x.k}</small></button>`).join('')}</div>` : '')(foodRecent())}
-    ${foodOpen ? `<div class="food-pick"><div class="food-presets">${FOODS.map(([n, k, p], i) => `<button type="button" class="opt" data-act="foodPreset" data-i="${i}">${n}<small>${k} kcal · ${p}g</small></button>`).join('')}</div>
-      <div class="food-custom"><input id="foodN" type="text" maxlength="40" placeholder="Something else" aria-label="Food name"><input id="foodK" type="number" inputmode="numeric" placeholder="kcal" aria-label="Calories"><input id="foodP" type="number" inputmode="numeric" placeholder="protein" aria-label="Protein grams"><button type="button" class="btn btn-power btn-sm" data-act="foodCustom">Add</button></div></div>` : ''}
+        ${isToday ? '<span class="w-btns"><button type="button" class="icon-btn" data-act="water" data-v="-1" aria-label="One glass less">−</button><button type="button" class="icon-btn" data-act="water" data-v="1" aria-label="One more glass">+</button></span>' : ''}</div></div>
+    <div class="food-macros">${[['Carbs', sum.c, t.carbs, '#4cc3ff'], ['Fat', sum.f, t.fat, '#ffb347']].map(([l, v, m, col]) => `<div><span>${l} <b class="num">${fmt(Math.round(v))}</b> / ${m}g</span><i class="bar" role="img" aria-label="${l} ${Math.round(v)} of ${m} grams"><i style="width:${Math.min(100, v / m * 100)}%;background:${col}"></i></i></div>`).join('')}</div>
+    ${isToday ? `<p class="fine nut-streaks">🔥 Protein streak <b>${ps}</b> day${ps === 1 ? '' : 's'} · 💧 Water streak <b>${ws}</b> day${ws === 1 ? '' : 's'} · each pays XP and Grind</p>` : ''}
+    <div class="food-today">${foodMealsHTML(fiso)}</div>
+    <div class="food-acts"><button type="button" class="btn btn-power btn-sm" data-act="foodOpen">+ Log food</button>${isToday && (S.food || {})[addDays(todayIso(), -1)] && !foodDay().length ? '<button type="button" class="btn btn-ghost btn-sm" data-act="foodCopy">Copy yesterday</button>' : ''}</div>
+    ${isToday ? (rc => rc.length ? `<div class="food-recent"><span class="fine">Again</span>${rc.map((x, i) => `<button type="button" class="chip-btn" data-act="foodAgain" data-i="${i}">${esc(x.n)}<small>${x.k}</small></button>`).join('')}</div>` : '')(foodRecent(6)) : ''}
     ${foodWeekHTML(t)}
     <span class="rl-sec">Meal plan for your ${fmt(t.kcal)} calories</span>
     <div class="meals">${plan.map(m => `<div class="meal"><div class="row-between"><b>${m.slot} · ${m.name}</b><button type="button" class="wk-link" data-act="mealSwap" data-v="${m.slot}">Swap</button></div>
@@ -6574,22 +6719,80 @@ function muscleHeat(days = 7){ const from = addDays(todayIso(), -days + 1), out 
   for (const l of S.log) if (l.iso && l.iso >= from) for (const x of l.ex || []) for (const [k, , re] of HEAT) if (re.test(x.name)) out[k] += (x.sets || []).length;
   return out; }
 const heatCol = n => !n ? 'var(--heat-0)' : n < 5 ? '#4a6fb0' : n < 10 ? '#3da5c9' : n <= 20 ? '#3ddc97' : '#ff6a4d';
-function heatSVG(h){ const P = (k, d) => `<path class="hm-m" d="${d}" fill="${heatCol(h[k])}"><title>${HEAT.find(x => x[0] === k)[1]}: ${h[k]} sets</title></path>`, E = (k, cx, cy, rx, ry) => P(k, `M${cx - rx} ${cy}a${rx} ${ry} 0 1 0 ${rx * 2} 0a${rx} ${ry} 0 1 0 ${-rx * 2} 0`);
-  // a body outline under each figure, then the muscles laid on it: front on the left, back on the right
-  const body = cx => `<g class="hm-body"><circle cx="${cx}" cy="17" r="10"/><rect x="${cx - 5}" y="25" width="10" height="8" rx="3"/><path d="M${cx - 20} 36q-6 2-7 10l-4 40q-1 6 3 8l4-1 4-30 2 24h36l2-24 4 30 4 1q4-2 3-8l-4-40q-1-8-7-10z"/><path d="M${cx - 15} 96l-3 46 2 40h8l3-38 3-48zM${cx + 15} 96l3 46-2 40h-8l-3-38-3-48z"/></g>`;
-  // mirrored pairs: a path drawn for the left side and flipped about the figure's center for the right
-  const M = (k, cx, d) => P(k, d) + `<g transform="translate(${cx * 2} 0) scale(-1 1)">${P(k, d)}</g>`;
-  const abs = [0, 1, 2].map(r => M('core', 50, `M43.5 ${63 + r * 9}h5.5v7.5h-5.5q-1.5 0-1.5-1.5v-4.5q0-1.5 1.5-1.5z`)).join('');
-  return `<svg class="hm-svg" viewBox="0 0 200 190" role="img" aria-label="Muscles trained in the last 7 days">${body(50)}${body(150)}
-    ${M('shoulders', 50, 'M30 49q-4-10 3-13q6-2 9 2q-5 3-6 9z')}${M('chest', 50, 'M49 42h-8q-6 1-7 7q0 6 6 8q6 1 9-2z')}
-    ${M('biceps', 50, 'M30 51q-5 4-5 12q1 6 4 7q4-3 4-10q0-6-3-9z')}${M('forearms', 50, 'M26 72q-4 6-4 16q1 5 3 6q3-1 4-8q1-8-1-13z')}
-    ${abs}${M('core', 50, 'M41 61q-3 10-1 30l2 1v-30z')}
-    ${M('quads', 50, 'M37 98q-3 14-1 30q2 8 7 8q4-6 4-20q0-12-3-18z')}${M('calves', 50, 'M38 146q-3 8-2 18q1 6 4 6q3-4 3-12q0-8-3-12z')}
-    ${P('traps', 'M140 35q10-5 20 0l3 6q-6 4-13 13q-7-9-13-13z')}${M('shoulders', 150, 'M130 49q-4-10 3-13q6-2 9 2q-5 3-6 9z')}
-    ${M('lats', 150, 'M137 44q-3 6-1 16q3 12 11 18l2-4q1-14-1-26q-5-4-11-4z')}${M('triceps', 150, 'M130 51q-5 4-5 12q1 6 4 7q4-3 4-10q0-6-3-9z')}
-    ${M('forearms', 150, 'M126 72q-4 6-4 16q1 5 3 6q3-1 4-8q1-8-1-13z')}${P('lowback', 'M146 76h8q2 6 1 14h-10q-1-8 1-14z')}
-    ${M('glutes', 150, 'M149 94h-9q-5 4-4 11q2 6 9 6q4-1 4-5z')}${M('hams', 150, 'M137 112q-2 12 0 24q2 6 6 6q4-6 4-18q0-8-2-12z')}${M('calves', 150, 'M138 146q-4 8-3 18q1 6 5 6q3-4 3-12q0-8-3-12z')}
-    <text x="50" y="188" text-anchor="middle">Front</text><text x="150" y="188" text-anchor="middle">Back</text></svg>`; }
+// The anatomy figures: each muscle group is drawn as its real muscles (a quad is three heads and the sartorius), with the
+// skeleton's landmarks (collarbones, kneecaps, elbows, the spine) showing between them. Every path is the figure's left half
+// on a 120 x 300 body, mirrored for the right half.
+const ANAT = {
+  // the body underneath: skin between the muscles, hands, feet, face
+  body:'M60 39C56 39 53 41 53 45C52 49 49 51 44 53C35 54 24 55 18 62C14 69 14 82 15 94C14 104 14 114 15 122C12 132 9 144 9 156C9 166 10 176 11 186C12 194 15 196 17 192C18 184 18 176 19 168C21 160 23 150 25 140C27 133 30 126 32 120C33 130 34 140 32 150C27 166 26 186 29 204C31 214 33 222 35 232C34 250 35 266 38 278C35 284 35 290 39 292L50 292C51 286 50 280 48 277C50 262 50 246 50 232C52 222 54 212 55 202C56 190 58 178 59 170L60 170Z',
+  front:[
+    ['traps', 'M53 45C51 49 46 52 40 54C37 55 34 55 32 56L44 58C49 55 52 52 54 48Z'],
+    ['shoulders', 'M31 56C23 57 17 63 16 74C16 83 18 90 21 95C23 87 27 79 33 71C37 66 40 61 41 58C38 56 35 56 31 56Z'],
+    ['chest', 'M59 60C51 58 43 58 38 61C35 64 34 68 35 71C43 67 51 65 59 65Z'],
+    ['chest', 'M59 66C51 66 43 68 36 72C35 80 37 88 43 92C49 95 55 94 59 91Z'],
+    ['core', 'M37 93L42 95L41 100L36 98ZM37 100L42 102L41 107L36 105ZM37 107L42 109L41 114L37 112Z', 'r'],
+    ['core', 'M43 96C40 102 39 112 39 124C40 134 43 142 48 148L51 150L51 96C48 95 45 95 43 96Z', 'r'],
+    ['core', 'M52 94L59 94L59 105L52 105ZM52 107L59 107L59 118L52 118ZM52 120L59 120L59 131L52 131ZM52 133L59 133L59 150C56 152 53 151 52 149Z'],
+    ['biceps', 'M22 97C18 103 17 111 18 118C20 123 24 123 26 118C28 110 28 101 25 95Z'],
+    ['biceps', 'M17.5 106C16.5 111 16.5 116 17.5 120.5L19.5 120.5C18.6 116 18.6 111 19.6 106Z'],
+    ['forearms', 'M17 121C13 129 11 141 11 151C12 157 14 159 16 156C18 146 19 134 21 125Z'],
+    ['forearms', 'M22 125C20 135 18 147 18 158C19 164 22 166 23 161C24 149 25 137 25 127Z'],
+    ['quads', 'M32 154C40 168 48 184 54 200L52.5 201C46 186 38 171 31 158Z', 'r'],
+    ['quads', 'M33 160C29 172 28 188 30 204C32 212 35 214 38 210C38 196 38 180 37 166Z', 'v'],
+    ['quads', 'M39 158C36 172 37 190 40 204C42 210 46 210 47 204C48 190 47 172 45 160Z', 'v'],
+    ['quads', 'M47 190C45 196 45 204 48 210C51 212 54 208 54 202C53 196 51 192 47 190Z', 'r'],
+    [null, 'M48 162C47 172 50 182 54 190C56 184 57 174 58 168C55 164 52 162 48 162Z'],
+    ['calves', 'M40 225C38 240 38 256 40 272L43 272C44 256 44 240 43 227Z'],
+    ['calves', 'M47 223C50 234 51 248 48 262C46 254 45 238 45 226Z'],
+    ['calves', 'M36 227C34 240 35 256 37 270L39 270C38 256 38 240 38 229Z']],
+  back:[
+    ['traps', 'M60 40C56 44 50 50 41 53C35 55 32 57 34 60C42 62 50 66 54 73C56 84 58 96 60 108Z'],
+    ['shoulders', 'M34 56C25 57 18 63 16 75C16 84 18 90 21 95C25 85 30 75 36 67C38 63 38 59 34 56Z'],
+    ['lats', 'M38 64C44 66 50 72 52 80C48 84 42 86 38 84C36 78 36 70 38 64Z'],
+    ['lats', 'M37.5 84.5C42 86.5 48 85.5 52.5 81.5L53.5 84C49 88.5 43 90 37.5 88Z', 'r'],
+    ['lats', 'M38 87C44 89 50 87 53 83C55 93 56 105 56 118C52 124 46 128 40 130C37 120 35 105 36 93Z'],
+    ['lowback', 'M56 108C55 118 55 132 56 144L59 146L59 104Z'],
+    ['triceps', 'M22 96C18 104 17 112 18 120C21 122 24 120 26 114C27 106 26 100 24 94Z'],
+    ['triceps', 'M18 95C15 101 14 109 15 116L17 118C17 108 18 100 20 95Z'],
+    ['forearms', 'M17 122C13 130 11 142 11 152C12 158 14 160 16 157C18 147 20 135 22 126Z'],
+    ['forearms', 'M23 126C21 136 19 148 18 158C19 164 22 166 23 161C24 149 25 138 25 128Z'],
+    ['glutes', 'M33 140C38 136 46 136 52 140C50 146 44 150 36 150C33 148 32 144 33 140Z'],
+    ['glutes', 'M36 151C44 149 52 149 59 153L59 177C52 183 42 183 36 177C32 169 32 159 36 151Z'],
+    ['hams', 'M33 183C31 195 32 207 35 217L40 217C40 205 40 193 39 185Z'],
+    ['hams', 'M41 185C41 197 42 209 44 217L50 217C52 205 53 193 54 185C50 187 45 187 41 185Z'],
+    [null, 'M55 183C55 191 56 197 57 203L58 183Z'],
+    ['calves', 'M35 223C32 233 32 245 35 255C38 257 41 253 42 245C42 235 40 227 37 223Z'],
+    ['calves', 'M43 223C42 233 42 247 44 259C48 259 51 253 52 243C52 233 50 227 46 223Z'],
+    ['calves', 'M36 257C36 265 38 273 40 279L48 279C50 271 51 263 50 257C46 263 40 263 36 257Z']]
+};
+// which way each muscle's fibers run, for its texture: v vertical, h across, r on the diagonal
+const FIBER = {chest:'h', shoulders:'v', traps:'r', biceps:'v', triceps:'v', forearms:'v', core:'v', quads:'v', hams:'v', glutes:'r', calves:'v', lats:'r', lowback:'v'};
+function heatSVG(h){ const name = k => (HEAT.find(x => x[0] === k) || [, ''])[1];
+  // a muscle: its heat colour, its fibers, then a soft roundness (lit from above)
+  // muscles worked hard this week (10+ sets) glow
+  const P = ([k, d, dir]) => `<g class="hm-mg">${k ? `<title>${name(k)}: ${h[k]} sets</title>` : ''}${k && h[k] >= 10 ? `<path d="${d}" fill="${heatCol(h[k])}" filter="url(#hmGlow)" opacity=".75"/>` : ''}<path class="hm-m${k ? '' : ' hm-x'}" d="${d}" fill="${k ? heatCol(h[k]) : 'var(--heat-x)'}"/>
+    <path d="${d}" fill="url(#hmF${dir || FIBER[k] || 'v'})"/><path d="${d}" fill="url(#hmVol)"/></g>`;
+  const half = list => list.map(P).join('');
+  const mir = d => `<path class="hm-line" d="${d}"/><path class="hm-line" d="${d}" transform="translate(120 0) scale(-1 1)"/>`;
+  // one figure: the body, its muscles on both sides, then the bones and a soft light from the upper left
+  const fig = (x0, side, id) => `<g transform="translate(${x0} 0)">
+    <path class="hm-skin" d="${ANAT.body}"/><path class="hm-skin" d="${ANAT.body}" transform="translate(120 0) scale(-1 1)"/>
+    <path class="hm-skin" d="M53 34L53 47C55 50 58 51 60 51C62 51 65 50 67 47L67 34Z"/><ellipse class="hm-skin" cx="47.6" cy="25" rx="2.6" ry="4.2"/><ellipse class="hm-skin" cx="72.4" cy="25" rx="2.6" ry="4.2"/><ellipse class="hm-skin" cx="60" cy="24" rx="12.5" ry="15.5"/>
+    ${side === 'front' ? '<path class="hm-line" d="M54 37C55 42 57 47 59 51M66 37C65 42 63 47 61 51"/>' : '<path class="hm-line" d="M60 36V44"/>'}
+    ${half(ANAT[side])}<g transform="translate(120 0) scale(-1 1)">${half(ANAT[side])}</g>
+    ${side === 'front' ? `<path class="hm-bone" d="M58 55C52 54 46 54 40 56M62 55C68 54 74 54 80 56"/><ellipse class="hm-bone" cx="43" cy="216" rx="4" ry="5"/><ellipse class="hm-bone" cx="77" cy="216" rx="4" ry="5"/>
+      <path class="hm-line" d="M60 60V150M54 96H66M54 108H66M54 120H66"/>
+      ${mir('M37 59C31 67 26 79 22 92M43 221V228M18 121C20 120 23 120 25 122M12.5 187L12 193M14.5 188L14.3 194.5M16.5 187.5L16.7 193')}`
+      : `${Array.from({length:12}, (_, i) => `<ellipse class="hm-bone" cx="60" cy="${46 + i * 8.6}" rx="1.6" ry="2.4"/>`).join('')}<ellipse class="hm-bone" cx="17" cy="121" rx="2.5" ry="3"/><ellipse class="hm-bone" cx="103" cy="121" rx="2.5" ry="3"/>
+      <path class="hm-line" d="M44 218H50M70 218H76M59 153V176"/>${mir('M44 280V290M47 280V289M12.5 187L12 193M14.5 188L14.3 194.5M16.5 187.5L16.7 193')}`}
+    <ellipse cx="44" cy="96" rx="44" ry="110" fill="url(#hmLight)" pointer-events="none"/></g>`;
+  return `<svg class="hm-svg" viewBox="0 0 260 312" role="img" aria-label="Muscles trained in the last 7 days">
+    <defs><radialGradient id="hmLight" cx=".35" cy=".25" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+      <filter id="hmGlow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.4"/></filter>
+      <radialGradient id="hmVol" cx=".4" cy=".3" r=".75"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient>
+      ${[['v', 0], ['h', 90], ['r', 35]].map(([k, a]) => `<pattern id="hmF${k}" width="2.2" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(${a})"><path d="M1.1 0V6" stroke="#000" stroke-opacity=".16" stroke-width=".55"/></pattern>`).join('')}</defs>
+    ${fig(0, 'front')}${fig(140, 'back')}
+    <text x="60" y="308" text-anchor="middle">Front</text><text x="200" y="308" text-anchor="middle">Back</text></svg>`; }
 // Projected max: the trend of your weekly bests, carried 8 weeks forward
 function projectMax(W){ const pts = W.map((x, i) => [i, x.best]).filter(p => p[1]); if (pts.length < 3) return null; const n = pts.length, sx = pts.reduce((a, p) => a + p[0], 0), sy = pts.reduce((a, p) => a + p[1], 0),
   sxy = pts.reduce((a, p) => a + p[0] * p[1], 0), sxx = pts.reduce((a, p) => a + p[0] * p[0], 0), k = (n * sxy - sx * sy) / Math.max(1, n * sxx - sx * sx); if (!(k > 0)) return null;
@@ -7087,30 +7290,30 @@ function seasonHTML(){
 function viewProgress(){
   const r = rankFor(S.xp), n = nextRank(S.xp), lv = levelInfo(S.xp);
   const hist = S.history.slice(0, 10).map(h => `<div class="li"><div class="l">${LIFTS[h.lift]}<small>${h.date} · ${h.src}</small></div><span class="r num">${fmt(h.val)} ${h.unit}</span></div>`).join('');
-  const log = S.log.slice(0, 10).map(l => `<div class="li"><div class="l">${l.day}<small>${l.date} · ${l.prog}, week ${l.week} · ${l.sets} sets</small></div><span class="r num" style="color:var(--power)">+${l.xp} XP</span></div>`).join('');
-  return `<section class="row-between"><span class="me-wrap">${meBtn()}<h1 class="sec">Progress</h1></span><span class="sec-btns">${rivalsBtn()}${settingsBtn()}</span></section>
-  ${backupNudge()}
-  ${tcardHTML(r, n, lv)}
+  // four tabs instead of one long scroll: your hero, your numbers, your rewards, your history
+  const tabs = `<div class="seg seg-wide prog-tabs" role="tablist" aria-label="Progress sections">${PROG_TABS.map(([k, t]) => `<button type="button" role="tab" data-act="progTab" data-v="${k}" aria-selected="${progTab === k}" aria-pressed="${progTab === k}">${t}</button>`).join('')}</div>`;
+  const yir = S.log.some(l => l.iso && l.iso.startsWith(todayIso().slice(0, 4))) ? `<button class="yir-btn" data-act="openYear"><span><small>Year in review</small><b>Your ${todayIso().slice(0, 4)}</b></span><span aria-hidden="true">›</span></button>` : '';
+  const head = `<section class="row-between"><span class="me-wrap">${meBtn()}<h1 class="sec">Progress</h1></span><span class="sec-btns">${rivalsBtn()}${settingsBtn()}</span></section>
+  ${backupNudge()}${tabs}`;
+  if (progTab === 'stats') return `${head}
   <div class="stats">
     <div class="stat"><b class="num">${S.log.length}</b><span>Workouts</span></div>
     <div class="stat"><b class="num">${fmt(S.sets)}</b><span>Sets done</span></div>
     <div class="stat"><b class="num">${S.prs}</b><span>PRs</span></div>
   </div>
-  ${bwHTML()}
-  ${advStatsHTML()}
-  ${seasonHTML()}
-  ${S.log.some(l => l.iso && l.iso.startsWith(todayIso().slice(0, 4))) ? `<button class="yir-btn" data-act="openYear"><span><small>Year in review</small><b>Your ${todayIso().slice(0, 4)}</b></span><span aria-hidden="true">›</span></button>` : ''}
-  ${rewardsHTML()}
-  ${gatesHTML()}
-  ${achHTML()}
-  ${chartHTML()}
+  ${chartHTML()}${advStatsHTML()}${bwHTML()}`;
+  if (progTab === 'rewards') return `${head}${seasonHTML()}${rewardsHTML()}${gatesHTML()}${achHTML()}${yir}`;
+  if (progTab === 'log') return `${head}${historyHTML()}
+  <details class="panel hist-max"><summary><h3>Max history</h3></summary>${hist ? `<div class="list">${hist}</div>` : '<p class="empty">No changes yet. Updated maxes and PRs show up here.</p>'}</details>`;
+  return `${head}
+  ${tcardHTML(r, n, lv)}
   <section class="panel"><h3>Rank ladder</h3>
     <div class="ladder">${RANKS.map((x, i) => `<div class="rung${S.xp >= x.xp ? ' got' : ''}${x.k === r.k ? ' cur' : ''}">${emblem(x.k, 'xs')}<span class="rung-t">${x.t}</span><span class="rung-xp num">Lv ${x.lv}–${rankEndLv(i)}</span></div>`).join('')}</div>
     <p class="fine">${MAX_LEVEL} levels, a new rank every ${LEVELS_PER_RANK}. Earn XP: +10 per set, up to +50 for clearing the day (scaled by how much you finished) and +${FULL_CLEAR} more for finishing every set, all multiplied by the arc's rank (×1 at E up to ×2 at S). New maxes from rep-out sets add +100. Each level takes more XP than the last, so every rank is earned.</p>
-  </section>
-  <section class="panel"><h3>Max history</h3>${hist ? `<div class="list">${hist}</div>` : '<p class="empty">No changes yet. Updated maxes and PRs show up here.</p>'}</section>
-  <section class="panel"><h3>Cleared workouts</h3>${log ? `<div class="list">${log}</div>` : '<p class="empty">Clear your first stage on the Today tab to start your log.</p>'}</section>`;
+  </section>`;
 }
+const PROG_TABS = [['hero', 'Hero'], ['stats', 'Stats'], ['rewards', 'Rewards'], ['log', 'History']];
+var progTab = 'hero';
 
 /* ---------- Actions ---------- */
 /* ---------- Workout screen ---------- */
@@ -8061,7 +8264,8 @@ function completeWorkout(){
   parts.push(...quests);
   const items = checkItems();   // gear this workout just unlocked
   const pay = shopPay({n, total, rank:p.rank, prs:prs.length, bossDay:bossWon, arcDone, oldXp:old, quests:quests.reduce((a, q) => a + (q[2] || 0), 0)});
-  wkSummary = {p, w, d, rows, n, total, vol, gain, parts, old, arcDone, boss, bossWon, stats, statsBefore, ovrBefore, quests, items, pay, achs, boosts, seasonGot, seasonTier, rewards:rewardsBetween(old, S.xp),
+  entry.coins = pay.coins; if (pay.gems) entry.gems = pay.gems;   // for History
+  wkSummary ={p, w, d, rows, n, total, vol, gain, parts, old, arcDone, boss, bossWon, stats, statsBefore, ovrBefore, quests, items, pay, achs, boosts, seasonGot, seasonTier, rewards:rewardsBetween(old, S.xp),
     rankedUp:rankFor(old).k !== rankFor(S.xp).k, theme, flairs:announceFlairs()};
   S.wkTheme = null; save();   // the next workout gets a new style
   openWkDone();
@@ -8416,19 +8620,20 @@ document.addEventListener('click', e => {
   else if (a === 'bwJump'){ const p = document.querySelector('.bw'); if (p){ p.scrollIntoView({block:'start'}); setTimeout(() => document.getElementById('bwIn')?.focus({preventScroll:true}), 100); } }
   else if (a === 'nutSex'){ S.nut = {...(S.nut || {}), sex:t.dataset.v}; save(); render(); }
   // Premium: food log, water, meal plans, stats, smart coach, themes and the Premium page
-  else if (a === 'foodOpen'){ foodOpen = !foodOpen; render(); }
-  else if (a === 'nutJump'){ foodOpen = true; if (tab !== 'progress'){ tab = 'progress'; render(true); } else render(); const el = document.querySelector('.nut'); if (el) window.scrollTo(0, el.getBoundingClientRect().top + scrollY - 12); }
+  else if (a === 'foodOpen') foodOpenSheet(t.dataset.m);
+  else if (a === 'foodEdit') foodEditSheet(+t.dataset.i);
+  else if (a === 'foodDay'){ const d = addDays(foodIso || todayIso(), +t.dataset.v); foodIso = d >= todayIso() ? null : d < addDays(todayIso(), -6) ? addDays(todayIso(), -6) : d; render(); }
+  else if (fsAct(a, t)) {}
+  else if (a === 'nutJump'){ progTab = 'stats'; foodIso = null; if (tab !== 'progress'){ tab = 'progress'; render(true); } else render(); const el = document.querySelector('.nut'); if (el) window.scrollTo(0, el.getBoundingClientRect().top + scrollY - 12); if (isPremium()) foodOpenSheet(); }
   else if (a === 'groceryOpen'){ groceryOpen = !groceryOpen; render(); }
-  else if (a === 'foodPreset'){ const f = FOODS[+t.dataset.i]; if (f){ foodAdd(...f); save(); render(); toast(`Logged ${f[0]}.`); } }
-  else if (a === 'foodCustom'){ const n = document.getElementById('foodN')?.value.trim(), k = parseFloat(document.getElementById('foodK')?.value), p = parseFloat(document.getElementById('foodP')?.value) || 0;
-    if (!(k >= 0) || k > 5000 || p > 500){ toast('Add the calories (and protein if you know it).'); return; } foodAdd(n || 'Food', k, p); save(); render(); toast('Logged.'); }
-  else if (a === 'foodAgain'){ const x = foodRecent()[+t.dataset.i]; if (x){ foodAdd(x.n, x.k, x.p); save(); render(); toast(`Logged ${x.n}.`); } }
-  else if (a === 'foodCopy'){ const y = (S.food || {})[addDays(todayIso(), -1)] || []; for (const x of y) foodAdd(x.n, x.k, x.p); save(); render(); toast(`Copied ${y.length} item${y.length === 1 ? '' : 's'} from yesterday.`); }
-  else if (a === 'foodDel'){ const d = (S.food || {})[todayIso()]; if (d){ d.splice(+t.dataset.i, 1); save(); render(); } }
+  else if (a === 'foodAgain'){ const x = foodRecent(6)[+t.dataset.i]; if (x){ foodLog(todayIso(), {n:x.n, sv:x.sv, q:x.q || 1, m:mealNow(), b:foodBase(x)}); save(); render(); toast(`Logged ${x.n}.`); } }
+  else if (a === 'foodCopy'){ const y = (S.food || {})[addDays(todayIso(), -1)] || []; for (const x of y) foodLog(todayIso(), {n:x.n, sv:x.sv, q:x.q || 1, m:x.m, b:foodBase(x)}); save(); render(); toast(`Copied ${y.length} item${y.length === 1 ? '' : 's'} from yesterday.`); }
   else if (a === 'water'){ const W = S.water = S.water || {}, td = todayIso(); W[td] = Math.max(0, Math.min(12, (W[td] || 0) + +t.dataset.v));
     for (const d of Object.keys(W)) if (d < addDays(td, -30)) delete W[d]; nutRewards(); save(); render(); if (+t.dataset.v > 0) buzz(8); }
   else if (a === 'mealSwap'){ const pk = {...mealPick()}; pk[t.dataset.v] = (pk[t.dataset.v] || 0) + 1; S.mealPick = pk; save(); render(); }
   else if (a === 'statLift'){ statLift = t.dataset.v; render(); }
+  else if (a === 'histMore'){ histShow += 12; render(); }
+  else if (a === 'progTab'){ progTab = t.dataset.v; render(); const tb = document.querySelector('.prog-tabs'); if (tb && tb.getBoundingClientRect().top < 0) tb.scrollIntoView({block:'start'}); }
   else if (a === 'coachYes' || a === 'coachNo'){ const N = S.coachNotes || [], n = N[+t.dataset.i]; if (!n) return; N.splice(+t.dataset.i, 1);
     if (a === 'coachYes'){ S.tmAdd[n.lift] = (S.tmAdd[n.lift] || 0) + n.d; toast(`${LIFTS[n.lift]} working weights ${n.d > 0 ? '+' : '−'}${fmt(Math.abs(n.d))} ${S.unit}.`); } save(); render(); }
   else if (a === 'premiumHub'){ closeDialog('settings'); premiumHub(); }

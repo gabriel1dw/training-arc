@@ -439,7 +439,56 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .w-btns{display:flex;gap:6px;margin-top:4px}
 .w-btns .icon-btn{width:44px;height:36px;font-size:18px}
 .nut-streaks b{color:var(--power)}
-.food-today{display:flex;flex-direction:column;gap:4px}
+.food-today{display:flex;flex-direction:column;gap:10px}
+/* the food log: a day switcher, carbs and fat, then meal by meal */
+.food-dayhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.food-dayhead .rl-sec{margin:0}
+.food-dayhead .icon-btn:disabled{opacity:.3}
+.food-macros{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.food-macros span{font-size:12px;color:var(--dim)}
+.food-macros span b{color:var(--fg)}
+.food-macros .bar{display:block;margin-top:4px}
+.food-meal{display:flex;flex-direction:column;gap:4px}
+.food-meal > .row-between b{font-family:var(--label);font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--power)}
+.food-meal > .row-between small{color:var(--dim);font-size:12px}
+button.food-row{width:100%;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;grid-template-columns:minmax(0,1fr) auto 14px;min-height:48px;padding:6px 10px}
+button.food-row > span:first-child{display:flex;flex-direction:column;min-width:0}
+button.food-row b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button.food-row small{font-size:12px;color:var(--dim)}
+button.food-row > span:last-child{color:var(--dim)}
+/* the food sheet */
+.fs-card{min-height:min(620px,calc(100dvh - 40px))}
+.fs-card.fs-find{height:calc(100dvh - 40px)}
+.fs-card.fs-find .fs-list{min-height:0}
+.fs-cats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;flex:none}
+.fs-cats::-webkit-scrollbar{display:none}
+.chip-btn.on{background:var(--power);border-color:var(--power);color:var(--power-ink)}
+.fs-list{display:flex;flex-direction:column;gap:4px;flex:1;min-height:200px;overflow-y:auto;margin:0 -4px;padding:0 4px}
+.fs-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-height:52px;padding:7px 12px;border:0;border-radius:10px;background:var(--surface-2);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.fs-item > span{display:flex;flex-direction:column;min-width:0}
+.fs-item b{font-weight:600}
+.fs-item small{font-size:12px;color:var(--dim);line-height:1.25}
+.fs-item > small{text-align:right}
+.fs-name{font-family:var(--display);font-size:22px !important;text-transform:uppercase}
+.fs-qty{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fs-qty #fsQn{width:72px;text-align:center}
+.fs-qty input,.fs-num input{min-height:44px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);font:inherit;font-size:16px}
+.fs-sv{display:flex;align-items:center;gap:6px;flex:1;min-width:150px;color:var(--dim)}
+.fs-sv input{flex:1;min-width:0}
+.fs-quick{display:flex;gap:6px;flex-wrap:wrap}
+.fs-total{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.fs-total div{display:flex;flex-direction:column;align-items:center;padding:8px 2px;border-radius:10px;background:var(--surface-2)}
+.fs-total b{font-family:var(--display);font-size:20px;line-height:1.1}
+.fs-total small{font-size:11px;color:var(--dim)}
+.fs-meals{flex:none}
+.fs-meals button{font-size:12px;padding-inline:2px}
+.fs-edit summary{cursor:pointer;color:var(--power);font-weight:700;font-size:14px;min-height:36px;display:flex;align-items:center}
+.fs-nums{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.fs-num{display:grid;grid-template-columns:auto;gap:2px}
+.fs-num span{font-size:12px;color:var(--dim)}
+.fs-num input{width:100%}
+.fs-num small{display:none}
+.fs-del{color:#ff8a7a}
 .food-acts{display:flex;gap:8px;flex-wrap:wrap}
 .food-acts .btn{flex:1}
 .food-recent{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;align-items:center;scrollbar-width:none}
@@ -488,10 +537,13 @@ button.medal{border:0;padding:0;font:inherit;color:inherit;cursor:pointer;positi
 .mset b{text-align:right}
 .plat{padding:10px 12px;border-radius:10px;background:var(--surface);border-left:3px solid var(--aura)}
 /* the muscle heatmap and the volume chart */
-.adv{--heat-0:rgba(255,255,255,.1)}
-.hm-svg{display:block;width:100%;max-width:340px;margin:0 auto;height:auto}
-.hm-body circle,.hm-body rect,.hm-body path{fill:rgba(255,255,255,.05);stroke:rgba(255,255,255,.14);stroke-width:1}
-.hm-m{stroke:rgba(0,0,0,.35);stroke-width:.8;transition:fill .3s}
+.adv{--heat-0:#3d3450;--heat-x:#2f2840}
+.hm-svg{display:block;width:100%;max-width:360px;margin:0 auto;height:auto}
+.hm-skin{fill:#231c2e;stroke:#4a3f5e;stroke-width:1}
+.hm-m{stroke:#1a1422;stroke-width:.9;stroke-linejoin:round;transition:fill .3s}
+.hm-bone{fill:none;stroke:#cfc3e0;stroke-opacity:.5;stroke-width:1.2;stroke-linecap:round}
+ellipse.hm-bone{fill:#cfc3e0;fill-opacity:.16}
+.hm-line{fill:none;stroke:#1a1422;stroke-width:1.1}
 .hm-svg text{font:700 9px var(--label);fill:var(--dim);letter-spacing:.08em;text-transform:uppercase}
 .hm-key{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 10px;font:700 11px var(--label);color:var(--dim)}
 .hm-key span,.hm-list span{display:inline-flex;align-items:center;gap:4px}
@@ -1416,6 +1468,15 @@ a.st-link{text-decoration:none}
 #heRanks .opt{flex:none;min-width:40px;padding:6px 8px}
 .he-page{display:flex;flex-direction:column;gap:14px}
 .seg-wide{display:flex}
+.hist-month{margin:8px 2px -4px;font-family:var(--label);font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.hist-card .stage-title{font-size:30px}
+.hist-more{width:100%}
+.hist-max summary{display:flex;align-items:center;justify-content:space-between;cursor:pointer;list-style:none}
+.hist-max summary::-webkit-details-marker{display:none}
+.hist-max summary::after{content:'›';font-size:22px;color:var(--dim);transition:transform .2s}
+.hist-max[open] summary::after{transform:rotate(90deg)}
+.hist-max summary h3{margin:0}
+.prog-tabs{position:sticky;top:calc(6px + env(safe-area-inset-top,0px));z-index:5;transform:translateZ(0);box-shadow:0 6px 14px -6px rgba(0,0,0,.6)}
 .seg-wide button{flex:1;min-width:0;padding-inline:6px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .seg-wide button[aria-selected="true"]{background:var(--power);color:var(--power-ink)}
 .tab-soon{font-size:11px;letter-spacing:.08em;padding:1px 5px;border-radius:5px;border:1px solid currentColor;opacity:.8}
@@ -2860,6 +2921,12 @@ body:has(.wk:not([hidden])){overflow:hidden}
 .stage-done{display:flex;flex-direction:column;gap:6px;margin-top:12px;padding:12px;border-radius:12px;background:color-mix(in srgb,var(--good) 10%,var(--surface-2));border:1px solid color-mix(in srgb,var(--good) 55%,var(--line))}
 .sd-badge{font-family:var(--label);font-weight:800;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--good)}
 .stage-done .fine{margin:0}
+.sd-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:2px 0}
+.sd-tiles div{display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 4px;border-radius:9px;background:rgba(0,0,0,.22);text-align:center;min-width:0}
+.sd-tiles b{font-family:var(--display);font-size:20px;line-height:1.1;color:var(--fg)}
+.sd-tiles div:first-child b{color:var(--power)}
+.sd-tiles div:nth-child(2) b{color:#ffcf5a}
+.sd-tiles small{font-size:11px;line-height:1.2;color:var(--dim)}
 .sd-ex{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:3px}
 .sd-ex li{display:flex;justify-content:space-between;gap:10px;font-size:13px}
 .sd-ex li b{color:var(--dim);font-weight:700;text-align:right}

@@ -1446,27 +1446,34 @@ A.dr_dragon_egg = P => { P.shadow(48, 90, 22);
     if (el.querySelector(':scope > canvas.stage-cv')) return;
     const cv = document.createElement('canvas'); cv.className = 'stage-cv'; cv.setAttribute('aria-hidden', 'true'); el.prepend(cv);
     items.set(cv, {el, key:'', cache:null, state:null, seen:!io}); if (io) io.observe(cv); }
+  // an element can show someone else's stage (a friend's card, another profile) with data-stage; otherwise it's yours
+  const nameOf = it => (it.el.dataset.stage || stageName()).toLowerCase();
+  // the layout size, which entrance animations (scale, slide) don't change, so a scene is never painted at a passing size
+  const dprNow = () => Math.min(2, window.devicePixelRatio || 1);
+  const keyOf = (cv, it) => nameOf(it) + Math.round(cv.clientWidth * dprNow()) + 'x' + Math.round(cv.clientHeight * dprNow());
+  // small stages (a profile thumbnail) paint the scene at a normal width and shrink it, so it keeps its proportions
+  const MIN_W = 240;
   function paint(cv, it, t){
-    const sc = SCENES[stageName()]; if (!sc){ cv.style.display = 'none'; return; } cv.style.display = '';
-    const r = cv.getBoundingClientRect(); if (r.width < 4 || r.height < 4) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(r.width * dpr), H = Math.round(r.height * dpr), w = r.width, h = r.height, key = stageName() + W + 'x' + H;
-    if (it.key !== key){ it.key = key; cv.width = W; cv.height = H;
+    const nm = nameOf(it), sc = SCENES[nm]; if (!sc){ cv.style.display = 'none'; return; } cv.style.display = '';
+    const w = cv.clientWidth, h = cv.clientHeight; if (w < 4 || h < 4) return;
+    const dpr = dprNow(), W = Math.round(w * dpr), H = Math.round(h * dpr), k = Math.max(1, MIN_W / w), key = keyOf(cv, it);
+    if (it.key !== key){ it.key = key; cv.width = W; cv.height = H; it.k = k; it.lw = w * k; it.lh = h * k;
       // painted once per stage and size and shared: the app rebuilds these elements often
-      let P = PAINTED.get(key); if (!P){ const C = document.createElement('canvas'); C.width = W; C.height = H; const x = C.getContext('2d'); x.scale(dpr, dpr); sc.bg(x, w, h, rng(1234));
-        P = {cache:C, state:sc.init ? sc.init(w, h, rng(99)) : null}; PAINTED.set(key, P); if (PAINTED.size > 8) PAINTED.delete(PAINTED.keys().next().value); }
+      let P = PAINTED.get(key); if (!P){ const C = document.createElement('canvas'); C.width = W; C.height = H; const x = C.getContext('2d'); x.scale(dpr / k, dpr / k); sc.bg(x, it.lw, it.lh, rng(1234));
+        P = {cache:C, state:sc.init ? sc.init(it.lw, it.lh, rng(99)) : null}; PAINTED.set(key, P); if (PAINTED.size > 12) PAINTED.delete(PAINTED.keys().next().value); }
       it.cache = P.cache; it.state = P.state; it.small = h < 120; }
     const x = cv.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(it.cache, 0, 0);
-    if (sc.frame){ x.setTransform(dpr, 0, 0, dpr, 0, 0); sc.frame(x, w, h, t, it.state); } }
+    if (sc.frame){ x.setTransform(dpr / it.k, 0, 0, dpr / it.k, 0, 0); sc.frame(x, it.lw, it.lh, t, it.state); } }
   let raf = 0, last = 0;
   function loop(now){
-    raf = 0; const t = now / 1000, still = reduce() || document.hidden, anim = !!(SCENES[stageName()] || {}).anim;
-    if (anim && !still && now - last < 32){ raf = requestAnimationFrame(loop); return; } last = now;
+    raf = 0; const t = now / 1000, still = reduce() || document.hidden, anyAnim = [...items.values()].some(it => (SCENES[nameOf(it)] || {}).anim);
+    if (anyAnim && !still && now - last < 32){ raf = requestAnimationFrame(loop); return; } last = now;
     let more = false;
     for (const [cv, it] of items){ if (!cv.isConnected){ items.delete(cv); if (io) io.unobserve(cv); continue; }
-      if (!it.seen) continue; const needs = it.key !== stageName() + Math.round(cv.getBoundingClientRect().width * Math.min(2, window.devicePixelRatio || 1)) + 'x' + Math.round(cv.getBoundingClientRect().height * Math.min(2, window.devicePixelRatio || 1));
+      if (!it.seen) continue; const anim = !!(SCENES[nameOf(it)] || {}).anim, needs = it.key !== keyOf(cv, it);
       if (anim && !still && !it.small){ paint(cv, it, t); more = true; } else if (needs || !it.drawn){ paint(cv, it, anim ? 4 : 0); it.drawn = true; } }
     if (more) raf = requestAnimationFrame(loop); }
-  function kick(){ for (const it of items.values()) it.drawn = it.drawn && it.key.startsWith(stageName()); if (!raf) raf = requestAnimationFrame(loop); }
+  function kick(){ for (const it of items.values()) it.drawn = it.drawn && it.key.startsWith(nameOf(it)); if (!raf) raf = requestAnimationFrame(loop); }
   function scan(){ document.querySelectorAll(SEL).forEach(attach); kick(); }
   let pend = 0; const soon = () => { if (!pend) pend = requestAnimationFrame(() => { pend = 0; scan(); }); };
   new MutationObserver(soon).observe(document.documentElement, {childList:true, subtree:true, attributes:true, attributeFilter:['data-stage']});

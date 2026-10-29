@@ -343,7 +343,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
 .tsh-bundle .t1{position:absolute;left:36px;top:5px;font:900 9px/1 var(--ff);color:var(--accent)}.tsh-bundle .t2{position:absolute;left:36px;top:17px;font:600 7px/1 var(--ff);color:#e8e8e8}
 .tsh-bundle .bp{position:absolute;right:5px;top:5px;height:18px;padding:0 6px;border-radius:4px;background:var(--accent);color:var(--tagtxt);font:900 9px/18px var(--ff)}
 .tsh-stick{position:absolute;right:4px;top:437px;padding:0 4px;border-radius:3px;background:#e63c3c;border:1px solid #fff;color:#fff;font:900 6px/9px var(--ff);z-index:2}
-.tsh-toast{position:absolute;left:50%;top:150px;transform:translateX(-50%);padding:5px 10px;border-radius:6px;background:rgba(0,0,0,.85);border:1px solid var(--accent);color:#fff;font:800 8px/1 var(--ff);white-space:nowrap;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
+.tsh-toast{position:absolute;left:50%;top:150px;transform:translateX(-50%);padding:6px 10px;border-radius:6px;background:rgba(0,0,0,.85);border:1px solid var(--accent);color:#fff;font:800 8px/1.35 var(--ff);width:max-content;max-width:246px;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
 .tsh-toast.on{opacity:1}
 .tsh-scan:after{content:'';position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 1px,transparent 1px 2px)}
 .tsh-vig:before{content:'';position:absolute;inset:0;pointer-events:none;z-index:4;background:radial-gradient(ellipse at center,transparent 62%,rgba(0,0,0,.35))}
@@ -534,7 +534,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
       const v = visible();
       $('.tsh-grid').innerHTML = v.length ? v.map(id => {
         const it = data.items[id], i = stock.items.indexOf(id), owned = ST.owned.includes(id), eq = ST.equipped[it.type] === id, deal = i >= 0 && i === stock.deal && !owned;
-        const code = i >= 0 ? 'ABC'[Math.floor(i / 2)] + (i % 2 + 1) : '';
+        const code = i >= 0 ? String.fromCharCode(65 + Math.floor(i / 2)) + (i % 2 + 1) : '';   // A1, A2, B1 â¦ the vending machine's codes
         if (i < 0) {   // MY GEAR / BOSS LOOT cards: no price
           const lock = it.drop && !owned;
           return `<button class="tsh-card${selId === id ? ' sel' : ''}${lock ? ' lock' : ''}" role="listitem" data-id="${id}" style="--rc:${data.rarity[it.r]}" aria-label="${esc(it.name)}, ${lock ? 'locked, beat the ' + esc(bossOf(it)) : eq ? 'equipped' : 'owned'}">

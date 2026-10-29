@@ -4137,17 +4137,21 @@ function cleanCard(o, base){
     cr:o.cr && /^[a-z0-9]{6,24}$/i.test(o.cr.id || '') ? {id:o.cr.id, n:str(o.cr.n, 20).replace(/[<>]/g, '') || 'Crew'} : null,
     // for their player card: OVR, the four stats, their path, and whether it gets the Premium frame (older cards don't have these)
     o:o.o == null ? null : int(o.o, 0, 99), sv:o.sv && typeof o.sv === 'object' ? Object.fromEntries(STAT_KEYS.map(([k]) => [k, int(o.sv[k], 0, 99)])) : null,
-    pa:own(POS, o.pa) ? o.pa : null, pr:o.pr ? 1 : 0, xp:int(o.xp, 0, 100)};
+    pa:own(POS, o.pa) ? o.pa : null, pr:o.pr ? 1 : 0, xp:int(o.xp, 0, 100),
+    sg:STAGES.some(n => n.toLowerCase() === o.sg) ? o.sg : null};   // the stage their hero stands on
 }
 function myCard(){ const g = S.hero.gender, h = S.hero[g], pid = shopEq().pet;
   return {t:'f', id:socialId(), n:S.hero.name || 'Hero', g, ri:rankIdx(), lv:levelInfo(S.xp).L, title:heroTitle(), u:S.unit,
     m:Object.fromEntries(Object.keys(LIFTS).map(l => [l, Math.round(bestMax(l))])), md:Object.keys(S.ach).length, st:weekStreak(), wk:S.log.length,
     look:wornLook(g), style:h.style, acc:h.acc || {}, pet:pid && shopItem(pid) ? {id:pid, f:petForm(pid)} : null, d:todayIso(), wh:weekHits(), tr:S.trophies || [], cr:S.crew ? {id:S.crew.id, n:S.crew.n} : null, p4p:dots(),
-    o:ovr(prog().path), sv:Object.fromEntries(STAT_KEYS.map(([k]) => [k, statVal(k)])), pa:prog().path, pr:isPremium() ? 1 : 0, xp:Math.round(levelInfo(S.xp).pct)}; }
+    o:ovr(prog().path), sv:Object.fromEntries(STAT_KEYS.map(([k]) => [k, statVal(k)])), pa:prog().path, pr:isPremium() ? 1 : 0, xp:Math.round(levelInfo(S.xp).pct), sg:heroStage(S)}; }
+// The stage a save's hero stands on, as the stage painter names it (a Premium stage waits while Premium is off)
+function heroStage(s){ const g = s && s.hero && s.hero.gender, n = (g && STAGES[(s.hero[g] || {}).stage]) || 'Arena';
+  return (PREM_STAGES.has(n) && !s.premium ? 'Arena' : n).toLowerCase(); }
 // A friend's player card, drawn like yours: their hero on a stage, OVR, rank, title, level and stats
 function friendCardHTML(r){ const rk = RANKS[r.ri].k, o = r.o, sv = r.sv, pa = r.pa || null, pth = PATHS.find(x => x.id === pa);
   return `<section class="tcard fcard${r.pr ? ' prem-frame' : ''}" style="--rc:var(--rank-${rk.toLowerCase()})"><div class="tcard-in">
-    <div class="tcard-art stage-bg">${o != null ? `<span class="tcard-ovr" style="--tc:${tierColor(o)}" aria-label="Overall ${o}"><b class="num">${o}</b><span>OVR</span>${pa ? `<span>${POS[pa]}</span>` : ''}</span>` : ''}
+    <div class="tcard-art stage-bg" data-stage="${r.sg || 'arena'}">${o != null ? `<span class="tcard-ovr" style="--tc:${tierColor(o)}" aria-label="Overall ${o}"><b class="num">${o}</b><span>OVR</span>${pa ? `<span>${POS[pa]}</span>` : ''}</span>` : ''}
       ${r.pet ? `<img class="fcard-pet" src="${petArt(r.pet.id, r.pet.f) || ''}" alt="">` : ''}${r.pr ? '<span class="fcard-prem">Premium</span>' : ''}
       <canvas class="card-img" data-rv="${r.id}" width="128" height="208" role="img" aria-label="${esc(r.n)}'s hero"></canvas></div>
     <div class="tcard-head"><div class="tcard-who">${emblem(rk, 'xs')}<div class="tcard-name">${esc(r.n)}</div></div><div class="tcard-title">${rk}-Rank${r.title ? ` · "${esc(r.title)}"` : ''}</div></div>
@@ -5868,7 +5872,7 @@ function profileCard(p){
   const n = s ? s.log.length : 0, last = s && s.log.find(l => l.iso);
   return `<article class="pf-card${act ? ' last' : ''}${ed ? ' open' : ''}">
     <button type="button" class="pf-main" data-pf="pick" data-id="${p.id}" aria-label="Play as ${esc(name)}">
-      <span class="pf-art stage-bg"><canvas id="pf-${p.id}" width="128" height="208" aria-hidden="true"></canvas></span>
+      <span class="pf-art stage-bg" data-stage="${heroStage(s)}"><canvas id="pf-${p.id}" width="128" height="208" aria-hidden="true"></canvas></span>
       <span class="pf-info"><span class="pf-top"><b class="pf-name">${esc(name)}</b>${act ? '<span class="pf-tag">Last played</span>' : ''}</span>
         <span class="pf-meta">${ok ? `${emblem(r.k, 'xs')}<span>${r.k}-Rank ${r.t} · <span class="nw">Lv ${levelFor(s.xp)}</span></span>` : '<span>Setup not finished · tap to continue</span>'}</span>
         ${ok ? `<span class="pf-meta dim">${esc(arc)} · ${n} workout${n === 1 ? '' : 's'}</span>` : ''}
@@ -9048,7 +9052,7 @@ function tickPlayers(now){
 requestAnimationFrame(tickPlayers);
 function paintHeroes(){
   const g = S.hero.gender;
-  { const s = STAGES[S.hero[g].stage] || 'Arena'; document.documentElement.dataset.stage = (PREM_STAGES.has(s) && !isPremium() ? 'Arena' : s).toLowerCase(); }   // a Premium stage waits while Premium is off
+  document.documentElement.dataset.stage = heroStage(S);
   for (const id of ['heroImg', 'bannerImg', 'cardImg', 'coachImg']) if (document.getElementById(id)) setSprite(id, formIdx(g), g);
   if (document.getElementById('ruImg')) setSprite('ruImg', rankIdx(), g);   // a rank-up shows the new rank
   for (const id of ['heroImg', 'bannerImg', 'cardImg']){ const el = document.getElementById(id); if (el) el.style.filter = glowCss(auraColor()); }   // your aura, at any rank

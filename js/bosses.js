@@ -18,7 +18,7 @@
 .ta-scroll{height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;background:#0b0a10;scroll-behavior:smooth}
 .ta-scroll.ta-page{height:auto;overflow:visible}
 .ta-list{color:#eee;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;padding:0 0 calc(24px + env(safe-area-inset-bottom));max-width:620px;margin:0 auto}
-.ta-lh{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;min-height:52px;box-sizing:border-box;padding:6px 12px;background:var(--panel);border-top:2px solid var(--edge);border-bottom:2px solid var(--edge);cursor:pointer}
+.ta-lh{position:sticky;transform:translateZ(0);top:0;z-index:2;display:flex;align-items:center;gap:10px;min-height:52px;box-sizing:border-box;padding:6px 12px;background:var(--panel);border-top:2px solid var(--edge);border-bottom:2px solid var(--edge);cursor:pointer}
 .ta-lh b{font-size:13px;letter-spacing:.6px;display:block;white-space:nowrap}.ta-lh small{font-size:11px;color:#bbb;display:block;white-space:nowrap}
 .ta-lhp{flex:1;min-width:40px}.ta-lhp div{height:6px;background:#2a222a;border-radius:3px;overflow:hidden;margin-top:4px}.ta-lhp i{display:block;height:100%;background:var(--hp);transition:width .4s}
 .ta-lhp span{display:block;font-size:10px;color:#ccc;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

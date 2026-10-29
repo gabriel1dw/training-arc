@@ -8201,7 +8201,19 @@ function openDialog(id, focusSel){
   if (d.hidden) d.scrollTop = 0;
   d.hidden = false; behind().forEach(el => el.inert = true);
   (focusSel && d.querySelector(focusSel) || d.querySelector('button')).focus({preventScroll:true});
+  if (id === 'heroEditor') heMiniRun();
 }
+// While you edit colors or items, the big preview scrolls away: a small copy of your hero rides in the header beside Done
+let heMiniOn = false;
+function heMiniRun(){ if (heMiniOn) return; heMiniOn = true;
+  const tick = () => { const d = document.getElementById('heroEditor'), mini = document.getElementById('heMini');
+    if (!d || d.hidden || !mini){ heMiniOn = false; if (mini) mini.classList.remove('on'); return; }
+    const st = d.querySelector('.he-stage'), img = document.getElementById('heImg'), head = d.querySelector('.sheet-head');
+    const show = !!(st && img && head) && st.getBoundingClientRect().bottom < head.getBoundingClientRect().bottom + 60;
+    mini.classList.toggle('on', show);
+    if (show && img.width){ if (mini.width !== img.width){ mini.width = img.width; mini.height = img.height; } const x = mini.getContext('2d'); x.clearRect(0, 0, mini.width, mini.height); x.drawImage(img, 0, 0); mini.style.filter = img.style.filter; }
+    requestAnimationFrame(tick); };
+  requestAnimationFrame(tick); }
 function closeDialog(id){
   const d = document.getElementById(id); if (d.hidden) return false;
   d.hidden = true;

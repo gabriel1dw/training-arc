@@ -3543,6 +3543,9 @@ const obLifts = () => { const p = obArc(); return p ? [...new Set(p.weeks.flatMa
 // The privacy policy and terms live on the website (the App Store links to the same pages)
 const LEGAL_URL = 'https://gabriel1dw.github.io/training-arc/legal/';
 const SUPPORT_EMAIL = 'training1arc@gmail.com';
+// Where Training Arc posts: Settings links to each, and every share card carries the handle
+const SOCIAL_HANDLE = '@training1arc';
+const SOCIALS = [['TikTok', '@training1arc', 'https://www.tiktok.com/@training1arc'], ['Instagram', '@training1arc', 'https://www.instagram.com/training1arc/'], ['YouTube', '@Training-Arc1', 'https://www.youtube.com/@Training-Arc1']];
 const HEALTH_NOTE = 'Training Arc gives general fitness and nutrition guidance, not medical advice. Check with a doctor before starting a new program, especially with a health condition, injury or pregnancy. Stop if you feel pain, dizziness or chest pain.';
 const obSteps = () => ['title', 'hero', 'path', 'exp', ...(obLifts().length ? ['maxes'] : []), 'days', 'ready'];
 const OB_EP = {hero:'The hero', path:'The path', exp:'The past', maxes:'Power level', days:'The schedule', ready:'The arc begins'};
@@ -5237,6 +5240,7 @@ async function drawShareCard(kind){
   else { x.strokeStyle = rc; x.lineWidth = 14; x.strokeRect(28, 28, W - 56, H - 56); }
   // header
   x.fillStyle = power; x.font = '700 34px "Barlow Condensed", sans-serif'; x.textBaseline = 'top'; x.fillText('TRAINING ARC', 80, 78);
+  x.save(); x.textAlign = 'right'; x.fillStyle = power; x.font = '700 30px "Barlow Condensed", sans-serif'; x.fillText(SOCIAL_HANDLE.toUpperCase(), W - 80, 1280); x.restore();   // the handle, bottom right
   x.fillStyle = '#f3effb'; x.font = '96px Anton, Impact, sans-serif';
   const ws = kind === 'workout' ? wkSummary : null, wPr = ws && ws.rows.filter(q => q.pr);
   x.fillText(ws ? (ws.bossWon ? 'BOSS DOWN!' : wPr.length ? 'NEW PR!' : 'WORKOUT CLEAR') : kind === 'rank' ? `${r.k}-RANK!` : `LV ${lv.L}`, 78, 134);
@@ -5278,7 +5282,7 @@ async function drawShareCard(kind){
   return c;
 }
 async function shareCard(kind){
-  await shareBlob(await drawShareCard(kind), kind === 'rank' ? `training-arc-rank-up.png` : kind === 'workout' ? `training-arc-workout.png` : `training-arc-card.png`, kind === 'workout' ? "Today's training arc session" : 'My training arc');
+  await shareBlob(await drawShareCard(kind), kind === 'rank' ? `training-arc-rank-up.png` : kind === 'workout' ? `training-arc-workout.png` : `training-arc-card.png`, kind === 'workout' ? `Today's training arc session ${SOCIAL_HANDLE}` : `My training arc ${SOCIAL_HANDLE}`);
 }
 async function shareBlob(c, filename, text){
   const blob = await new Promise(res => c.toBlob(res, 'image/png'));
@@ -6173,6 +6177,7 @@ function renderSettings(){
     ${backupHTML()}
     <h4 class="st-h">About</h4>
     <div class="st-group">${[['privacy', 'Privacy Policy', 'What\'s stored, where, and how to delete it'], ['terms', 'Terms of Use', 'The rules, loot and Premium']].map(([pg, t, s]) => `<a class="st-row st-link" href="${LEGAL_URL}${pg}.html" target="_blank" rel="noopener"><div><b>${t}</b><span>${s}</span></div><span aria-hidden="true">›</span></a>`).join('')}
+      ${SOCIALS.map(([n, h, u]) => `<a class="st-row st-link" href="${u}" target="_blank" rel="noopener"><div><b>${n}</b><span>${h} · follow for updates and new bosses</span></div><span aria-hidden="true">›</span></a>`).join('')}
       <a class="st-row st-link" href="mailto:${SUPPORT_EMAIL}?subject=Training%20Arc"><div><b>Contact us</b><span>${SUPPORT_EMAIL} · questions, bugs, data requests</span></div><span aria-hidden="true">›</span></a>
       <div class="st-row st-col"><div><b>Not medical advice</b><span>${HEALTH_NOTE}</span></div></div></div>
     <h4 class="st-h">Danger zone</h4>

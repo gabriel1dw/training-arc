@@ -3542,6 +3542,7 @@ const obArc = () => PROGRAMS.find(p => p.id === ob.arcId);
 const obLifts = () => { const p = obArc(); return p ? [...new Set(p.weeks.flatMap(w => w.days.flatMap(d => d.ex.map(x => x.lift))).filter(Boolean))] : []; };
 // The privacy policy and terms live on the website (the App Store links to the same pages)
 const LEGAL_URL = 'https://gabriel1dw.github.io/training-arc/legal/';
+const SUPPORT_EMAIL = 'training1arc@gmail.com';
 const HEALTH_NOTE = 'Training Arc gives general fitness and nutrition guidance, not medical advice. Check with a doctor before starting a new program, especially with a health condition, injury or pregnancy. Stop if you feel pain, dizziness or chest pain.';
 const obSteps = () => ['title', 'hero', 'path', 'exp', ...(obLifts().length ? ['maxes'] : []), 'days', 'ready'];
 const OB_EP = {hero:'The hero', path:'The path', exp:'The past', maxes:'Power level', days:'The schedule', ready:'The arc begins'};
@@ -6172,6 +6173,7 @@ function renderSettings(){
     ${backupHTML()}
     <h4 class="st-h">About</h4>
     <div class="st-group">${[['privacy', 'Privacy Policy', 'What\'s stored, where, and how to delete it'], ['terms', 'Terms of Use', 'The rules, loot and Premium']].map(([pg, t, s]) => `<a class="st-row st-link" href="${LEGAL_URL}${pg}.html" target="_blank" rel="noopener"><div><b>${t}</b><span>${s}</span></div><span aria-hidden="true">›</span></a>`).join('')}
+      <a class="st-row st-link" href="mailto:${SUPPORT_EMAIL}?subject=Training%20Arc"><div><b>Contact us</b><span>${SUPPORT_EMAIL} · questions, bugs, data requests</span></div><span aria-hidden="true">›</span></a>
       <div class="st-row st-col"><div><b>Not medical advice</b><span>${HEALTH_NOTE}</span></div></div></div>
     <h4 class="st-h">Danger zone</h4>
     <div class="st-group st-danger"><div class="st-row st-col"><div><b>Reset all progress</b><span>Erases levels, gear, achievements, maxes and history on this device. Back up first.</span></div>

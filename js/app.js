@@ -9098,7 +9098,39 @@ function paintCape(img, map, cape, ext, off){
     for (let q = W; q < map.length - W; q++) if (map[q] === 7 && d[q * 4 + 3] === 255){ let n = 0; for (const o of [-W - 1, -W, -W + 1, -1, 1, W - 1, W, W + 1]) if (map[q + o] === 7) n++; if (n < 3) drop.push(q); }
     for (const q of drop){ d[q * 4 + 3] = 0; map[q] = 0; } }
 }
-const recolor = (src, map, mean, look) => createImageBitmap(paintSole(paintGarb(recolorData(src, map, mean, look), map, look), map, look));
+const recolor = (src, map, mean, look) => createImageBitmap(paintSole(smoothShoulders(paintGarb(recolorData(src, map, mean, look), map, look), map, look), map, look));
+// The art's shirt dips into a notch between the trapezius and the shoulder, so the slope beside the neck reads as a
+// pointed collar. Tees, gis and jerseys don't have one: fill the notch so the shoulder line runs smoothly from the neck
+// out to the arm. Only gaps open to the outside are filled (seams and armour lines stay); real collars (polos, jackets) keep theirs.
+function smoothShoulders(img, map, look){
+  const g = look.garb && GARB[look.garb.split('|')[0]]; if (g && /\bcollar\b/.test(g[0])) return img;
+  const W = img.width, H = img.height, d = img.data, G = garbGeo(map, W, H); if (!G) return img;
+  const shirt = p => map[p] === 4, clear = p => d[p * 4 + 3] < 20, fill = [];
+  for (let y = G.yTop; y < Math.min(G.yC + 2, G.yTop + 10, H); y++){
+    for (let x = 1; x < W - 1; x++){
+      const p = y * W + x; if (shirt(p) || map[p] === 1 || !shirt(p - 1)) continue;
+      let e = x; while (e < W && !shirt(y * W + e) && map[y * W + e] !== 1) e++;
+      const len = e - x; if (e >= W || len > 12 || !shirt(y * W + e)) { x = e; continue; }
+      let open = false; for (let t = x; t < e; t++) if (clear(y * W + t)) open = true;
+      if (open){ const from = (x + e) / 2 < G.Ci ? y * W + e : p - 1; for (let t = x; t < e; t++) fill.push([y * W + t, from]); }
+      x = e;
+    }
+  }
+  for (const [p, from] of fill){ for (let k = 0; k < 3; k++) d[p * 4 + k] = d[from * 4 + k]; d[p * 4 + 3] = 255; map[p] = 4; }
+  // the notch's own outline is left inside the shirt as a dark line (the "flap" edge): take it in as well, but only
+  // where it touches the filled notch and has shirt on both sides
+  const did = new Set(fill.map(([p]) => p)), y0 = G.yTop, y1 = Math.min(G.yC + 4, G.yTop + 12, H - 1);
+  for (let pass = 0; pass < 3; pass++) for (let y = y0; y <= y1; y++) for (let x = 3; x < W - 3; x++){
+    const p = y * W + x; if (did.has(p) || map[p] === 4 || map[p] === 1 || clear(p)) continue;
+    if (![p - 1, p + 1, p - W, p + W].some(q => did.has(q))) continue;
+    let l = -1, r = -1; for (let t = 1; t <= 3; t++){ if (l < 0 && shirt(p - t)) l = p - t; if (r < 0 && shirt(p + t)) r = p + t; }
+    if (l < 0 || r < 0) continue;
+    const from = x < G.Ci ? r : l; for (let k = 0; k < 3; k++) d[p * 4 + k] = d[from * 4 + k]; map[p] = 4; did.add(p); fill.push([p, from]);
+  }
+  // a dark edge along the new top of the shoulder, in the shirt's own hue
+  for (const [p] of fill) if (p >= W && clear(p - W)) for (let k = 0; k < 3; k++) d[p * 4 + k] = Math.round(d[p * 4 + k] * .4);
+  return img;
+}
 // Shoes have a sole color too: the bottom two rows of each shoe
 function paintSole(img, map, look){
   const d = img.data, W = img.width, H = img.height, put = (p, c) => { d[p * 4] = c[0]; d[p * 4 + 1] = c[1]; d[p * 4 + 2] = c[2]; d[p * 4 + 3] = 255; };
@@ -9293,8 +9325,9 @@ function paintGarb(img, map, look){
         for (let y = sy0; y <= sy1; y++) for (let x = sx0; x <= sx0 + Math.round((ix1 - ix0) * sc); x++){ if (!inb(x, y) || mp(x, y) === 2) continue;
           const u = ix0 + (x - sx0) / sc, v = S0.top + (y - sy0) / sc, c = ic(u, v); if (!c) continue;
           if (x >= torsoL(y) + Math.round(4 * sc) && x <= torsoR(y) - Math.round(4 * sc)) continue; set(x, y, c); } } }
-    // what sits above the shoulders in the art (a hood, a collar, the back of a neckline) goes behind the neck and head
-    if (!tank){ const sc = (yB - yTop) / Math.max(1, IC.iHem - IC.iTop), sx = (2 * hw) / Math.max(1, IC.iR - IC.iL), mid = (IC.iL + IC.iR) / 2, y0 = yTop - Math.round((IC.iTop - top0) * sc);
+    // what sits above the shoulders in the art (a hood, a collar) goes behind the neck and head. Tees, gis and jerseys
+    // have nothing up there in real life: their icons' pointed collar tips aren't copied.
+    if (!tank && (has.has('hood') || has.has('collar'))){ const sc = (yB - yTop) / Math.max(1, IC.iHem - IC.iTop), sx = (2 * hw) / Math.max(1, IC.iR - IC.iL), mid = (IC.iL + IC.iR) / 2, y0 = yTop - Math.round((IC.iTop - top0) * sc);
       for (let y = y0; y < yTop + 2; y++) for (let x = Ci - hw; x <= Ci + hw; x++){ if (!inb(x, y)) continue;
         const behind = !op(x, y), wrap = icClosed && y >= yTop - 2 && (mp(x, y) === 1 || shirt(x, y)); if (!behind && !wrap) continue;
         const c = ic(mid + (x - Ci) / sx, IC.iTop + (y - yTop) / sc); if (c) set(x, y, c); } }

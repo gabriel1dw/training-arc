@@ -569,6 +569,106 @@ const PROGRAMS = [
   ]; })
 ];
 
+/* ===== Sport arcs (Premium): every sport gets an off-season, pre-season and in-season arc on the Athlete path =====
+   Each sport brings its own kit (jumps, speed, agility, conditioning, injury prevention, skill work), slotted into
+   three season templates: build strength off-season, turn it into speed and power pre-season, stay fresh in-season. */
+const SPORTS = [
+  {id:'basketball', name:'Basketball', icon:'🏀', focus:'Vertical, first step, defensive slides and late-game legs.', kit:w => ({
+    power:[X('Approach Jump',4,3,null,'Full approach, reach as high as you can'), X('Depth Jump',3,4)], speed:[Y('Sprint',6,20,'From a staggered stance'), X('Defensive Slide',4,20,'sec','Stay low, don\'t cross your feet')],
+    agility:[Y('Pro Agility (5-10-5)',5,20), X('Lane Agility Drill',4,1,null,'Sprint, slide, backpedal around the lane')], cond:[X('Suicide Run',4 + w,1,null,'Baseline to free-throw line, half, far free-throw line, far baseline, and back'), X('Full-Court Layup Run',6,1,null,'Sprint, finish, sprint back')],
+    prehab:[X('Single-Leg Calf Raise',3,15), X('Tibialis Raise',3,20)], skill:[M('Ball-Handling',1,10,'Pound, crossover, between the legs, behind the back'), M('Shooting Reps',1,15,'Form shots, then catch-and-shoot from five spots')], upper:X('Med Ball Chest Pass',3,8)})},
+  {id:'football', name:'Football', icon:'🏈', focus:'Strength to win the trenches, a faster 40 and short-area quickness.', kit:w => ({
+    power:[X('Box Jump',4,4), D('Sled Push',4,20,'Drive low, short steps')], speed:[Y('40-Yard Dash',4,40,'From a three-point stance. Full rest.'), Y('Flying Sprint',4,20)],
+    agility:[Y('Pro Agility (5-10-5)',5,20), X('3-Cone Drill',4,1,null,'Full effort, 2 min rest')], cond:[Y('110-Yard Run',4 + w,110,'Hit it in about 16 sec. 45 sec rest.'), Y('Gasser',3,53,'Sideline to sideline and back twice')],
+    prehab:[X('Neck Flexion and Extension',2,15,null,'Light band or hand pressure'), X('Nordic Curl Negative',3,4)], skill:[M('Position Drills',1,15,'Stance and starts, routes, or footwork for your position'), X('Ladder Footwork',4,20,'sec')], upper:P('Push Press',4,5)})},
+  {id:'soccer', name:'Soccer', icon:'⚽', focus:'Repeat sprints, change of direction and strong groins and hamstrings.', kit:w => ({
+    power:[X('Bounding',4,6), X('Lateral Bound (each side)',3,5)], speed:[Y('Sprint',6,30,'Full effort, walk back'), Y('Flying Sprint',4,20)],
+    agility:[X('T-Drill',4,1,null,'Sprint, shuffle, backpedal'), X('Cone Weave',5,1,null,'Tight cuts, eyes up')], cond:[X('Repeated Sprint Set',3 + Math.min(w, 2),6,null,'6 × 30 m on 20 sec rest; 3 min between sets'), M('Tempo Run',1,15,'Steady, about 70%')],
+    prehab:[CP(3,20), X('Nordic Curl Negative',3,4)], skill:[M('Ball Mastery',1,10,'Toe taps, sole rolls, inside-outside touches'), M('Passing and Finishing',1,15,'Wall passes both feet, then shots on target')], upper:X('Push-up',3,15)})},
+  {id:'baseball', name:'Baseball & Softball', icon:'⚾', focus:'Rotational power for bat speed and throws, a quick first step and healthy shoulders.', kit:w => ({
+    power:[X('Med Ball Rotational Throw (each side)',4,5), X('Broad Jump',4,4)], speed:[Y('Sprint',6,30,'Home to first, full effort'), Y('Base Steal Start',6,15,'From a lead, react and go')],
+    agility:[X('Lateral Shuffle',4,20,'sec'), X('Drop Step Sprint',4,1,null,'Turn and run to a fly ball')], cond:[Y('Sprint',8,60,'Easy jog back'), M('Bike or Row',1,10,'Steady')],
+    prehab:[X('Band External Rotation',3,15), X('Scap Push-up',3,12)], skill:[M('Throwing Progression',1,15,'Wrist flicks to long toss'), M('Tee and Swing Work',1,15,'Tee work, then dry swings')], upper:P('Landmine Rotation (each side)',3,8)})},
+  {id:'volleyball', name:'Volleyball', icon:'🏐', focus:'Max jump height, safe landings, quick lateral moves and strong shoulders.', kit:w => ({
+    power:[X('Approach Jump',4,3,null,'Full approach, arm swing'), X('Block Jump',4,5,null,'From a ready stance, straight up')], speed:[Y('Sprint',6,10), X('Lateral Shuffle',4,15,'sec')],
+    agility:[X('Pro Agility (5-10-5)',4,1), X('Dig and Recover',5,1,null,'Drop to a dig, pop up, sprint 5 m')], cond:[X('Jump and Sprint Circuit',4 + w,1,null,'5 block jumps, sprint 10 m, shuffle back'), M('Bike Intervals',1,12,'20 sec hard, 40 sec easy')],
+    prehab:[X('Landing Drill',3,6,null,'Jump, land soft, knees over toes, hold 2 sec'), X('Band External Rotation',3,15)], skill:[M('Passing and Setting',1,15,'Against a wall or with a partner'), M('Serve Practice',1,10,'Toss consistency, then targets')], upper:X('Med Ball Overhead Slam',3,10)})},
+  {id:'tennis', name:'Tennis', icon:'🎾', focus:'Explosive first steps, rotation for groundstrokes and serves, and long-rally stamina.', kit:w => ({
+    power:[X('Med Ball Rotational Throw (each side)',4,5), X('Skater Hop (each side)',4,6)], speed:[Y('Sprint',6,10,'Split-step, then go'), X('Split-Step Reaction',6,1,null,'Partner points, you explode that way')],
+    agility:[X('Spider Drill',4,1,null,'Center to each corner of the court and back'), X('Lateral Shuffle',4,15,'sec')], cond:[X('Point Simulation',6 + w,1,null,'20 sec all-out movement, 25 sec rest'), M('Tempo Run',1,15)],
+    prehab:[X('Band External Rotation',3,15), X('Wrist Curl and Extension',2,15)], skill:[M('Shadow Swings',1,10,'Forehand, backhand, serve, perfect form'), M('Rally or Wall Hitting',1,20)], upper:P('Cable or Band Woodchop (each side)',3,10)})},
+  {id:'hockey', name:'Hockey', icon:'🏒', focus:'Leg drive for your stride, lateral power, a strong core and repeat-shift conditioning.', kit:w => ({
+    power:[X('Lateral Bound (each side)',4,5,null,'Like a skating stride, stick the landing'), X('Box Jump',4,4)], speed:[Y('Sprint',6,20), D('Sled Push',4,20)],
+    agility:[X('Crossover Run',4,20,'sec'), Y('Pro Agility (5-10-5)',4,20)], cond:[X('Shift Intervals',6 + w,1,null,'45 sec hard, 90 sec rest, like a shift'), M('Bike',1,12,'Steady')],
+    prehab:[CP(3,20), X('Hip Airplane (each side)',2,5)], skill:[M('Stickhandling',1,10,'With a ball on a smooth floor'), M('Shooting Reps',1,10,'Wrist shots and snapshots')], upper:P('Landmine Press (each arm)',3,8)})},
+  {id:'combat', name:'Boxing & MMA', icon:'🥊', focus:'Punching power from the hips, round-after-round gas and a strong neck and core.', kit:w => ({
+    power:[X('Med Ball Rotational Throw (each side)',4,5), X('Plyo Push-up',4,6)], speed:[X('Speed Bag or Shadow Flurries',5,20,'sec','Max hand speed'), Y('Sprint',6,20)],
+    agility:[X('Footwork Ladder',4,20,'sec'), X('Sprawl',4,8)], cond:[X('Bag Rounds',5 + w,3,'min','1 min rest between rounds'), M('Roadwork',1,20,'Steady run')],
+    prehab:[X('Neck Flexion and Extension',2,15,null,'Light band or hand pressure'), X('Band Pull-Apart',3,20)], skill:[X('Shadow Boxing',3,3,'min','Combos, head movement, angles'), M('Technique Drills',1,10,'Your stance, jab, and defense')], upper:P('Landmine Press (each arm)',3,8)})},
+  {id:'track', name:'Track & Field', icon:'🏃', focus:'Starts, top-end speed, elastic legs and the strength behind them.', kit:w => ({
+    power:[X('Bounding',4,6), X('Hurdle Hop',4,5)], speed:[Y('Block or Crouch Start',6,30,'Full rest'), Y('Flying Sprint',5,30)],
+    agility:[X('A-Skip and B-Skip',3,20,'m'), X('Wicket Runs',4,1,null,'Quick, tall, front-side mechanics')], cond:[Y('Speed Endurance Run',4 + Math.min(w, 2),150,'90% effort, full rest'), M('Tempo Run',1,15)],
+    prehab:[X('Nordic Curl Negative',3,4), X('Single-Leg Calf Raise',3,15)], skill:[M('Sprint Drills',1,10,'Ankling, high knees, butt kicks, straight-leg bounds'), M('Event Technique',1,15,'Your event: starts, hurdles, jumps or throws')], upper:X('Med Ball Overhead Throw',3,6)})},
+  {id:'swimming', name:'Swimming', icon:'🏊', focus:'Dryland strength for pull and kick, strong shoulders and streamline power.', kit:w => ({
+    power:[X('Streamline Jump',4,5,null,'Arms locked overhead, explode up'), X('Med Ball Overhead Slam',4,8)], speed:[X('Kick Sprints (dryland flutter)',5,20,'sec'), Y('Sprint',4,20)],
+    agility:[X('Plank Shoulder Tap (each side)',3,12), X('Superman Hold',3,20,'sec')], cond:[X('Swim Set',1,1,null,'Your coach\'s set, or 10 × 50 on 1:00'), M('Bike or Row',1,15,'Steady')],
+    prehab:[X('Band External Rotation',3,15), X('Y-T-W Raise',3,8)], skill:[M('Stroke Drills',1,15,'Catch-up, fingertip drag, single-arm'), M('Turns and Starts',1,10)], upper:P('Lat Pulldown',3,10)})}
+];
+const SEASONS = [['off', 'Off-season', 'B'], ['pre', 'Pre-season', 'A'], ['in', 'In-season', 'C']];
+// Each sport's strength work, chosen for what it needs (and what it should go easy on).
+// A lift is ['L', max to use, name, share of that max, coaching note] (weights from your maxes) or ['P', name, note] (pick a weight).
+const SPORT_LIFTS = {
+  basketball:{lower:['L', 'squat', 'Front Squat', .82, 'Upright torso, elbows high. Knee-friendly strength for jumping.'], hinge:['L', 'deadlift', 'Trap Bar Deadlift', .9, 'Push the floor away; jump-like hip drive'],
+    single:['P', 'Bulgarian Split Squat (each leg)', 'Front knee tracks over the toes'], push:['P', 'Dumbbell Bench Press'], pull:['X', 'Pull-up'], acc:['P', 'Lateral Lunge (each side)', 'Sit into the hip, push back fast'],
+    core:[X('Pallof Press (each side)', 3, 10), X('Dead Bug (each side)', 3, 8)], power:['L', 'clean', 'Hang Clean', .9, 'Fast elbows, land in an athletic stance']},
+  football:{lower:['L', 'squat', 'Back Squat', 1, 'Brace hard, drive out of the hole'], hinge:['L', 'deadlift', 'Deadlift', .95], single:['P', 'Walking Lunge (each leg)'], push:['L', 'bench', 'Bench Press', 1, 'Leg drive, bar path over the shoulders'],
+    pull:['P', 'Dumbbell Row', 'Heavy, no torso swing'], acc:['P', 'Shrug', 'Hold the top for a second'], core:[X('Ab Wheel Rollout', 3, 10), X('Farmer Carry', 3, 40, 'yd')], power:['L', 'clean', 'Power Clean', .95, 'Explode, catch high, reset each rep']},
+  soccer:{lower:['L', 'squat', 'Back Squat', .9, 'Controlled down, fast up'], hinge:['P', 'Romanian Deadlift', 'Long hamstrings, flat back'], single:['P', 'Bulgarian Split Squat (each leg)', 'The groin-and-knee saver'], push:['P', 'Dumbbell Bench Press'],
+    pull:['X', 'Inverted Row'], acc:['P', 'Single-Leg RDL (each leg)', 'Balance and hamstrings in one'], core:[X('Pallof Press (each side)', 3, 10), X('Side Plank Hip Lift (each side)', 3, 10)], power:['X', 'Single-Leg Box Jump (each leg)']},
+  baseball:{lower:['L', 'deadlift', 'Trap Bar Deadlift', .9, 'Hips drive the bat and the throw'], hinge:['P', 'Single-Leg RDL (each leg)'], single:['P', 'Reverse Lunge (each leg)'], push:['P', 'Landmine Press (each arm)', 'Shoulder-friendly pressing instead of heavy bench'],
+    pull:['P', 'Dumbbell Row'], acc:['P', 'Half-Kneeling Cable Lift (each side)', 'Rotate through the hips, not the low back'], core:[X('Pallof Press (each side)', 3, 10), X('Side Plank (each side)', 3, 30, 'sec')], power:['X', 'Med Ball Scoop Toss (each side)']},
+  volleyball:{lower:['L', 'squat', 'Back Squat', .9, 'Full depth you own; knees track the toes'], hinge:['P', 'Romanian Deadlift'], single:['P', 'Step-up (each leg)', 'Drive through the top leg only'], push:['P', 'Dumbbell Bench Press'],
+    pull:['P', 'Lat Pulldown'], acc:['P', 'Reverse Nordic', 'Strong quads protect the knees on landings'], core:[X('Hollow Hold', 3, 30, 'sec'), X('Dead Bug (each side)', 3, 8)], power:['L', 'clean', 'Hang Power Clean', .85, 'Triple extension, like the jump']},
+  tennis:{lower:['P', 'Split Squat (each leg)', 'Lunging strength for wide balls'], hinge:['L', 'deadlift', 'Trap Bar Deadlift', .85], single:['P', 'Lateral Lunge (each side)'], push:['P', 'Single-Arm Dumbbell Press (each arm)'],
+    pull:['P', 'Single-Arm Cable Row (each arm)'], acc:['P', 'Single-Leg RDL (each leg)', 'Balance for wide reaches'], core:[X('Pallof Press (each side)', 3, 10), X('Side Plank (each side)', 3, 30, 'sec')], power:['X', 'Lateral Bound (each side)']},
+  hockey:{lower:['L', 'squat', 'Front Squat', .82, 'Big legs for a big stride'], hinge:['L', 'deadlift', 'Deadlift', .9], single:['P', 'Lateral Lunge (each side)', 'Like a crossover push'], push:['L', 'bench', 'Bench Press', .95],
+    pull:['P', 'Dumbbell Row'], acc:['P', 'Slide Board or Skater Lunge (each side)'], core:[X('Pallof Press (each side)', 3, 10), X('Ab Wheel Rollout', 3, 10)], power:['L', 'clean', 'Hang Clean', .9]},
+  combat:{lower:['L', 'squat', 'Back Squat', .85], hinge:['L', 'deadlift', 'Deadlift', .9, 'Strong hips for takedowns and power'], single:['P', 'Walking Lunge (each leg)'], push:['L', 'ohp', 'Push Press', 1.05, 'Dip and drive with the legs, like a punch'],
+    pull:['X', 'Weighted Pull-up'], acc:['P', 'Landmine Rotation (each side)', 'Punching power from the hips'], core:[X('Hollow Hold', 3, 40, 'sec'), X('Hanging Leg Raise', 3, 10)], power:['L', 'clean', 'Hang Power Clean', .85, 'Hips snap like a punch']},
+  track:{lower:['L', 'squat', 'Back Squat', .95], hinge:['P', 'Hip Thrust', 'Pause at the top'], single:['P', 'Step-up (each leg)', 'Fast up, slow down'], push:['P', 'Dumbbell Bench Press'],
+    pull:['X', 'Pull-up'], acc:['P', 'Single-Leg RDL (each leg)', 'Hamstrings that hold up at top speed'], core:[X('Hollow Hold', 3, 30, 'sec'), X('Hanging Knee Raise', 3, 12)], power:['L', 'clean', 'Power Clean', .9]},
+  swimming:{lower:['L', 'squat', 'Front Squat', .8, 'Push-off power for starts and walls'], hinge:['P', 'Romanian Deadlift'], single:['P', 'Reverse Lunge (each leg)'], push:['P', 'Dumbbell Bench Press'],
+    pull:['X', 'Pull-up'], acc:['P', 'Straight-Arm Pulldown', 'The catch-and-pull of every stroke'], core:[X('Flutter Kick', 3, 30, 'sec'), X('Hollow Hold', 3, 30, 'sec')], power:['X', 'Broad Jump']}
+};
+// one of a sport's lifts as an exercise: n sets of reps at that week's percentage (for maxed lifts)
+const spLift = (s, n, p, reps) => { if (reps === undefined){ reps = p; p = 1; }   // unweighted lifts can skip the percentage
+  return s[0] === 'L' ? L(s[1], n, Math.round(p * s[3] * 1000) / 1000, reps, {name:s[2], note:s[4]}) : s[0] === 'X' ? X(s[1], n, reps, null, s[2]) : P(s[1], n, reps, s[2]); };
+const pwReps = (B, r) => B.power[0] === 'L' ? r : 5;   // a jump or throw gets 5 reps where a clean gets 2 or 3
+function sportArc(sp, season){ const [, sname, rank] = SEASONS.find(s => s[0] === season), B = SPORT_LIFTS[sp.id];
+  const pc = {off:[.70, .75, .80, .65], pre:[.75, .80, .85, .65], in:[.75, .78, .80, .70]}[season], wn = season === 'in' ? ['Game Week 1', 'Game Week 2', 'Game Week 3', 'Game Week 4'] : season === 'off' ? WN_BUILD : WN_DELOAD;
+  const cut = (e, n) => ({...e, sets:e.sets.slice(0, n)});   // fewer sets of the same thing (in-season, deload weeks)
+  const day = w => { const k = sp.kit(w), p = pc[w], dl = w === 3 && season !== 'in';   // week 4 backs off
+    const vol = (e, n) => dl ? cut(e, Math.max(2, n - 1)) : e;
+    if (season === 'off') return [
+      {name:'Lower Strength', ex:[spLift(B.lower, dl ? 3 : 4, p, 5), spLift(B.hinge, 3, p, 6), spLift(B.single, 3, 8), vol(k.power[0], 4), k.prehab[0], B.core[0]]},
+      {name:'Upper Strength', ex:[spLift(B.push, dl ? 3 : 4, p, 6), spLift(B.pull, 4, p, 6 + (w < 3 ? w : 0)), k.upper, P('Face Pull', 3, 15, 'Elbows high, squeeze the shoulder blades'), k.prehab[1], B.core[1]]},
+      {name:'Power & Speed', ex:[spLift(B.power, 4, p, pwReps(B, 3)), vol(k.power[1], 3), vol(k.speed[0], 6), vol(k.agility[0], 4), spLift(B.acc, 3, p, 8)]},
+      {name:`${sp.name} Skill & Conditioning`, ex:[k.skill[0], k.skill[1], vol(k.cond[1], 1), vol(k.agility[1], 4), B.core[0]]}];
+    if (season === 'pre') return [
+      {name:'Lower Power', ex:[{...spLift(B.lower, dl ? 3 : 4, p, 3), note:'Contrast: right after each set, do the jump below'}, vol(k.power[0], 4), spLift(B.single, 3, 6), spLift(B.hinge, 3, p, 5), k.prehab[0]]},
+      {name:'Speed & Agility', ex:[vol(k.speed[0], 6), vol(k.speed[1], 4), vol(k.agility[0], 4), vol(k.agility[1], 4), B.core[0]]},
+      {name:'Upper Power', ex:[{...spLift(B.push, dl ? 3 : 4, p, 3), note:'Contrast: follow each set with the explosive move below'}, k.upper, spLift(B.pull, 4, p, 5), spLift(B.power, 3, p, pwReps(B, 2)), k.prehab[1]]},
+      {name:'Game Conditioning', ex:[k.skill[0], vol(k.cond[0], 3), vol(k.cond[1], 1), B.core[1]]}];
+    return [
+      {name:'Strength Upkeep', ex:[spLift(B.lower, 3, p, 3), spLift(B.push, 3, p, 3), spLift(B.pull, 3, p, 6), k.prehab[0], B.core[0]]},
+      {name:'Power Primer', ex:[spLift(B.power, 3, p, pwReps(B, 2)), cut(k.power[0], 3), cut(k.speed[0], 4), cut(k.agility[0], 3), k.skill[0]]},
+      {name:'Recovery', ex:[M('Mobility Flow', 1, 10, 'Hips, ankles, T-spine, shoulders'), M('Easy Bike or Walk', 1, 15, 'Conversation pace'), X('Foam Roll', 1, 5, 'min'), cut(k.prehab[1], 2), X('Breathing Reset', 1, 3, 'min', 'Slow nose breaths, long exhales')]}]; };
+  const weeks = [0, 1, 2, 3].map(w => ({days:day(w).map(d => ({...d, ex:[WARMUP.athlete(), ...d.ex.map(e => JSON.parse(JSON.stringify(e)))]}))}));   // every exercise its own copy
+  const blurb = {off:`Build the base: strength from your maxes, power and ${sp.name.toLowerCase()} skill work. 4 days.`, pre:`Turn strength into game speed: power, sprints, agility and ${sp.name.toLowerCase()}-specific conditioning. 4 days.`,
+    in:'Stay strong without dead legs: short strength upkeep, a power primer and a recovery day around your games. 3 days.'}[season];
+  return {id:`sp-${sp.id}-${season}`, path:'athlete', sport:sp.id, season, rank, name:`${sp.name} ${sname}`, blurb, weekNames:wn, weeks, tm:1, needsMax:true}; }
+PROGRAMS.push(...SPORTS.flatMap(sp => SEASONS.map(([s]) => sportArc(sp, s))));
+
 
 /* ===== Her arcs: the female hero's own lineup =====
    Six paths built around what most women train for: glutes and legs, a toned full body, Pilates and core, real
@@ -3390,23 +3490,33 @@ function viewArcs(){
         <button class="btn btn-ghost btn-sm" data-act="editArc" data-id="${p.id}">Edit</button>
         <button class="btn btn-ghost btn-sm arc-del" data-act="delArc" data-id="${p.id}">${deleteArmed === p.id ? 'Tap again to delete' : 'Delete'}</button></div>
     </article>`; }).join('')}`;
-  const cards = PROGRAMS.filter(p => p.path === arcPath).map(p => {
-    const active = p.id === S.programId, perWeek = p.weeks[0].days.length;
-    return `<article class="arc${active ? ' active' : ''}">
-      <div class="arc-head">${emblem(p.rank, 'sm')}
-        <div><h3>${p.name}</h3><div class="arc-meta">${p.rank}-Rank · ${LEVEL[p.rank]} · ${perWeek} days/week · ${p.weeks.length} weeks</div></div></div>
-      <p>${p.blurb}</p>
-      <div class="chips"><span class="chip">${p.needsMax ? 'Uses your maxes' : 'No maxes needed'}</span>${p.tm < 1 ? `<span class="chip">Training max ${Math.round(p.tm*100)}%</span>` : ''}<span class="chip xp">XP ×${XP_MULT[p.rank]}</span></div>
-      ${active
-        ? `<div class="row-between"><span class="arc-active">Active · Week ${S.pos.w+1}, Day ${S.pos.d+1}</span><div class="arc-btns">${startOverBtn(p)}<button class="btn btn-ghost btn-sm" data-act="tab" data-tab="today">Continue</button></div></div>`
-        : `<div class="arc-btns"><button class="btn btn-power btn-sm" data-act="start" data-id="${p.id}">${startLabel(p)}</button>${startOverBtn(p)}<button class="btn btn-ghost btn-sm" data-act="remix" data-id="${p.id}">Remix</button></div>`}
-    </article>`;
-  }).join('');
+  // the Athlete paths (his and hers) also carry the sport arcs: a row of sport buttons under the base training
+  const athletic = arcPath === 'athlete' || arcPath === 'sport', sp = athletic && SPORTS.find(x => x.id === arcSport);
+  const sportBar = athletic ? `<div class="sport-head"><span class="eyebrow">Sport-specific training</span><span class="prem${isPremium() ? ' on' : ''}">Premium</span></div>
+    <div class="sport-chips" role="group" aria-label="Sport">${[{id:'', name:'Base training', icon:'⚡'}, ...SPORTS].map(x => `<button type="button" class="sport-chip${(arcSport || '') === x.id ? ' on' : ''}" data-act="arcSport" data-v="${x.id}" aria-pressed="${(arcSport || '') === x.id}"><span aria-hidden="true">${x.icon}</span>${x.name}</button>`).join('')}</div>` : '';
+  const list = sp ? PROGRAMS.filter(p => p.sport === sp.id) : PROGRAMS.filter(p => p.path === arcPath && !p.sport);
+  const intro = sp ? `<section class="path-intro sport-intro"><div class="eyebrow">${sp.icon} ${sp.name}</div><p>${sp.focus} Three arcs follow your season: build in the off-season, sharpen before it, and stay fresh while you're playing.</p>
+      ${isPremium() ? '' : '<p class="fine">Sport arcs are part of Premium. Look through them here; Premium unlocks them.</p>'}</section>`
+    : `<section class="path-intro"><div class="eyebrow">${path.name} path</div><p>${path.desc}</p></section>`;
   return `<section><h1 class="sec">Training arcs</h1><p class="lede">Choose your path, then your difficulty. Every path climbs from E-Rank (beginner) to S-Rank (master), and harder arcs pay more XP.</p></section>${who}
   <div class="paths" role="group" aria-label="Training paths">${paths}</div>
-  <section class="path-intro"><div class="eyebrow">${path.name} path</div><p>${path.desc}</p></section>
-  ${cards}`;
+  ${sportBar}${intro}
+  ${list.map(arcCard).join('')}`;
 }
+var arcSport = null;   // the sport picked under the Athlete path (null = its base training)
+function arcCard(p){
+  const active = p.id === S.programId, perWeek = p.weeks[0].days.length, locked = p.sport && !isPremium();
+  return `<article class="arc${active ? ' active' : ''}${locked ? ' arc-locked' : ''}">
+      <div class="arc-head">${emblem(p.rank, 'sm')}
+        <div><h3>${p.name}</h3><div class="arc-meta">${p.season ? `${SEASONS.find(s => s[0] === p.season)[1]} · ` : `${p.rank}-Rank · ${LEVEL[p.rank]} · `}${perWeek} days/week · ${p.weeks.length} weeks</div></div></div>
+      <p>${p.blurb}</p>
+      ${p.sport ? `<p class="fine arc-days">${p.weeks[0].days.map(d => esc(d.name)).join(' · ')}</p>` : ''}
+      <div class="chips"><span class="chip">${p.needsMax ? 'Uses your maxes' : 'No maxes needed'}</span>${p.tm < 1 ? `<span class="chip">Training max ${Math.round(p.tm*100)}%</span>` : ''}<span class="chip xp">XP ×${XP_MULT[p.rank]}</span>${p.sport ? `<span class="chip prem${isPremium() ? ' on' : ''}">Premium</span>` : ''}</div>
+      ${active
+        ? `<div class="row-between"><span class="arc-active">Active · Week ${S.pos.w+1}, Day ${S.pos.d+1}</span><div class="arc-btns">${startOverBtn(p)}<button class="btn btn-ghost btn-sm" data-act="tab" data-tab="today">Continue</button></div></div>`
+        : locked ? `<div class="arc-btns"><button class="btn btn-power btn-sm" data-act="premiumHub">Unlock with Premium</button></div>`
+        : `<div class="arc-btns"><button class="btn btn-power btn-sm" data-act="start" data-id="${p.id}">${startLabel(p)}</button>${startOverBtn(p)}<button class="btn btn-ghost btn-sm" data-act="remix" data-id="${p.id}">Remix</button></div>`}
+    </article>`; }
 
 /* ---------- Welcome (first launch) ---------- */
 // A full-screen cover for brand-new players: title, hero, path, experience, maxes, training days, ready.
@@ -8692,6 +8802,7 @@ document.addEventListener('click', e => {
   else if (a === 'switchProfile'){ closeDialog('settings'); openProfiles(null, true); }
   else if (a === 'stayArc'){ S.arcJustDone = null; save(); render(); toast(`${prog().name}, round two. Let's go.`); }
   else if (a === 'start'){
+    const sa = PROGRAMS.find(p => p.id === t.dataset.id); if (sa && sa.sport && !isPremium()){ premiumHub(); return; }   // sport arcs are Premium
     S.arcJustDone = null; const resumed = switchArc(t.dataset.id);   // the arc you leave keeps its place
     save(); tab = 'today'; render(true); window.scrollTo(0, 0);   // your streak and history carry over
     toast(resumed ? `${prog().name}: back to Week ${S.pos.w + 1}, Day ${S.pos.d + 1}.` : `${prog().name} started. Training arc: begin.`);
@@ -8702,7 +8813,8 @@ document.addEventListener('click', e => {
   }
   else if (a === 'closeRank'){ stopRankUp(); closeDialog('rankup'); }
   else if (a === 'shareCard') shareCard(t.dataset.v);
-  else if (a === 'path'){ arcPath = t.dataset.path; render(); }
+  else if (a === 'path'){ arcPath = t.dataset.path; arcSport = null; render(); }
+  else if (a === 'arcSport'){ arcSport = t.dataset.v || null; render(); }
   else if (a === 'allArcs'){ S.prefs.allArcs = !S.prefs.allArcs; save(); arcPath = null; render(); }
   else if (a === 'openHero'){ previewRank = formIdx(); editG = S.hero.gender; renderHeroEditor(); openDialog('heroEditor', '[data-act=closeHero]'); document.getElementById('heName').value = S.hero.name; paintHeroes(); }
   else if (a === 'closeHero'){ closeDialog('heroEditor'); render(); }

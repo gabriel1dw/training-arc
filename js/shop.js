@@ -119,8 +119,55 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     { id: 'C', name: 'Gym Bag', cur: 'c', price: 300, rolls: 1, odds: { C: 70, R: 25, E: 4.5, L: .5 }, bonus: [20, 60], desc: 'Somebody left it in the locker room. Finders keepers.' },
     { id: 'R', name: 'Gym Locker', cur: 'c', price: 900, rolls: 2, odds: { C: 40, R: 45, E: 12, L: 3 }, bonus: [40, 120], desc: 'Locker 07 has not been opened in years. Two finds inside.' },
     { id: 'E', name: 'Technique Scroll', cur: 'g', price: 120, rolls: 2, odds: { R: 45, E: 45, L: 10 }, desc: 'A master\'s sealed technique. Rare or better, two finds.' },
-    { id: 'L', name: 'Spirit Orb', cur: 'g', price: 300, rolls: 3, odds: { R: 20, E: 50, L: 30 }, desc: 'Power condensed from a thousand training arcs. Three finds, legends likely.' }];
+    { id: 'V', name: 'Champion\'s Vault', cur: 'g', price: 280, rolls: 3, odds: { E: 45, L: 55 }, vault: true, desc: 'Aurelia\'s own chest. Three finds, epic or better, and legends more often than anywhere else.' },
+    { id: 'L', name: 'Spirit Orb', cur: 'g', price: 300, rolls: 3, odds: { R: 20, E: 50, L: 30 }, desc: 'Power condensed from a thousand training arcs. Three finds,legends likely.' }];
   const PITY = 10, DUPE = { C: { coins: 60 }, R: { coins: 150 }, E: { gems: 30 }, L: { gems: 80 } };
+  // each shopkeeper's voice: greetings, tips (tap the bubble), what they say when you buy, when you're short, and about an item
+  const SHOP_VOICE = {
+    'dojo-supply': { hi: ['Train hard, then dress the part, young one.', 'Ah. The student returns.', 'A calm mind chooses well. Look around.'],
+      tips: ['Grind is earned in sweat. Every set fills your purse.', 'Glory comes only from great victories: bosses, new ranks, finished arcs.', 'My stock changes at midnight. Patience is also training.',
+        'Someone left a gym bag in my dojo. Curious? Look under Loot.', 'Even a master once could not do a push-up.', 'Rest is part of the training. Remember that.'],
+      buy: ['A wise purchase. Wear it with honor.', 'May it serve you well in battle.', 'Good. Now earn it at the bar.'], broke: ['Not enough yet. Train, and return.', 'Your purse is light. Let your training be heavy.'],
+      week: n => `This week I offer the ${n}. On Monday, it is gone.`, look: (n, d) => `The ${n}. ${d}` },
+    'vend-o-matic': { hi: ['BEEP. 6 new items loaded. Pick a code!', 'BOOP. Customer detected. Muscles: impressive.', 'WELCOME, PLAYER ONE. INSERT GRIND.'],
+      tips: ['FACT: workouts dispense Grind. More sets, more Grind.', 'GLORY = boss wins + rank ups + finished arcs. Rare. Handle with care.', 'RESTOCK AT 00:00. I do not sleep. I only restock.',
+        'LOOT TAB: bags, lockers, scrolls, orbs. Odds printed. I am an honest machine.', 'ERROR 404: excuses not found.', 'Every 10th loot without an epic gives an epic. That is math.'],
+      buy: ['DISPENSING... ✓ ENJOY.', 'TRANSACTION COMPLETE. You look 12% cooler.', 'ITEM DROPPED. *clunk*'], broke: ['INSUFFICIENT FUNDS. Please do squats and try again.', 'BZZT. Not enough. Train, then return.'],
+      week: n => `FEATURED THIS WEEK: ${n.toUpperCase()}. EXPIRES MONDAY.`, look: (n, d) => `ITEM SELECTED: ${n.toUpperCase()}. ${d}` },
+    'sky-bazaar': { hi: ['Meow! Today\'s stock floated in fresh~', 'Nya~ welcome back to the clouds!', 'Purr... I saved the shiny ones for you.'],
+      tips: ['Every workout drops Grind into your paws~', 'Glory is rare as a sunny day up here. Beat bosses for it, nya.', 'New wares drift in at midnight~',
+        'The Spirit Orb in Loot glows when a legend is inside. Ooh, shiny!', 'Stretch like a cat before you train. Trust me~', 'Naps count as recovery. Mochi approved.'],
+      buy: ['Nyaa~ it suits you!', 'Purrfect choice!', 'Wrapped in a cloud, just for you~'], broke: ['Mrrp... not enough. Go train, I\'ll wait~', 'Your coin purse is lighter than a feather, nya.'],
+      week: n => `This week's special is the ${n}, nya~ Gone by Monday!`, look: (n, d) => `Ooh, the ${n}~ ${d}` },
+    'neon-gear': { hi: ['Fresh drops synced. Glow up, runner.', 'Grid\'s live. What are we wearing today?', 'You again. Respect. You keep showing up.'],
+      tips: ['Sets in, Grind out. That\'s the whole economy.', 'Glory\'s the hard currency. Bosses, rank-ups, arc clears.', 'New stock syncs at midnight. Don\'t blink.',
+        'Loot tab\'s got lockers. Locker 07\'s been sealed for years.', 'Style is a stat. Wear what makes you train harder.', 'Consistency beats intensity. Every. Single. Time.'],
+      buy: ['Synced to your profile. Looking sharp.', 'That one hits different under neon.', 'Equipped. Go break a PR.'], broke: ['Balance too low, runner. Go earn it.', 'Credits short. Hit the gym, come back.'],
+      week: n => `Weekly drop: the ${n}. Off the grid Monday.`, look: (n, d) => `${n}. Clean pick. ${d}` },
+    'camp-supply': { hi: ['Earned it on the field? Then gear up, rookie!', 'Hustle in, hustle out. What do you need?', 'There\'s my all-star! Let\'s get you suited up.'],
+      tips: ['Every rep pays Grind. Leave nothing on the field!', 'Glory? That\'s for game-winners. Bosses, rank-ups, finished arcs.', 'New gear hits the locker room at midnight.',
+        'Run a Combine every four weeks. Numbers don\'t lie!', 'Champions are made in the off-season.', 'Water, sleep, protein. The boring stuff wins games.'],
+      buy: ['That\'s a starter\'s jersey right there!', 'Now you look like you belong on the field!', 'Great pick. Now earn your minutes!'], broke: ['Not enough in the bank, rookie. Two more practices!', 'Can\'t afford it yet. Grind it out!'],
+      week: n => `Player of the week gets the ${n}. Gone Monday!`, look: (n, d) => `The ${n}! ${d}` },
+    'harbor-dock': { hi: ['Ahoy! Fresh cargo off the ship, and none of it light.', 'Welcome aboard, sailor. Mind the ropes.', 'Ha! Back from the gym? I can smell the effort from here.'],
+      tips: ['Every set you log is cargo in the hold. That\'s Grind, matey.', 'Glory\'s treasure. You only find it beating bosses, ranking up, finishing arcs.', 'New cargo docks at midnight. Never late.',
+        'Hauled anchors for thirty years. Best grip training there is.', 'Calm seas never made a strong sailor. Hard sets do.', 'A locker washed ashore last week. Locker 07. Check the Loot tab.'],
+      buy: ['Aye, that\'s a fine catch!', 'Loaded and stowed. She\'s yours, sailor!', 'Ha! You\'ll turn heads at port with that.'], broke: ['Not enough doubloons, sailor. Back to the oars!', 'Your purse is lighter than sea foam. Go earn it.'],
+      week: n => `This week's prize cargo: the ${n}. Ships out Monday!`, look: (n, d) => `The ${n}, eh? ${d}` },
+    'quark-lab': { hi: ['Eureka! My latest formula: consistency.', 'Ah, a test subject! I mean... a customer.', 'Welcome to the lab. Don\'t touch the green one.'],
+      tips: ['Hypothesis: more sets, more Grind. Confirmed. Every time.', 'Glory is a rare element. Isolated only from boss fights, rank-ups and finished arcs.', 'My stock re-synthesizes at midnight.',
+        'Muscle is just adaptation with good marketing.', 'The Technique Scroll in Loot has a 10% legendary rate. I checked the math. Twice.', 'Sleep is when the experiment runs. Get eight hours.'],
+      buy: ['Fascinating choice! Results look promising.', 'Experiment successful!', 'Ooh, that one glows under UV. Enjoy!'], broke: ['Insufficient funds. Fascinating. Also unfortunate.', 'The numbers don\'t add up yet. More reps, then return!'],
+      week: n => `This week's discovery: the ${n}. The sample expires Monday!`, look: (n, d) => `Specimen: the ${n}. ${d}` },
+    'golden-vault': { hi: ['Only champions are granted entry. Welcome, champion.', 'The vault remembers every rep you\'ve paid for.', 'Gold is earned. You have earned this.'],
+      tips: ['Nothing in this vault is sold anywhere else.', 'New treasures rise from the vault each Monday.', 'Claim your weekly gift. The vault is generous to those who return.',
+        'The Champion\'s Vault in Loot holds only epic and legendary finds.', 'A crown is heavy. Train your traps.'],
+      buy: ['It is yours. Wear it as a champion.', 'The vault approves of your choice.', 'Few have held that. Fewer have earned it.'], broke: ['Not yet, champion. The vault waits for you.', 'Earn a little more Glory. Then return.'],
+      week: n => `This week the vault offers the ${n}.`, look: (n, d) => `The ${n}. ${d}` },
+    'night-market': { hi: ['Rare goods... only until sunrise.', 'You trained in the dark. The market remembers.', 'Shh. Not everyone finds this place.'],
+      tips: ['These wares vanish at dawn.', 'Glory buys what Grind cannot.', 'Not many train at this hour. I respect that.', 'Some of these were never meant to be sold...'],
+      buy: ['...a fine choice. Tell no one.', 'It is yours. Until the end of time.', 'The night approves.'], broke: ['Come back with more. If the night allows.', 'Not enough... the moon is patient.'],
+      week: n => `The ${n}... this week only.`, look: (n, d) => `...the ${n}. ${d}` } };
   let ST = window.TA_SHOP_STORE ? JSON.parse(JSON.stringify(START)) : load() || JSON.parse(JSON.stringify(START));
   const listeners = new Set();
   const changed = () => { persist(ST); listeners.forEach(f => f()); };
@@ -148,7 +195,10 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
   function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   const AFFORD = 350;   // "affordable": about what one or two workouts pay (a new player starts with 500 Grind)
   function stockFor(shopId, date) {
-    const d = D(), sh = d.shops[shopId], seed = sh.special ? (nightKey(date) ?? dayIndex(date)) * 613 : dayIndex(date) * 977, r = rng(seed + shopId.length * 131);
+    // the Golden Vault: its own gilded items, 8 at a time, a new set each week
+    if (D().shops[shopId].vault) { const ids = D().shops[shopId].pool.filter(id => D().items[id]), k = weekIndex(date) * 3;
+      return { items: [...new Set(ids.map((_, i) => ids[(k + i) % ids.length]))].slice(0, 8), tags: {}, season: null, deal: -1 }; }
+    const d = D(), sh = d.shops[shopId], seed =sh.special ? (nightKey(date) ?? dayIndex(date)) * 613 : dayIndex(date) * 977, r = rng(seed + shopId.length * 131);
     const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
     // every day: 6 things to wear (outfit / hair dye / shoes / cape) + 6 extras (aura / pet / battle fx / title);
     // the Night Market keeps a smaller, rarer table
@@ -242,7 +292,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
       const ch = CHESTS.find(c => c.id === tid), d = D(); if (!ch) return null;
       const bal = ch.cur === 'c' ? ST.coins : ST.gems; if (bal < ch.price) return { error: 'funds', short: ch.price - bal, chest: ch };
       if (ch.cur === 'c') ST.coins -= ch.price; else ST.gems -= ch.price;
-      const limited = new Set((d.seasons || []).flatMap(s => s.items)), pool = Object.values(d.items).filter(i => !i.drop && !i.premium && !/^(pb|pm)_/.test(i.id) && i.price > 0 && !limited.has(i.id));
+      const limited = new Set((d.seasons || []).flatMap(s => s.items)), pool = Object.values(d.items).filter(i => !i.drop && !i.premium && !i.vault && !/^(pb|pm)_/.test(i.id) && i.price > 0 && !limited.has(i.id));
       const roll = w => { let r = Math.random() * Object.values(w).reduce((a, b) => a + b, 0); for (const [k, v] of Object.entries(w)) if ((r -= v) < 0) return k; return Object.keys(w)[0]; };
       const pity = (ST.chestPity || 0) >= PITY - 1, got = [];
       for (let k = 0; k < ch.rolls; k++) {
@@ -353,6 +403,12 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
 .tsh-intro h2{margin:0;font:900 17px/1.1 var(--ff);color:#ffd27a;text-shadow:2px 2px 0 #2a1440}
 .tsh-intro p{margin:0;font:700 8px/12px var(--ff);color:#e6dcff;max-width:200px}
 .tsh-intro button{margin-top:4px;height:26px;padding:0 16px;border:0;border-radius:6px;background:#7a5cff;color:#fff;font:900 10px/1 var(--ff)}
+.tsh-chip.tsh-gold{background:linear-gradient(135deg,#fff1b0,#e0b040 45%,#b8862a);border-color:#ffe08a;color:#2a1a00;box-shadow:0 0 8px rgba(255,214,90,.45)}
+.tsh-intro .m.gold{background:radial-gradient(circle at 35% 35%,#fff6cc,#e0b040 55%,#8a6418);box-shadow:0 0 24px 6px rgba(255,214,90,.5)}
+.tsh-vlock h2{color:#ffe08a}
+.tsh-vbtns{display:flex;gap:8px}
+.tsh-vbtns .tsh-vno{background:transparent;border:1px solid #6a5a3a;color:#e8dcc0}
+.tsh-vbtns .tsh-vgo{background:linear-gradient(135deg,#fff1b0,#e0b040);color:#2a1a00}
 .tsh-kp{}@media (prefers-reduced-motion: reduce){.tsh-kp,.tsh-body,.tsh-pet,.tsh-next,.tsh-bundle:after,.tsh-card .spk{animation:none}}
 /* ---- Layout: grid first, try-on in a sheet. The stage grows to the phone's height (fit() sets it), the scene
    becomes a shorter strip, the grid fills the rest in 3 columns, and tapping an item slides up the try-on sheet. ---- */
@@ -409,7 +465,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     // opts.date lets you preview another day/time; the clock keeps ticking from there
     const ctl = { off: opts.date ? opts.date - Date.now() : 0, preferDay: true, cur: null };   // the day shop opens first; the Night Market is a tap away when it's open
     ctl.now = () => new Date(Date.now() + ctl.off);
-    ctl.pick = () => opts.shop || (nightUnlocked(ctl.now()) && !ctl.preferDay ? D().special : shopFor(ctl.now()));
+    ctl.pick = () => opts.shop || (ctl.vault ? 'golden-vault' : nightUnlocked(ctl.now()) && !ctl.preferDay ? D().special : shopFor(ctl.now()));
     ctl.remount = () => { ctl.cur && ctl.cur.destroy(); ctl.cur = mount(el, opts, ctl); };
     ctl.remount();
     return { get shop() { return ctl.cur.shop; }, destroy() { ctl.cur && ctl.cur.destroy(); }, refresh: () => ctl.remount() };
@@ -432,15 +488,18 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     const heroSrc = opts.heroSrc || (((window.CHARACTER_RANKS_BY_BODY || {})[opts.body || 'm'] || {})[opts.rank || 'B'] || {}).src || '';
     const bundle = opts.banner || shop.bundle;
     const liveLook = !opts.heroSrc && !!opts.hero || !opts.heroSrc && window.TA_LOOK && TA_LOOK.available(opts.body || 'm', opts.rank || 'B');
+    // the Golden Vault is Premium; the app says who has it. Premium players get one free vault item a week.
+    const prem = () => !!(opts.isPremium && opts.isPremium()), giftReady = d => prem() && ST.vaultGift !== weekIndex(d);
     stage.innerHTML = `
   <div class="tsh-scene"><img src="${shop.bg}" alt="">${shop.anim ? `<div class="tsh-kp" style="left:${shop.anim.x}px;top:${shop.anim.y}px;width:${shop.anim.w}px;height:${shop.anim.h}px;background-image:url(${shop.anim.sheet});--fw:${shop.anim.w * shop.anim.frames}px;animation-duration:${shop.anim.frames * shop.anim.ms}ms;animation-timing-function:steps(${shop.anim.frames})"></div>` : `<img class="tsh-body" src="${shop.body}" alt="">`}<img src="${shop.fore}" alt=""><canvas width="${W}" height="172"></canvas></div>
-  <div class="tsh-top"><button class="tsh-back" aria-label="Back">‹</button><div class="tsh-title">${esc(shop.title)}</div>
+  <div class="tsh-top"><div class="tsh-title">${esc(shop.title)}</div>
     <div class="tsh-money" title="Glory"><img src="${data.gemIcon}" alt="Glory"><span class="tsh-gems"></span><button aria-label="How to earn Glory" class="tsh-getgems">+</button></div>
     <div class="tsh-money" title="Grind"><img src="${data.coinIcon}" alt="Grind"><span class="tsh-coins"></span><button aria-label="How to earn Grind" class="tsh-getcoins">+</button></div></div>
   <div class="tsh-bub" role="button" tabindex="0"><div class="tsh-name">${esc(shop.keeper)}</div><div class="tsh-say"></div><span class="tsh-next">▼</span></div>
-  <div class="tsh-chips"><div class="tsh-chip"><i></i><span class="tsh-clock"></span></div>
-    ${{ nm: '<button class="tsh-chip tsh-sw"><i class="moon"></i>◂ BACK TO DAY SHOP</button>', open: '<button class="tsh-chip tsh-sw tsh-glowc"><i class="moon"></i>NIGHT MARKET IS OPEN ▸</button>',
-        locked: '<div class="tsh-chip"><i class="moon"></i>NIGHT MARKET: TRAIN NOW TO UNLOCK</div>', day: '' }[mode]}</div>
+  <div class="tsh-chips">${shop.vault ? `<button class="tsh-chip tsh-vsw">◂ BACK TO SHOPS</button>${giftReady(date) ? '<button class="tsh-chip tsh-gold tsh-gift">🎁 WEEKLY GIFT</button>' : '<div class="tsh-chip">🎁 NEXT GIFT MONDAY</div>'}`
+      : `<button class="tsh-chip tsh-gold tsh-vsw">★ GOLDEN VAULT${prem() ? '' : ' 🔒'}</button>${shop.special && mode !== 'nm' ? '<div class="tsh-chip"><i></i><span class="tsh-clock">TONIGHT ONLY</span></div>' : ''}
+    ${{ nm: '<button class="tsh-chip tsh-sw"><i class="moon"></i>◂ DAY SHOP</button>', open: '<button class="tsh-chip tsh-sw tsh-glowc"><i class="moon"></i>NIGHT MARKET ▸</button>',
+        locked: '<div class="tsh-chip"><i class="moon"></i>NIGHT MARKET: TRAIN LATE</div>', day: '' }[mode]}`}</div>
   <div class="tsh-tabs"></div>
   <div class="tsh-bar"><span class="n"></span><button class="tsh-own" aria-pressed="false"></button><button class="tsh-sort"></button></div>
   <div class="tsh-grid" role="list"></div>
@@ -454,7 +513,10 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
   <button class="tsh-bundle"><img src="${data.chestIcon}" alt=""><span class="t1">${esc(bundle.title)}</span><span class="t2">${esc(bundle.sub)}</span><span class="bp">${esc(bundle.price)}</span></button>
   <div class="tsh-toast"></div>
   <div class="tsh-intro" ${shop.special && ST.nightIntro !== nightKey(date) ? '' : 'hidden'}><div class="m"></div><h2>THE NIGHT MARKET<br>HAS OPENED</h2>
-    <p>You trained after dark, so the market lets you in. Rare, epic and legendary goods, tonight only.</p><button class="tsh-enter">ENTER</button></div>`;
+    <p>You trained after dark, so the market lets you in. Rare, epic and legendary goods, tonight only.</p><button class="tsh-enter">ENTER</button></div>
+  <div class="tsh-intro tsh-vlock" hidden><div class="m gold"></div><h2>THE GOLDEN VAULT</h2>
+    <p>Aurelia opens the vault only for Premium champions. Inside: gilded capes, auras, hair dyes and titles you can't get anywhere else, the Champion's Vault loot, and a free gift every week.</p>
+    <div class="tsh-vbtns"><button class="tsh-vno">NOT NOW</button><button class="tsh-vgo">SEE PREMIUM</button></div></div>`;
     wrap.appendChild(stage); el.appendChild(wrap);
     const $ = s => stage.querySelector(s);
     // the stage keeps its 270-wide design but grows as tall as the screen allows, so the grid gets the extra room
@@ -463,17 +525,26 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     const ro = window.ResizeObserver ? new ResizeObserver(fit) : null; ro ? ro.observe(wrap) : addEventListener('resize', fit); fit();
     $('.tsh-enter').onclick = () => { $('.tsh-intro').hidden = true; ST.nightIntro = nightKey(ctl.now()); persist(ST); };
     const sw = $('.tsh-sw'); if (sw) sw.onclick = () => { ctl.preferDay = shop.special; ctl.remount(); };
+    $('.tsh-vsw').onclick = () => { if (!shop.vault && !prem()) { $('.tsh-vlock').hidden = false; return; } ctl.vault = !shop.vault; ctl.remount(); };
+    $('.tsh-vno').onclick = () => { $('.tsh-vlock').hidden = true; };
+    $('.tsh-vgo').onclick = () => { $('.tsh-vlock').hidden = true; if (opts.onPremium) opts.onPremium(); };
+    const gift = $('.tsh-gift'); if (gift) gift.onclick = () => { const d = D(), left = (d.shops['golden-vault'].pool || []).filter(id => d.items[id] && !ST.owned.includes(id));
+      ST.vaultGift = weekIndex(ctl.now()); let msg;
+      if (left.length) { const id = left[Math.floor(Math.random() * left.length)]; ST.owned.push(id); msg = `Aurelia's gift: the ${d.items[id].name}!`; } else { ST.gems += 50; msg = 'You own the whole vault. Aurelia gives you 50 Glory.'; }
+      changed(); toast(msg); try { navigator.vibrate && navigator.vibrate([20, 40, 20]); } catch (e) {} opts.onChange && opts.onChange(TA_SHOP.state()); setTimeout(ctl.remount, 900); };
 
     // ---------- shopkeeper dialogue ----------
-    const lines = [shop.say.join(' '), 'Stock changes every day at midnight.', 'Grind comes from every workout. Glory comes from big wins.',
-                   shop.special ? 'By dawn I vanish. Choose well.' : 'They say a hidden market opens late at night... but only for those who train after dark.'];
-    if (shop.special) lines.splice(1, 1, 'Not many train at this hour. I respect that.');
-    else {
+    // each keeper talks their own way: a greeting, then (tap the bubble) the week's news and their tips in a fresh order
+    const V = SHOP_VOICE[shopId] || SHOP_VOICE['dojo-supply'], pick = a => a[Math.floor(Math.random() * a.length)];
+    const lines = [pick(V.hi)];
+    if (!shop.special && !shop.vault) {
       const wk = Object.keys(stock.tags).find(k => stock.tags[k] === 'week');
-      if (wk) lines.splice(1, 0, `This week's featured item: the ${data.items[wk].name}. Gone on Monday.`);
+      if (wk) lines.push(V.week(data.items[wk].name));
       if (stock.season) { const left = new Date(date.getFullYear(), date.getMonth() + 1, 1) - date, n = Math.ceil(left / 864e5);
-        lines.splice(2, 0, `${stock.season.say} ${stock.season.name} items leave in ${n} day${n === 1 ? '' : 's'}.`); }
+        lines.push(`${stock.season.say} ${stock.season.name} items leave in ${n} day${n === 1 ? '' : 's'}.`); }
     }
+    lines.push(...V.tips.slice().sort(() => Math.random() - .5));
+    if (!shop.special && !shop.vault) lines.push('They say a hidden market opens late at night... but only for those who train after dark.');
     let li = 0; const say = t => { $('.tsh-say').textContent = t; };
     say(lines[0]);
     $('.tsh-bub').onclick = () => { li = (li + 1) % lines.length; say(lines[li]); };
@@ -501,8 +572,8 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     }
     // the chests tab: tap one to see its odds and open it (the app plays the opening; without it, it just opens)
     function chestCards() {
-      const icon = c => window.TA_RAID && TA_RAID.chestIcon ? TA_RAID.chestIcon('tier_' + c.id, c.id === 'L') : data.chestIcon;
-      return CHESTS.map(c => `<button class="tsh-card tsh-chest" role="listitem" data-chest="${c.id}" style="--rc:${data.rarity[c.id]}" aria-label="${esc(c.name)}, ${fmt(c.price)} ${c.cur === 'c' ? 'Grind' : 'Glory'}">
+      const icon = c => window.TA_RAID && TA_RAID.chestIcon ? TA_RAID.chestIcon('tier_' + c.id, c.id === 'L' || c.id === 'V') : data.chestIcon;
+      return CHESTS.filter(c => !!c.vault === !!shop.vault).map(c => `<button class="tsh-card tsh-chest" role="listitem" data-chest="${c.id}" style="--rc:${data.rarity[c.id] || '#ffd65a'}" aria-label="${esc(c.name)}, ${fmt(c.price)} ${c.cur === 'c' ? 'Grind' : 'Glory'}">
         <span class="rk"></span><span class="ped"></span><img class="ic" src="${icon(c)}" alt="">${c.id === 'L' ? '<i class="spk" style="left:12px;top:8px"></i><i class="spk" style="left:50px;top:20px;animation-delay:.6s"></i>' : ''}<span class="nm">${esc(c.name)}</span>
         <span class="tsh-pr"><img src="${c.cur === 'c' ? data.coinIcon : data.gemIcon}" alt="">${fmt(c.price)}</span><span class="tg tsh-cx">×${c.rolls}</span></button>`).join('');
     }
@@ -549,7 +620,7 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
         </button>`;
       }).join('') : `<div class="tsh-empty">${stock.items.some(inTab) ? 'You own everything here today.<br>Tap SHOW OWNED to see it,<br>or check back tomorrow!' : 'Nothing in this tab today.<br>Check back tomorrow!'}</div>`;
       stage.querySelectorAll('.tsh-card').forEach(b => b.onclick = () => { selId = b.dataset.id; const it = data.items[selId];
-        say(it.drop && !ST.owned.includes(selId) ? `That one only drops from the ${bossOf(it)}. Beat it and maybe it's yours.` : it.drop ? `The ${it.name}... you took that from the ${bossOf(it)}? Impressive.` : `Ah, the ${it.name}. ${it.desc}`); render(); openSheet(); });
+        say(it.drop && !ST.owned.includes(selId) ? `That one only drops from the ${bossOf(it)}. Beat it and maybe it's yours.` : it.drop ? `The ${it.name}... you took that from the ${bossOf(it)}? Impressive.` : V.look(it.name, it.desc)); render(); openSheet(); });
     }
 
     // ---------- try-on stage ----------
@@ -599,20 +670,19 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
       const price = priceOf(id), bal = it.cur === 'c' ? ST.coins : ST.gems;
       if (bal < price) {
         const b = $('.tsh-btn'); b.classList.remove('no'); void b.offsetWidth; b.classList.add('no');
-        toast(it.cur === 'c' ? `Need ${fmt(price - bal)} more Grind. Go train!` : `Need ${fmt(price - bal)} more Glory. Beat a boss!`);
+        toast(it.cur === 'c' ? `Need ${fmt(price - bal)} more Grind. Go train!` : `Need ${fmt(price - bal)} more Glory. Beat a boss!`); say(pick(V.broke));
         if (it.cur === 'g' && opts.onGetGems) setTimeout(opts.onGetGems, 700);
         return;
       }
       if (it.cur === 'c') ST.coins -= price; else ST.gems -= price;
       ST.owned.push(id); if (!gate) ST.equipped[it.type] = id; changed();
-      say(['A fine choice!', 'Wear it with pride.', 'It suits you, hero.'][ST.owned.length % 3]);
+      say(pick(V.buy));
       toast(gate ? `${it.name} is yours! ${gate}` : `${it.name} unlocked and equipped!`); try { navigator.vibrate && navigator.vibrate(30); } catch (e) {}
       render(); opts.onChange && opts.onChange(TA_SHOP.state());
     };
     $('.tsh-getgems').onclick = () => (opts.onGetGems ? opts.onGetGems() : toast(opts.gemHint || 'Gem store opens here.'));
     $('.tsh-getcoins').onclick = () => toast(opts.coinHint || 'Earn coins by beating bosses and finishing workouts!');
     $('.tsh-bundle').onclick = () => (opts.onBundle ? opts.onBundle(bundle) : toast(bundle.title + ' · ' + bundle.price));
-    $('.tsh-back').onclick = () => sheetOpen() ? closeSheet() : opts.onClose && opts.onClose();
     const sig = () => ctl.pick() + '|' + (nightKey(ctl.now()) != null) + '|' + nightUnlocked(ctl.now());
     const sig0 = sig();
     const onSt = () => { renderMoney(); if (sig() !== sig0) setTimeout(ctl.remount, 0); }; listeners.add(onSt);
@@ -621,12 +691,8 @@ window.TA_SHOP_DATA = {"shops": {"dojo-supply": {"id": "dojo-supply", "title": "
     const pc = $('.tsh-scene canvas').getContext('2d'), fc = $('.tsh-fx').getContext('2d');
     const parts = Array.from({ length: { rain: 50, firefly: 16, pixel: 26, petal: 22, leaf: 14, dust: 26 }[shop.particles] || 20 }, () => ({ x: Math.random() * W, y: 36 + Math.random() * 136, p: Math.random() * 6.3, v: .3 + Math.random() }));
     let raf = 0, alive = true;
-    function clock() {
-      const now = ctl.now(), end = shop.special ? untilHour(now, NIGHT_END) : untilHour(now, 0);
-      if (sig() !== sig0) { setTimeout(ctl.remount, 0); return; }   // 11 PM / 6 AM / midnight rolled over
-      const s = Math.max(0, Math.floor((end - now) / 1000));
-      $('.tsh-clock').textContent = shop.special ? 'TONIGHT ONLY' : 'NEW STOCK IN ' + [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(v => String(v).padStart(2, '0')).join(':');
-    }
+    // no countdown on screen; this just swaps in the new shop when 11 PM, 6 AM or midnight rolls over
+    function clock() { if (sig() !== sig0) setTimeout(ctl.remount, 0); }
     function tick(now) {
       if (!alive) return;
       if (Math.floor(now / 1000) !== tick.s) { tick.s = Math.floor(now / 1000); clock(); }

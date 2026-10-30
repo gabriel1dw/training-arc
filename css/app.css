@@ -810,6 +810,16 @@ ellipse.hm-bone{fill:#cfc3e0;fill-opacity:.16}
 .rl-x{width:36px;height:36px}
 .rl-card{gap:12px}
 .rl-h{font-family:var(--display);font-size:24px;text-transform:uppercase;color:#fff}
+.today-sec{margin:14px 4px -2px;font-family:var(--label);font-weight:800;font-size:12px;line-height:1;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:10px}
+.today-sec::after{content:"";flex:1;height:1px;background:var(--line)}
+.ex-fold{margin:12px 0 0}.ex-fold > .ex + .ex, .ex-fold > .finish{margin-top:16px}
+.ex-fold-sum{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);cursor:pointer}
+.ex-fold-sum::-webkit-details-marker{display:none}
+.ex-fold-sum span{display:flex;flex-direction:column;gap:3px}.ex-fold-sum b{font-size:15px;color:var(--ink)}.ex-fold-sum small{font-size:12px;color:var(--dim);line-height:1.35}
+.ex-fold-sum i{font-style:normal;font-size:22px;color:var(--power);transition:transform .2s}.ex-fold[open] .ex-fold-sum i{transform:rotate(90deg)}
+.ex-fold[open] .ex-fold-sum{margin-bottom:12px}
+.q-more{margin-top:10px}.q-more summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--dim);padding:6px 0}
+.dup-quote{margin:12px 0 4px;padding:10px 12px;border-left:3px solid var(--power);font-style:italic;font-weight:700;color:#fff;background:rgba(255,255,255,.04);border-radius:0 8px 8px 0}
 .rl-card .fine{color:#a197b8;margin:0}
 .rl-code{width:100%;padding:10px;border:1px solid rgba(255,255,255,.2);border-radius:10px;background:rgba(0,0,0,.35);color:#e8e2f6;font:12px/1.4 ui-monospace,monospace;word-break:break-all;resize:none}
 .rl-pick{display:grid;grid-template-columns:1fr 1fr;gap:6px}
@@ -1231,6 +1241,27 @@ a.st-link{text-decoration:none}
 .sport-chip span{font-size:17px;line-height:1}
 .sport-chip.on{background:var(--power);border-color:var(--power);color:var(--power-ink)}
 .sport-intro .eyebrow{font-size:14px}
+/* the sport card and Combine Day */
+.scard{display:flex;flex-direction:column;gap:12px;border:1px solid color-mix(in srgb,var(--power) 40%,var(--line))}
+.scard-top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:center}
+.scard-top .fine{margin:0}
+.scard-ovr{display:flex;flex-direction:column;align-items:center;justify-content:center;width:84px;height:84px;border-radius:16px;border:2px solid var(--tc);background:rgba(13,10,21,.6)}
+.scard-ovr b{font-family:var(--display);font-size:38px;line-height:1;color:var(--tc)}
+.scard-ovr span{font-family:var(--label);font-weight:700;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:center}
+.scard-bars{display:flex;flex-direction:column;gap:7px}
+.scard-bar{display:grid;grid-template-columns:42px minmax(0,1fr) 30px;grid-template-rows:auto auto;column-gap:10px;align-items:center}
+.scard-bar .sb-ab{font-family:var(--label);font-weight:800;font-size:13px;letter-spacing:.06em}
+.scard-bar .bar{height:8px}
+.scard-bar b{text-align:right;font-family:var(--display);font-size:18px}
+.scard-bar small{grid-column:2/4;font-size:11px;color:var(--dim)}
+.cm-due{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid color-mix(in srgb,var(--power) 55%,var(--line))}
+.cm-due p{margin:4px 0 2px}
+.cm-due .btn{flex:none}
+.cm-test{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;background:var(--surface-2)}
+.cm-test .fine{margin:0}
+.cm-in{display:flex;align-items:center;gap:8px}
+.cm-in input{width:120px;min-height:44px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;font-size:16px}
+.cm-in span{color:var(--dim);font-size:13px}
 .arc-days{margin:0}
 .arc-locked{border-style:dashed}
 .chip.prem{border-color:var(--power);color:var(--power);background:transparent}
@@ -2958,6 +2989,7 @@ body:has(.wk:not([hidden])){overflow:hidden}
 .gate-body b{color:var(--ga)}
 .gate-go{grid-column:1/-1;margin-top:6px;min-height:48px;background:var(--ge);color:#141014}
 .shopov{position:fixed;inset:0;z-index:72;background:#08070c}
+.shop-open .tabs{z-index:80}
 .inv-info{margin:0;min-height:3.2em}
 .inv-r{font:700 11px/1.2 var(--label);letter-spacing:.06em}
 .inv-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}

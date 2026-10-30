@@ -2278,18 +2278,20 @@ function shopHero(cv){
 const SHOP_BANNER = {id:'train', title:'TRAIN TO EARN', sub:'Workouts pay Grind · big wins pay Glory', price:'TODAY ›', sticker:'NO REAL MONEY'};
 let shopUi = null;
 function openShop(){
-  if (!window.openItemShop) return;
+  if (!window.openItemShop || shopUi) return;
   const el = document.getElementById('shopOv'); el.hidden = false;
-  document.documentElement.classList.add('ts-lock'); behind().forEach(x => x.inert = true);
+  // the tab bar stays at the bottom while you shop, with Shop lit: tap any tab to leave
+  const tabs = document.querySelector('.tabs'); el.style.bottom = (tabs ? tabs.offsetHeight : 0) + 'px';
+  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-current', b.dataset.tab === 'shop' ? 'page' : 'false'));
+  document.documentElement.classList.add('ts-lock', 'shop-open'); document.querySelector('.app').inert = true;
   shopUi = openItemShop(document.getElementById('shopIn'), {hero:shopHero, banner:SHOP_BANNER,
     gemHint:'Glory: beat a boss for the first time, rank up, or finish an arc.',
     coinHint:'Every workout pays Grind. Full clears, new maxes and boss days pay more.',
-    onClose:closeShop, onBundle:closeShop, onChange:paintHeroes, onChest:shopChest});
-  el.querySelector('.tsh-back')?.focus({preventScroll:true});
+    onClose:closeShop, onBundle:closeShop, onChange:paintHeroes, onChest:shopChest, isPremium, onPremium:premiumHub});
 }
 function closeShop(){
   if (shopUi){ shopUi.destroy(); shopUi = null; }
-  document.getElementById('shopOv').hidden = true; document.documentElement.classList.remove('ts-lock');
+  document.getElementById('shopOv').hidden = true; document.documentElement.classList.remove('ts-lock', 'shop-open');
   if (!document.querySelector('.overlay:not([hidden])')) behind().forEach(x => x.inert = false);
   render(); paintHeroes();
 }
@@ -3257,8 +3259,9 @@ function questsHTML(){
     <div class="row-between"><h3>Quests</h3><span class="streak${n ? ' on' : ''}">${FLAME}${n ? `${n}-week streak${m > 1 ? ` · ×${m.toFixed(2)} XP` : ''}` : 'No streak yet'}</span></div>
     ${chalHTML()}
     ${qs.map(row).join('')}
+    <details class="q-more"><summary>How quests and streaks work</summary>
     <p class="fine">Hit ${weekGoal()} workout${weekGoal() === 1 ? '' : 's'} a week to keep your streak. Each week in a row adds +5% workout XP, up to +20%. Tap Done on a check-in when you do it. Daily quests reset at midnight, weekly quests on Monday.</p>
-    <p class="fine shield-line">${shieldHTML(streakInfo(logsByDay(), todayIso()))} Rest days never break your session streak, and ${isPremium() ? 'your two Premium shields each cover a missed training day' : 'a shield covers one missed training day'} each week. ${isPremium() ? 'They refill' : 'It refills'} Monday.</p>
+    <p class="fine shield-line">${shieldHTML(streakInfo(logsByDay(), todayIso()))} Rest days never break your session streak, and ${isPremium() ? 'your two Premium shields each cover a missed training day' : 'a shield covers one missed training day'} each week. ${isPremium() ? 'They refill' : 'It refills'} Monday.</p></details>
   </section>`;
 }
 // Days of the arc you've finished this time through (by log id), so going back to one shows it as done.
@@ -3274,6 +3277,9 @@ function clearedBackfill(){
     const i = w * perWeek + d; if (i >= last) break; last = i; if (l.id && !clearedDay(p, w, d)) markCleared(p, w, d, l.id); }
 }
 var redoDay = null;   // "Do it again" on a finished day shows its sets once more
+// The sets list on Today stays folded unless you open it (or you've started logging there); it stays as you left it
+var exOpen = false;
+document.addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('ex-fold')) exOpen = e.target.open; }, true);
 // A finished workout: the badge, when, how much, and every exercise with what you did (Today and History both show it)
 const doneSets = st => st.length > 1 && st.every(s => s[0] === st[0][0] && s[1] === st[0][1]) ? `${st.length}×${st[0][1]}${st[0][0] > 0 ? ` @ ${fmt(st[0][0])}` : ''}` : st.map(([wt, r]) => wt > 0 ? `${fmt(wt)}×${r}` : `${r} reps`).join(', ');
 // The Grind a workout paid: saved on it since this was added; older ones are worked out from the sets, the full clear and the boss
@@ -3304,7 +3310,8 @@ function viewToday(){
   const n = sessionSets(), key = `${p.id}|${w}|${d}`, cl = n || deloadOn() ? null : clearedDay(p, w, d), shut = cl && redoDay !== key;
   const doneHTML = cl ? `${doneBoxHTML(cl)}
     <button class="btn btn-power wk-start" data-act="nextOpen">Go to your next workout ›</button><button type="button" class="wk-link boss-plain" data-act="redoDay">Do this workout again</button>` : '';
-  let h = todayHead() + gateCardHTML() + bannerHTML() + checkinHTML() + restDayHTML() + dxpHTML() + premBossHTML() + coachHTML() + fuelHTML() + nutTodayHTML() +restWarnHTML() + todaySocial() + deloadHTML() + (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
+  // today's workout sits right under the hero card; everything else follows it
+  const stage = (S.arcJustDone === p.id && !w && !d ? nextArcHTML(p, 'panel') : '') + `<section class="stage">
     <div class="stage-top"><span class="tag rank-${p.rank.toLowerCase()}">${p.rank}-Rank</span>${bossDay(p, w, d) ? '<span class="tag boss-tag">Boss</span>' : ''}<span class="eyebrow">${pathOf(p).name} · ${p.name}</span></div>
     <h1 class="stage-title">${day.name}</h1>
     <div class="stage-meta">${deloadOn() ? `<span class="tag dl-tag">Deload</span> Session ${S.deload.total - S.deload.left + 1} of ${S.deload.total} · arc paused at week ${S.pos.w + 1}, day ${S.pos.d + 1}` : `Week ${w+1}: ${p.weekNames[w]} · Day ${d+1} of ${perWeek}`}</div>
@@ -3317,15 +3324,22 @@ function viewToday(){
       <button class="btn btn-ghost btn-sm" data-act="move" data-dir="1" aria-label="Next workout">Next ›</button>
     </div>`}
   </section>`;
-  h += questsHTML() + seasonHTML();   // the monthly season track, here as well as on Progress
-  if (shut) return h;   // a finished day: no empty set boxes or Clear stage bar
-  if (p.needsMax && S.example) h += `<div class="notice">These weights use example maxes. <button data-act="tab" data-tab="maxes">Enter your maxes</button> and every number updates.</div>`;
-  h += day.ex.map((ex, ei) => exCard(p, ex, ei)).join('');
-  h += scrollHTML();
-  h += `<div class="finish">
-    <div class="sx">Session XP<b class="num" id="sessXp">${n ? '+' + xpFor(n, p, planSets()) : '0'}</b></div>
-    <button class="btn btn-power" data-act="finish">Clear stage</button>
-  </div>`;
+  // Today in four labelled groups: the workout (its sets folded under it), goals, events, fuel. A group with nothing in it is left out.
+  const sec = (label, body) => body.trim() ? `<h2 class="today-sec">${label}</h2>${body}` : '';
+  const sets = day.ex.reduce((a, x) => a + (x.sets || []).length, 0);
+  const list = shut ? '' : (p.needsMax && S.example ? `<div class="notice">These weights use example maxes. <button data-act="tab" data-tab="maxes">Enter your maxes</button> and every number updates.</div>` : '')
+    + `<details class="ex-fold"${exOpen || n ? ' open' : ''}><summary class="ex-fold-sum"><span><b>Log sets on this page</b><small>${day.ex.length} exercises · ${sets} sets · or tap Start workout for one set at a time</small></span><i aria-hidden="true">›</i></summary>
+    ${day.ex.map((ex, ei) => exCard(p, ex, ei)).join('')}
+    <div class="finish">
+      <div class="sx">Session XP<b class="num" id="sessXp">${n ? '+' + xpFor(n, p, planSets()) : '0'}</b></div>
+      <button class="btn btn-power" data-act="finish">Clear stage</button>
+    </div></details>`;
+  let h = todayHead() + gateCardHTML() + bannerHTML();
+  h += sec('Today\'s workout', stage + list + restWarnHTML() + deloadHTML() + restDayHTML() + coachHTML());
+  h += sec('Goals', checkinHTML() + questsHTML() + todaySocial());
+  h += sec('Events', dxpHTML() + premBossHTML() + cmTodayHTML() + seasonHTML());   // the monthly season track, here as well as on Progress
+  h += sec('Fuel', fuelHTML() + nutTodayHTML());
+  if (!shut) h += scrollHTML();
   return h;
 }
 
@@ -4209,7 +4223,7 @@ function undoRestore(){
 function backupNudge(){
   const last = S.lastBackup, days = last ? dayNum(todayIso()) - dayNum(last) : null;
   if (!(S.log.length >= 3 && (days === null || days >= 14))) return '';
-  return `<button class="backup-warn backup-nudge" data-act="openSettings">${last ? `It has been ${days} days since your last backup.` : `You have ${S.log.length} workouts and no backup yet.`} <b>Back up now ›</b></button>`;
+  return `<button class="backup-warn backup-nudge" data-act="openSettings">${last ? `It has been ${days} days since your last backup.` : `You have ${S.log.length} workouts and no backup yet.`} <b style="white-space:nowrap">Back up now ›</b></button>`;
 }
 
 /* ---------- Rivals and challenges (no account needed) ---------- */
@@ -4503,6 +4517,17 @@ async function drawRival(cv, r){ try { const fr = await spriteFrames(r.g, RANKS[
   cv.width = fr[0].bmp.width; cv.height = fr[0].bmp.height; const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(fr[0].bmp, 0, 0); } catch(e){} }
 const paintRivals = () => document.querySelectorAll('canvas[data-rv]').forEach(cv => { const id = cv.dataset.rv, r = id === 'me' ? myCard() : (S.rivals || {})[id] || (netFriends || []).find(f => f.id === id); if (r && !cv.dataset.done){ cv.dataset.done = 1; drawRival(cv, r); } });
 // One dialog for sharing a code, writing a challenge, and comparing with a rival
+// No daily XP cap: a second workout on the same day just gets an honest question first (once a day, never mid-workout)
+let dupOk = null, dupThen = null;
+function dupGate(then){
+  const t = todayIso(); if (dupOk === t || sessionSets() || !S.log.some(l => l.iso === t)) return false;
+  dupThen = then;
+  rvDlg(`<b class="rl-h">You already trained today</b>
+    <p class="fine">Today's workout is in the log. Your muscles grow while you rest, not while you stack sessions. Doing a second one on purpose? Go for it.</p>
+    <p class="dup-quote">"The only person you're cheating is yourself."</p>
+    <div class="story-foot"><button type="button" class="wk-link" data-act="dupGo">Train again anyway</button><button type="button" class="btn btn-power btn-sm" data-act="rvClose">Rest up</button></div>`);
+  return true;
+}
 function rvDlg(html){ const d = document.getElementById('rvDlg'); d.innerHTML = `<div class="pc-card rl-card" style="--rc:var(--power)">${html}</div>`; if (!d.open) d.showModal(); paintRivals(); }
 function rvShareBox(title, sub, text, code, link){   // link: a ready-made address instead of a code (invites)
   link = link || codeLink(code);
@@ -6184,6 +6209,77 @@ function backupHTML(){
 }
 const STAT_COLOR = {str:'#ff5a6e', spd:'#4cc3ff', end:'#3ddc97', tec:'#b98cff'};
 // E: your character as a trading card: art on your stage, rank, title, level, and stats. The border takes your rank's color.
+/* ---------- Combine Day and the sport card ----------
+   Six athletic tests you log every few weeks. Each result becomes a 40–99 rating against real benchmarks (from a beginner
+   to an elite athlete, his or hers), and your sport weighs them into a sport OVR, like a sports game's player card. */
+// [key, name, short label, how to do it, unit kind, lower is better?, benchmarks {m:[beginner, elite], f:[...]} in inches / seconds / reps / minutes]
+const COMBINE = [
+  ['vert', 'Vertical jump', 'VERT', 'Stand by a wall, reach up and mark it. Jump from both feet and touch as high as you can. The gap is your vertical. Best of 3.', 'len', false, {m:[12, 36], f:[8, 28]}],
+  ['broad', 'Broad jump', 'PWR', 'Both feet behind a line, swing and jump forward. Measure to the back of your heels. Best of 3.', 'len', false, {m:[70, 125], f:[55, 100]}],
+  ['dash', '40-yard dash', 'SPD', 'Sprint 40 yards (36.6 m) from a still start. Have someone time it, or use a phone video. Best of 2.', 'sec', true, {m:[6.2, 4.4], f:[7.0, 5.0]}],
+  ['agil', 'Pro agility (5-10-5)', 'AGI', 'Start in the middle: sprint 5 yd right, 10 yd left, 5 yd back through the middle. Touch each line. Best of 2.', 'sec', true, {m:[5.8, 4.0], f:[6.3, 4.4]}],
+  ['push', 'Push-ups in 1 minute', 'MUS', 'Chest to a fist on the floor, full lockout. Count clean reps in 60 seconds.', 'reps', false, {m:[10, 70], f:[3, 50]}],
+  ['mile', '1-mile run', 'END', 'Four laps of a track or 1.6 km on a flat route, as fast as you can hold. Enter minutes:seconds.', 'min', true, {m:[11, 5], f:[12.5, 6]}]];
+// how much each test (plus strength from your lifts) counts toward a sport's OVR
+const SPORT_W = {general:{vert:1, broad:1, dash:1, agil:1, push:1, mile:1, str:1}, basketball:{vert:3, broad:1, dash:1, agil:2, push:1, mile:1, str:1}, football:{vert:1, broad:2, dash:3, agil:2, push:1, mile:0, str:3},
+  soccer:{vert:1, broad:1, dash:2, agil:2, push:0, mile:3, str:1}, baseball:{vert:1, broad:2, dash:2, agil:2, push:1, mile:0, str:2}, volleyball:{vert:3, broad:2, dash:0, agil:2, push:1, mile:0, str:1},
+  tennis:{vert:0, broad:1, dash:1, agil:3, push:1, mile:2, str:1}, hockey:{vert:1, broad:3, dash:2, agil:2, push:1, mile:1, str:2}, combat:{vert:0, broad:1, dash:1, agil:1, push:2, mile:3, str:2},
+  track:{vert:2, broad:3, dash:3, agil:0, push:0, mile:1, str:1}, swimming:{vert:1, broad:1, dash:0, agil:0, push:2, mile:3, str:1}};
+const cmRate = (k, v) => { const t = COMBINE.find(x => x[0] === k), [lo, hi] = t[6][bodySex() === 'f' ? 'f' : 'm']; if (!(v > 0)) return null;
+  return Math.max(30, Math.min(99, Math.round(40 + 59 * (v - lo) / (hi - lo)))); };
+const cmLast = () => (S.combine || [])[0] || null;
+const cmBest = k => { const L = (S.combine || []).map(c => c.r[k]).filter(v => v > 0), lower = COMBINE.find(x => x[0] === k)[5]; return L.length ? (lower ? Math.min(...L) : Math.max(...L)) : null; };
+// the sport you play: picked on the card, or the sport of the arc you're on
+const mySport = () => S.sport || (prog().sport) || null;
+const metricLen = () => S.unit === 'kg';
+const cmShow = (k, v) => { const t = COMBINE.find(x => x[0] === k); if (!(v > 0)) return '–';
+  return t[4] === 'len' ? (metricLen() ? `${Math.round(v * 2.54)} cm` : v >= 24 && k === 'broad' ? `${Math.floor(v / 12)}′${Math.round(v % 12)}″` : `${Math.round(v * 10) / 10}″`)
+    : t[4] === 'sec' ? `${v.toFixed(2)} s` : t[4] === 'min' ? `${Math.floor(v)}:${String(Math.round((v % 1) * 60)).padStart(2, '0')}` : `${v}`; };
+// each test's most recent result (a Combine where you skipped a test keeps your older result for it)
+const cmLatest = k => { const c = (S.combine || []).find(x => x.r[k] > 0); return c ? c.r[k] : null; };
+function sportRatings(){ const r = {}; for (const t of COMBINE) r[t[0]] = cmRate(t[0], cmLatest(t[0])); r.str = statVal('str'); return r; }
+function sportOvr(){ const r = sportRatings(), w = SPORT_W[mySport()] || SPORT_W.general; let a = 0, b = 0;
+  for (const [k, wt] of Object.entries(w)) if (wt && r[k] != null){ a += r[k] * wt; b += wt; } return b ? Math.round(a / b) : null; }
+const cmDue = () => { const c = cmLast(); return !c || c.iso <= addDays(todayIso(), -28); };
+const cmForSport = () => !!mySport() || ['athlete', 'sport'].includes(prog().path);
+// the sport card, under your player card on Progress
+function sportCardHTML(){ const sp = SPORTS.find(x => x.id === mySport()), c = cmLast(), r = sportRatings(), o = sportOvr();
+  const bars = [...COMBINE.map(t => [t[2], t[1], r[t[0]], cmLatest(t[0]) ? cmShow(t[0], cmLatest(t[0])) : 'not tested']), ['STR', 'Strength from your lifts', r.str, 'from your maxes']];
+  return `<section class="panel scard"><div class="row-between"><span class="eyebrow">Sport card</span><button type="button" class="wk-link" data-act="cmSport">${sp ? `${sp.icon} ${sp.name}` : 'Pick your sport'} ›</button></div>
+    <div class="scard-top"><div class="scard-ovr" style="--tc:${o ? tierColor(o) : 'var(--dim)'}"><b class="num">${o || '–'}</b><span>${sp ? 'Sport OVR' : 'Athletic OVR'}</span></div>
+      <p class="fine">${c ? `Last Combine ${fromYmd(c.iso).toLocaleDateString(undefined, {month:'short', day:'numeric'})}. ${cmDue() ? 'You\'re due for a new one.' : `Next one in ${Math.max(1, 28 - Math.round((fromYmd(todayIso()) - fromYmd(c.iso)) / 864e5))} days.`}` : 'Run your first Combine Day to rate your vertical, speed, agility and engine.'}${sp ? ` Weighted for ${sp.name.toLowerCase()}.` : ''}</p></div>
+    <div class="scard-bars">${bars.map(([ab, nm, v, sub]) => `<div class="scard-bar" title="${nm}"><span class="sb-ab">${ab}</span><div class="bar"><i style="width:${v || 0}%;background:${v ? tierColor(v) : 'transparent'}"></i></div><b class="num" style="color:${v ? tierColor(v) : 'var(--dim)'}">${v || '–'}</b><small>${sub}</small></div>`).join('')}</div>
+    <button type="button" class="btn ${cmDue() ? 'btn-power' : 'btn-ghost'} btn-sm" data-act="cmOpen">${c ? 'Run Combine Day' : 'Run your first Combine Day'}</button></section>`; }
+// on Today when a Combine is due, for anyone training for a sport
+const cmTodayHTML = () => cmForSport() && cmDue() ? `<section class="panel cm-due"><div><span class="eyebrow">Combine Day</span><p>${cmLast() ? 'Four weeks since your last test. See how much you\'ve improved.' : 'Test your vertical, speed, agility and engine. Your sport card rates every one.'}</p><small class="fine">+300 XP · +100 Grind · +10 Glory for every new best</small></div><button type="button" class="btn btn-power btn-sm" data-act="cmOpen">Start</button></section>` : '';
+// the testing sheet
+function cmOpen(){ const L = cmLast(), lenU = metricLen() ? 'cm' : 'in';
+  rvDlg(`<div class="row-between"><b class="rl-h">Combine Day</b><button type="button" class="icon-btn me-x" data-act="rvClose" aria-label="Close">×</button></div>
+    <p class="fine">Warm up for 10 minutes first. Test what you can, log your best try, and leave the rest blank. Rest 2–3 minutes between sprints and jumps.</p>
+    ${COMBINE.map(([k, name, ab, how, kind]) => { const best = cmBest(k);
+      return `<div class="cm-test"><div class="row-between"><b>${name}</b>${best ? `<small class="fine">Best ${cmShow(k, best)}</small>` : ''}</div><p class="fine">${how}</p>
+        <label class="cm-in"><input id="cm-${k}" type="${kind === 'min' ? 'text' : 'number'}" inputmode="decimal" step="any" min="0" placeholder="${kind === 'min' ? '7:30' : kind === 'sec' ? '5.10' : ''}" aria-label="${name}"><span>${kind === 'len' ? lenU : kind === 'sec' ? 'sec' : kind === 'min' ? 'min:sec' : 'reps'}</span></label></div>`; }).join('')}
+    <div class="story-foot"><button type="button" class="wk-link" data-act="rvClose">Cancel</button><button type="button" class="btn btn-power btn-sm" data-act="cmSave">Save results</button></div>`);
+  document.querySelector('#rvDlg .pc-card').classList.add('cm-card'); }
+function cmSave(){ const r = {}, lenK = metricLen() ? 1 / 2.54 : 1;
+  for (const [k, , , , kind] of COMBINE){ const raw = (document.getElementById(`cm-${k}`)?.value || '').trim(); if (!raw) continue; let v;
+    if (kind === 'min'){ const m = raw.match(/^(\d+)(?::(\d{1,2}))?$/); v = m ? +m[1] + (m[2] ? +m[2] / 60 : 0) : parseFloat(raw); } else v = parseFloat(raw);
+    if (!(v > 0)) continue; if (kind === 'len') v = Math.round(v * lenK * 10) / 10; if (kind === 'sec' && (v < 3 || v > 20)) continue; if (kind === 'min' && (v < 3 || v > 30)) continue; r[k] = v; }
+  if (!Object.keys(r).length){ toast('Log at least one test.'); return; }
+  const prs = Object.keys(r).filter(k => { const b = cmBest(k), lower = COMBINE.find(x => x[0] === k)[5]; return b && (lower ? r[k] < b : r[k] > b); }), before = sportOvr(), old = S.xp;
+  S.combine = [{iso:todayIso(), sport:mySport(), r}, ...(S.combine || [])].slice(0, 24); S.xp += 300;
+  if (window.TA_SHOP){ TA_SHOP.addCoins(100); if (prs.length) TA_SHOP.addGems(prs.length * 10); } save(); rankCheck(old);
+  const after = sportOvr(), rr = sportRatings();
+  rvDlg(`<b class="rl-h">Combine results</b><p class="fine">+300 XP · +100 Grind${prs.length ? ` · +${prs.length * 10} Glory for ${prs.length} new best${prs.length === 1 ? '' : 's'}` : ''}</p>
+    <div class="scard-top"><div class="scard-ovr" style="--tc:${tierColor(after || 40)}"><b class="num">${after || '–'}</b><span>Sport OVR</span></div><p class="fine">${before != null && after != null && after !== before ? `${after > before ? '▲' : '▼'} ${Math.abs(after - before)} from before.` : 'Your sport card is updated.'}</p></div>
+    <div class="scard-bars">${COMBINE.filter(t => r[t[0]]).map(t => `<div class="scard-bar"><span class="sb-ab">${t[2]}</span><div class="bar"><i style="width:${rr[t[0]]}%;background:${tierColor(rr[t[0]])}"></i></div><b class="num" style="color:${tierColor(rr[t[0]])}">${rr[t[0]]}</b><small>${cmShow(t[0], r[t[0]])}${prs.includes(t[0]) ? ' · new best!' : ''}</small></div>`).join('')}</div>
+    <div class="story-foot"><span></span><button type="button" class="btn btn-power btn-sm" data-act="rvClose">Done</button></div>`);
+  render(); if (prs.length) buzz([20, 40, 20]); }
+// pick the sport your card is weighted for
+function cmSportPick(){ const cur = mySport();
+  rvDlg(`<b class="rl-h">Your sport</b><p class="fine">Your sport card weighs your tests for it. Basketball counts your vertical most, soccer your engine, football your speed and strength.</p>
+    <div class="sport-chips">${[{id:'', name:'No sport', icon:'⚡'}, ...SPORTS].map(x => `<button type="button" class="sport-chip${(cur || '') === x.id ? ' on' : ''}" data-act="cmSetSport" data-v="${x.id}"><span aria-hidden="true">${x.icon}</span>${x.name}</button>`).join('')}</div>
+    <div class="story-foot"><span></span><button type="button" class="wk-link" data-act="rvClose">Close</button></div>`); }
 function tcardHTML(r, n, lv){
   const vals = STAT_KEYS.map(([k]) => statVal(k)), p = prog(), o = ovr(p.path);
   return `<section class="tcard${isPremium() ? " prem-frame" : ""}" style="--rc:var(--rank-${r.k.toLowerCase()})"><div class="tcard-in">
@@ -7058,12 +7154,12 @@ function pbChestFx(queue, done){ if (!queue.length || !window.TA_RAID || !TA_RAI
     pbFxRaf = requestAnimationFrame(tick); setTimeout(() => (d.querySelector('.pbfx-buy') || cv).focus({preventScroll:true}), 50); };
   if (!d.open) d.showModal(); show(); }
 // the shop's chests: a preview with the odds, then pay and open (gym bag, locker, technique scroll, spirit orb)
-const SHOP_CHEST_ART = {C:'tier_C', R:'tier_R', E:'tier_E', L:'tier_L'};
+const SHOP_CHEST_ART = {C:'tier_C', R:'tier_R', E:'tier_E', L:'tier_L', V:'tier_V'};
 function shopChest(tid, after){ const C = TA_SHOP.chests().find(c => c.id === tid), D = TA_SHOP_DATA; if (!C) return;
   const cur = C.cur === 'c' ? 'Grind' : 'Glory', icon = `<img class="pbfx-cur" src="${C.cur === 'c' ? D.coinIcon : D.gemIcon}" alt="">`, RANK = {C:0, R:1, E:2, L:3};
   const odds = () => `${Object.entries(C.odds).map(([r, p]) => `<span style="--rc:${D.rarity[r]}"><i></i>${D.rarityName[r][0] + D.rarityName[r].slice(1).toLowerCase()} ${p}%</span>`).join('')}
     <small>${C.rolls} find${C.rolls > 1 ? 's' : ''} inside · no repeats of things you own · Epic+ guaranteed in ${10 - TA_SHOP.chestPity()}</small>`;
-  const q = {id:SHOP_CHEST_ART[tid], title:C.name, sub:esc(C.desc), get odds(){ return odds(); }, cost:`Open · ${icon}${fmt(C.price)}`, again:true,
+  const q = {id:SHOP_CHEST_ART[tid], grand:tid === 'V', title:C.name, sub:esc(C.desc), get odds(){ return odds(); }, cost:`Open · ${icon}${fmt(C.price)}`, again:true,
     onOpen(){ const res = TA_SHOP.openChest(tid); if (!res) return null; if (res.error) return {error:`You need ${fmt(res.short)} more ${cur}. ${C.cur === 'c' ? 'Every workout pays Grind.' : 'Big wins pay Glory.'}`};
       const rewards = res.got.map(g => g.dupe ? {big:g.coins ? `+${g.coins}` : `+${g.gems}`, name:g.coins ? 'Grind' : 'Glory', r:g.r, dupe:true, note:'All found: paid back'}
         : {img:D.items[g.id].icon, name:D.items[g.id].name, r:g.r, note:D.rarityName[g.r]}).sort((a, b) => RANK[a.r] - RANK[b.r]);
@@ -7235,16 +7331,19 @@ Object.assign(APP_THEMES, {gold:['Gold Rush', {'--power':'#ffb000', '--violet-gl
   void:['Void', {'--power':'#c084fc', '--violet-glow':'rgba(192,132,252,.32)', '--aura':'#ff4fa3'}]});
 function applyTheme(){ const el = document.documentElement, all = new Set(Object.values(APP_THEMES).flatMap(([, v]) => Object.keys(v)));
   for (const k of all) el.style.removeProperty(k); const th = isPremium() && APP_THEMES[S.appTheme] ? APP_THEMES[S.appTheme][1] : {}; for (const [k, v] of Object.entries(th)) el.style.setProperty(k, v); }
-const PERKS = [['🍽️', 'Nutrition', 'Daily calories and macros for your goal, a food log, meal plans scaled to you, a grocery list and supplement basics.'],
+const PERKS = [['🏀', 'Sport-specific training', 'Ten sports, each with off-season, pre-season and in-season arcs built around its own lifts, jumps, sprints, conditioning and injury prevention.'],
+  ['🍽️', 'Nutrition and food log', 'Daily calories and macros for your goal. Log from 140+ foods or make your own, any amount, meal by meal, and edit anything. Meal plans, a grocery list and supplement basics.'],
   ['🔥', 'Protein and water streaks', 'Hit your daily protein and water for XP and Grind every day.'], ['📅', 'Weekly check-in', 'Every week your calories adjust to your weight trend, with the reason why.'],
-  ['🍌', 'Training-day fueling', 'What to eat before and after each workout, right on Today.'], ['📈', 'Advanced stats', 'Estimated-max trends, sets per muscle group and a plateau finder.'],
-  ['🧠', 'Smart coach', 'Suggests weight changes when you crush a lift or miss reps.'], ['👑', 'Exclusive cosmetics', 'A gold card frame, the Premium title and a new exclusive item every month.'],
-  ['🎁', 'Bonus season rewards', '+50% Grind and extra Glory on every season tier.'], ['🛡️', 'Bigger crews', 'Crews of up to 10 and a weekly crew battle.'], ['🎨', 'App themes', 'Color the whole app your way, nine themes.'],
-  ['🫀', 'Muscle heatmap', 'A body map of what you trained this week and what you skipped, plus volume charts and max projections.'],
+  ['🍌', 'Training-day fueling', 'What to eat before and after each workout, right on Today.'],
+  ['🫀', 'Anatomy muscle map', 'A detailed front-and-back body map of every muscle you trained this week. Hard-worked muscles glow; skipped ones stand out.'],
+  ['📈', 'Advanced stats', 'Estimated-max trends, weekly training volume, max projections and a plateau finder.'],
+  ['🧠', 'Smart coach', 'Suggests weight changes when you crush a lift or miss reps.'],
+  ['🐉', 'Monthly raid boss', 'A new boss every month with its own page and sayings. Every set you log hits it. Open raid chests at 25%, 50% and 75%, then take its cape, aura and title.'],
   ['🌌', 'Exclusive stages', 'Aurora Peak, Neon Rain and Sakura Night: animated stages only Premium players get.'],
-  ['🐉', 'Monthly raid boss', 'Twelve bosses of their own, a new one each month. Every set you log hits it; bring it down for its own cape and title.'],
+  ['👑', 'Exclusive cosmetics', 'A gold card frame, the Premium title and a new exclusive item every month.'], ['✨', 'Holographic card', 'Your character card shimmers with an animated holo frame, and shares that way too.'],
+  ['🎨', 'App themes', 'Color the whole app your way, nine themes.'], ['🎁', 'Bonus season rewards', '+50% Grind and extra Glory on every season tier.'],
   ['🛡️', 'Two streak shields', 'Miss two training days a week and keep your streak.'], ['⚡', 'Double XP weekend', 'The first weekend of every month, workouts earn twice the XP.'],
-  ['✨', 'Holographic card', 'Your character card shimmers with an animated holo frame, and shares that way too.']];
+  ['👥', 'Bigger crews', 'Crews of up to 10 and a weekly crew battle.']];
 function premiumHub(){ const on = isPremium(), m = premiumMonthly();
   rvDlg(`<div class="row-between"><b class="rl-h">Training Arc Premium</b><span class="prem${on ? ' on' : ''}">${on ? 'Active' : 'Premium'}</span></div>
     <ul class="perks">${PERKS.map(([i, t, d]) => `<li><span aria-hidden="true">${i}</span><div><b>${t}</b><p class="fine">${d}</p></div></li>`).join('')}</ul>
@@ -7416,7 +7515,7 @@ function viewProgress(){
   if (progTab === 'log') return `${head}${historyHTML()}
   <details class="panel hist-max"><summary><h3>Max history</h3></summary>${hist ? `<div class="list">${hist}</div>` : '<p class="empty">No changes yet. Updated maxes and PRs show up here.</p>'}</details>`;
   return `${head}
-  ${tcardHTML(r, n, lv)}
+  ${tcardHTML(r, n, lv)}${cmForSport() || (S.combine || []).length ? sportCardHTML() : ''}
   <section class="panel"><h3>Rank ladder</h3>
     <div class="ladder">${RANKS.map((x, i) => `<div class="rung${S.xp >= x.xp ? ' got' : ''}${x.k === r.k ? ' cur' : ''}">${emblem(x.k, 'xs')}<span class="rung-t">${x.t}</span><span class="rung-xp num">Lv ${x.lv}–${rankEndLv(i)}</span></div>`).join('')}</div>
     <p class="fine">${MAX_LEVEL} levels, a new rank every ${LEVELS_PER_RANK}. Earn XP: +10 per set, up to +50 for clearing the day (scaled by how much you finished) and +${FULL_CLEAR} more for finishing every set, all multiplied by the arc's rank (×1 at E up to ×2 at S). New maxes from rep-out sets add +100. Each level takes more XP than the last, so every rank is earned.</p>
@@ -8067,7 +8166,7 @@ const TOURS = {
     {sel:'.wk-active-top', t:'Your exercise', x:'What to do and how heavy. "3 sets of 5" means: lift it 5 times, rest, and repeat that 3 times. A "+" means keep going if you can.'},
     {sel:'.wk-fields', t:'Did something different?', x:'Change the weight or reps here before you log, if you used another weight or got more or fewer reps.'},
     {sel:'[data-wk=log]', t:'Log every set', x:'Tap this after each set. A rest timer starts, and the next set is ready when it ends.'},
-    {sel:'.wk-tools', t:'Never done it before?', x:'Form tips shows a short animation and simple cues. Swap picks a different exercise. "?" explains the gym words.'},
+    {sel:'.wk-tools', t:'Never done it before?', x:'Form tips shows a short animation and simple cues. Swap (on lifts) picks a different exercise. "?" explains the gym words.'},
     {sel:'.wk-grid', t:'Today\'s list', x:'Every exercise for today. Tap one to jump to it, or add your own at the end.'},
     {sel:'[data-wk=finish]', t:'Finish to collect XP', x:'Done for the day? Tap Finish. A partial workout still counts and still earns XP.'}
   ]
@@ -8384,7 +8483,7 @@ function openWkDone(){
   { const w0 = wkSummary, pr = w0.rows.some(r => r.pr); sfx(pr ? 'pr' : levelFor(S.xp) > levelFor(w0.old) ? 'level' : 'done'); if (pr) buzz(PR_BUZZ); }   // the result screen's sound
   const s = wkSummary, rb = rankBarHTML(S.xp), dlg = document.getElementById('wkDone');
   applyWkTheme(dlg, s.theme, rb.r);
-  const amountOf = r => r.e.weighted ? `${fmt(r.vol)} ${S.unit}` : `${fmt(r.amount)} ${r.e.unit || (r.amount === 1 ? 'rep' : 'reps')}`;
+  const amountOf = r => r.e.weighted && r.vol ? `${fmt(r.vol)} ${S.unit}` : r.e.weighted && !r.amount ? `${r.sets} ${r.sets === 1 ? 'set' : 'sets'}` : `${fmt(r.amount)} ${r.e.unit || (r.amount === 1 ? 'rep' : 'reps')}`;
   const rows = s.rows.filter(r => r.sets).map(r => `<li><span>${r.e.name}, ${r.sets} ${r.sets === 1 ? 'set' : 'sets'}${r.pr ? `<span class="wk-pr">PR ${fmt(r.pr)}</span>` : ''}</span><span class="val">${amountOf(r)}</span></li>`).join('');
   const note = s.rankedUp ? `<p class="wk-rank-note up">Lv ${rb.lv.L}: you reached ${rb.r.k}-Rank ${rb.r.t}!</p>`
     : rb.lv.L > levelFor(s.old) ? `<p class="wk-rank-note up">Level up! Lv ${levelFor(s.old)} → ${rb.lv.L}</p><p class="wk-rank-note">${rb.next}${rb.n ? ` · Lv ${rb.n.lv} unlocks ${rb.n.k}-Rank` : ''}</p>`
@@ -8411,7 +8510,7 @@ function openWkDone(){
     ${s.items.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">New gear</p>${s.items.map(a => `<p>${a.name} <b>${RARITY[a.rarity]}</b></p>`).join('')}<p class="wk-gains-f">Put it on in the character editor.</p></div>` : ''}
     ${s.boosts.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">Stronger next arc</p>${s.boosts.map(([l, a]) => `<p>${LIFTS[l]} <b>+${fmt(a)} ${S.unit}</b></p>`).join('')}<p class="wk-gains-f">Your working weights for these lifts went up.</p></div>` : ''}
     ${s.achs.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">Achievement</p>${s.achs.map(a => `<p>${achText(a)}</p>`).join('')}</div>` : ''}
-    ${s.flairs && s.flairs.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">New Today backdrop</p>${s.flairs.map(f => `<p>${f.name}: pick it in the Trophy room on Progress</p>`).join('')}</div>` : ''}
+    ${s.flairs && s.flairs.length ? `<div class="wk-panel wk-gains"><p class="wk-gains-h">New Today backdrop${s.flairs.length > 1 ? 's' : ''}</p>${s.flairs.length > 2 ? `<p>${s.flairs.length} new backdrops, including ${s.flairs[s.flairs.length - 1].name}: pick one in the Trophy room on Progress</p>` : s.flairs.map(f => `<p>${f.name}: pick it in the Trophy room on Progress</p>`).join('')}</div>` : ''}
     <p class="wk-statline">${(o => `<span>OVR ${o}${o > s.ovrBefore ? ` ▲${o - s.ovrBefore}` : ''}</span>`)(ovr(s.p.path))}${STAT_KEYS.filter(([k]) => s.stats[k]).map(([k, ab]) => { const v = statVal(k), up = v - s.statsBefore[k]; return `<span>${ab} ${v}${up ? ` ▲${up}` : ''}</span>`; }).join('')}</p>
     ${rb.bar}${note}
     ${S.prefs.quotes ? (w => `<div class="wk-closing"><p class="wk-closing-q">“${w.text}”</p><p class="wk-closing-by">${w.by}</p></div>`)(s.closing = s.closing || closingWords(s)) : ''}
@@ -8669,7 +8768,7 @@ document.addEventListener('click', e => {
   if (a !== 'delArc') deleteArmed = null;
   // Leaving an arc mid-way resets your place in it, so ask for a second tap
   if (a !== 'restartArc') restartArmed = null;
-  if (a === 'tab'){ tab = t.dataset.tab; render(true); window.scrollTo(0, 0); }
+  if (a === 'tab'){ if (shopUi) closeShop(); tab = t.dataset.tab; render(true); window.scrollTo(0, 0); }
   else if (a === 'check'){
     // Toggle in place so the check icon can animate and focus stays put
     const k = t.dataset.key, on = !S.done[k];
@@ -8683,7 +8782,9 @@ document.addEventListener('click', e => {
   else if (a === 'finish') finish();
   else if (a === 'startWk'){ const p = prog(), boss = bossDay(p, S.pos.w, S.pos.d), go = () => boss && window.TA_BOSSES ? openArcBoss() : openWorkout();
     // a scene when an arc begins, and before its boss
-    if (boss) storyGate('boss', go); else if (!deloadOn() && !S.pos.w && !S.pos.d && !sessionSets()) storyGate('start', go); else go(); }
+    const begin = () => { if (boss) storyGate('boss', go); else if (!deloadOn() && !S.pos.w && !S.pos.d && !sessionSets()) storyGate('start', go); else go(); };
+    if (!dupGate(begin)) begin(); }
+  else if (a === 'dupGo'){ dupOk = todayIso(); document.getElementById('rvDlg').close(); const then = dupThen; dupThen = null; if (then) then(); }
   else if (a === 'storyNext'){ if (!story) return; if (story.i < story.lines.length - 1){ story.i++; storyShow(); } else storyEnd(); }
   else if (a === 'storySkip') storyEnd();
   else if (a.startsWith('rv') && rvAct(a, t)){}
@@ -8702,7 +8803,7 @@ document.addEventListener('click', e => {
     else if (a === 'meSwitch'){ const p = PROFILES.list.find(x => x.id === t.dataset.id); if (p){ pf = {then:null, canClose:false, edit:null, del:null}; useProfile(p.id); } }
     else if (a === 'meProfiles') openProfiles(null, true); }
   else if (a === 'openYear') openYear(); else if (a === 'yirNext') yirNext(); else if (a === 'yirClose') yirClose(); else if (a === 'yirShare') shareYear();
-  else if (a === 'startWkPlain') openWorkout();
+  else if (a === 'startWkPlain'){ if (!dupGate(openWorkout)) openWorkout(); }
   else if (a === 'checkQuest'){   // daily check-ins are on your honor: tap when you've done it
     ensureQuests(); const id = t.dataset.v, c = CHECK_Q.find(x => x.id === id), k = `${S.q.day}:${id}`;
     if (!c || S.q.claimed[k] || !S.q.checks.includes(id)) return;
@@ -8815,6 +8916,8 @@ document.addEventListener('click', e => {
   else if (a === 'shareCard') shareCard(t.dataset.v);
   else if (a === 'path'){ arcPath = t.dataset.path; arcSport = null; render(); }
   else if (a === 'arcSport'){ arcSport = t.dataset.v || null; render(); }
+  else if (a === 'cmOpen') cmOpen(); else if (a === 'cmSave') cmSave(); else if (a === 'cmSport') cmSportPick();
+  else if (a === 'cmSetSport'){ S.sport = t.dataset.v || null; save(); document.getElementById('rvDlg').close(); render(); toast(S.sport ? `Sport card set for ${SPORTS.find(x => x.id === S.sport).name}.` : 'Sport card set to all-round.'); }
   else if (a === 'allArcs'){ S.prefs.allArcs = !S.prefs.allArcs; save(); arcPath = null; render(); }
   else if (a === 'openHero'){ previewRank = formIdx(); editG = S.hero.gender; renderHeroEditor(); openDialog('heroEditor', '[data-act=closeHero]'); document.getElementById('heName').value = S.hero.name; paintHeroes(); }
   else if (a === 'closeHero'){ closeDialog('heroEditor'); render(); }
@@ -9049,9 +9152,9 @@ function iconScan(d){
 }
 function iconPx(id){
   if (!id || ICONPX[id] !== undefined) return Promise.resolve(ICONPX[id] || null);
-  const it = window.TA_SHOP_DATA && TA_SHOP_DATA.items[id]; if (!it || !it.icon) return Promise.resolve(null);
+  const it = window.TA_SHOP_DATA && TA_SHOP_DATA.items[id]; if (!it || !it.icon) return Promise.resolve(null); const src = it.icon0 || it.icon;   // the original flat icon: outfit icons now show the worn top
   return new Promise(res => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 56; const x = c.getContext('2d'); x.imageSmoothingEnabled = false; x.drawImage(im, 0, 0, 56, 56);
-    res(ICONPX[id] = iconScan(x.getImageData(0, 0, 56, 56).data)); }; im.onerror = () => res(ICONPX[id] = null); im.src = it.icon; });
+    res(ICONPX[id] = iconScan(x.getImageData(0, 0, 56, 56).data)); }; im.onerror = () => res(ICONPX[id] = null); im.src = src; });
 }
 // Where the shirt sits on one frame. The art's shirt opens in a V at the neck, its sleeves run into the body,
 // and the top ranks add trim, so: yTop is the collar, yC the row where the chest closes under the V, yBot the hem,

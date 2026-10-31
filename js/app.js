@@ -5,7 +5,10 @@ const LIFTS = {squat:'Back Squat', bench:'Bench Press', deadlift:'Deadlift', ohp
 const MAX_LEVEL = 250, LEVELS_PER_RANK = 25;
 // Each level costs a little more than the last up to Lv 100; after that the cost barely climbs, so the late ranks
 // (S to SSS) keep coming at a steady pace instead of stalling. Streaks, quests and bosses speed it up.
-const levelCost = L => L <= 100 ? Math.round(.845 * (195 + 3.25 * L + .026 * L * L) / 5) * 5 : Math.round((650 + .6 * (L - 100)) / 5) * 5;   // XP to go from level L to L + 1
+// Past E-Rank every level costs up to 65% more (fully from Lv 100): re-paced after Combine Day, the food goals and
+// raids added XP, so a typical lifter still takes about a year and a half (casual ~2¼ years, hardcore ~1 year).
+const levelCost = L => { const b = L <= 100 ? .845 * (195 + 3.25 * L + .026 * L * L) : 660 + .6 * (L - 100), f = L <= 25 ? 1 : 1 + .65 * Math.min(1, (L - 25) / 75);
+  return Math.round(b * f / 5) * 5; };   // XP to go from level L to L + 1 (never less than the level before)
 const LEVEL_XP = [0, 0];                              // LEVEL_XP[L]: total XP needed to reach level L
 for (let L = 1; L < MAX_LEVEL; L++) LEVEL_XP[L + 1] = LEVEL_XP[L] + levelCost(L);
 const levelFor = xp => { let L = 1; while (L < MAX_LEVEL && xp >= LEVEL_XP[L + 1]) L++; return L; };
